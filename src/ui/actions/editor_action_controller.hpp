@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #pragma once
 
 #include "ui/actions/action_id.hpp"
@@ -13,8 +22,10 @@ class ActionStateUpdater;
 class DocumentUiController;
 class NotificationService;
 
+/// Routes triggered actions to document commands, tool activation, and UI services.
 class EditorActionController final {
 public:
+	/// Connect to the action registry and store non-owning service references.
 	EditorActionController(ActionRegistry &actions,
 			DocumentUiController &document_ui,
 			quader::tools::ToolManager &tool_manager,

@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/gpu/gpu_device.hpp"
 
 #include "crimson/diagnostics/renderer_diagnostics_snapshot.hpp"
@@ -16,6 +25,7 @@
 #include "crimson/pipeline/instancing_batcher.hpp"
 #include "crimson/post/exposure.hpp"
 #include "crimson/post/tone_mapping.hpp"
+#include "crimson/scene/render_camera_projection.hpp"
 
 #include <algorithm>
 #include <array>
@@ -34,8 +44,6 @@
 
 namespace crimson::gpu {
 namespace {
-
-using quader::math::Vec3;
 
 constexpr bgfx::ViewId kBackgroundView = 0;
 constexpr bgfx::ViewId kFirstDepthView = 1;
@@ -202,10 +210,6 @@ void push_diagnostic(RendererStatus &status, RendererDiagnostic diagnostic) {
 			std::chrono::duration_cast<std::chrono::microseconds>(
 					std::chrono::steady_clock::now() - start)
 					.count());
-}
-
-[[nodiscard]] bx::Vec3 to_bx(Vec3 value) noexcept {
-	return { value.x, value.y, value.z };
 }
 
 void destroy_handle(bgfx::UniformHandle &handle) noexcept {
@@ -410,10 +414,6 @@ void configure_scene_view(
 		ViewClearMode clear_mode,
 		bgfx::FrameBufferHandle framebuffer = BGFX_INVALID_HANDLE) {
 	const RenderCamera &camera = view.camera;
-	const float kAspect = static_cast<float>(std::max<std::uint16_t>(1, view.rect.width)) / static_cast<float>(std::max<std::uint16_t>(1, view.rect.height));
-
-	float view_matrix[16];
-	float projection[16];
 	bgfx::setViewName(view_id, view_name.c_str());
 	bgfx::setViewMode(view_id, bgfx::ViewMode::Sequential);
 	bgfx::setViewRect(view_id, view.rect.x, view.rect.y, view.rect.width, view.rect.height);
@@ -422,30 +422,9 @@ void configure_scene_view(
 		bgfx::setViewFrameBuffer(view_id, framebuffer);
 	}
 
-	bx::mtxLookAt(view_matrix, to_bx(camera.eye), to_bx(camera.target), to_bx(camera.up));
-	if (camera.projection == CameraProjection::Orthographic) {
-		const float kExtent = std::max(0.01F, camera.orthographic_height_m) * 0.5F;
-		bx::mtxOrtho(
-				projection,
-				-kExtent * kAspect,
-				kExtent * kAspect,
-				-kExtent,
-				kExtent,
-				0.1F,
-				100.0F,
-				0.0F,
-				bgfx::getCaps()->homogeneousDepth);
-	} else {
-		bx::mtxProj(
-				projection,
-				camera.vertical_fov_degrees,
-				kAspect,
-				camera.near_plane_m,
-				camera.far_plane_m,
-				bgfx::getCaps()->homogeneousDepth);
-	}
-
-	bgfx::setViewTransform(view_id, view_matrix, projection);
+	const float kAspect = static_cast<float>(std::max<std::uint16_t>(1, view.rect.width)) / static_cast<float>(std::max<std::uint16_t>(1, view.rect.height));
+	const RenderCameraMatrices kMatrices = render_camera_matrices(camera, kAspect, current_render_homogeneous_depth());
+	bgfx::setViewTransform(view_id, kMatrices.view.data(), kMatrices.projection.data());
 	bgfx::touch(view_id);
 }
 
@@ -591,6 +570,33 @@ std::uint32_t submit_grid_overlay_bucket(
 	return draw_calls;
 }
 
+std::uint32_t submit_line_overlay_bucket(
+		const OverlayDrawBucket &bucket,
+		OverlayDepthMode depth_mode,
+		std::span<const RenderView> views,
+		const GpuOverlayRenderer &overlay_renderer,
+		const GpuProgramCache &program_cache,
+		RenderProgramHandle line_program,
+		bgfx::FrameBufferHandle framebuffer) {
+	std::uint32_t draw_calls = 0;
+	const bgfx::ProgramHandle kProgram = program_cache.program(line_program);
+	const std::uint32_t kQueueOffset = overlay_queue_offset(depth_mode);
+	for (std::size_t view_index = 0; view_index < views.size(); ++view_index) {
+		const RenderView &view = views[view_index];
+		const bgfx::ViewId kViewId = overlay_view_id(view_index, kQueueOffset);
+		const std::string kViewName = std::string(render_queue_name(render_queue_for_overlay_depth_mode(depth_mode))) + ":" + view.debug_name;
+		configure_scene_view(kViewId, view, kViewName, ViewClearMode::None, framebuffer);
+
+		for (const PreparedLineOverlayCommand &lines : bucket.line_commands) {
+			if (lines.command.view_index != view.view_index) {
+				continue;
+			}
+			draw_calls += overlay_renderer.submit_lines(kViewId, lines, kProgram);
+		}
+	}
+	return draw_calls;
+}
+
 [[nodiscard]] std::uint32_t size_to_u32(std::size_t value) noexcept {
 	return static_cast<std::uint32_t>(std::min<std::size_t>(
 			value,
@@ -720,9 +726,10 @@ struct GpuDevice::Impl {
 	GpuPicking picking;
 	PrototypeResources prototype_resources;
 	PostProcessResources post_resources;
-	RenderMeshHandle prototype_cube_mesh;
+	RenderMeshHandle unit_box_mesh;
 	RenderMaterialHandle default_opaque_material;
 	RenderProgramHandle overlay_program;
+	RenderProgramHandle overlay_line_program;
 	RenderProgramHandle picking_program;
 	RenderProgramHandle tone_map_program;
 	RenderProgramHandle present_program;
@@ -835,19 +842,41 @@ bool GpuDevice::initialize(const RendererConfig &config, const NativeSurfaceDesc
 		return false;
 	}
 	impl_->default_opaque_material = default_material.value();
-	auto prototype_color = impl_->material_system.set_parameter(
+	auto default_color = impl_->material_system.set_parameter(
 			impl_->default_opaque_material,
 			"base_color",
-			MaterialColorSrgb{ 1.0F, 0.05F, 0.02F, 1.0F });
-	if (!prototype_color) {
-		push_material_error(status_, std::move(prototype_color).error());
+			MaterialColorSrgb{ 0.5F, 0.5F, 0.5F, 1.0F });
+	if (!default_color) {
+		push_material_error(status_, std::move(default_color).error());
+		bgfx::shutdown();
+		status_.initialized = false;
+		selected_backend_ = std::nullopt;
+		return false;
+	}
+	auto default_roughness = impl_->material_system.set_parameter(
+			impl_->default_opaque_material,
+			"roughness",
+			1.0F);
+	if (!default_roughness) {
+		push_material_error(status_, std::move(default_roughness).error());
+		bgfx::shutdown();
+		status_.initialized = false;
+		selected_backend_ = std::nullopt;
+		return false;
+	}
+	auto default_metallic = impl_->material_system.set_parameter(
+			impl_->default_opaque_material,
+			"metallic",
+			0.0F);
+	if (!default_metallic) {
+		push_material_error(status_, std::move(default_metallic).error());
 		bgfx::shutdown();
 		status_.initialized = false;
 		selected_backend_ = std::nullopt;
 		return false;
 	}
 
-	impl_->prototype_cube_mesh = impl_->mesh_cache.create_prototype_cube(status_);
+	impl_->unit_box_mesh = impl_->mesh_cache.create_unit_box(status_);
 	ShaderLibrary shader_library(config.shader_root);
 	const ShaderTarget kShaderTarget = shader_target_for_backend(*selected_backend_);
 	(void)impl_->program_cache.load_program(shader_library, ShaderProgramId::OpaquePbr, kShaderTarget, status_);
@@ -856,6 +885,11 @@ bool GpuDevice::initialize(const RendererConfig &config, const NativeSurfaceDesc
 	impl_->overlay_program = impl_->program_cache.load_program(
 			shader_library,
 			ShaderProgramId::OverlayUnlit,
+			kShaderTarget,
+			status_);
+	impl_->overlay_line_program = impl_->program_cache.load_program(
+			shader_library,
+			ShaderProgramId::OverlayLine,
 			kShaderTarget,
 			status_);
 	impl_->picking_program = impl_->program_cache.load_program(
@@ -947,9 +981,10 @@ void GpuDevice::shutdown() noexcept {
 	impl_->program_cache.clear();
 	impl_->mesh_cache.clear();
 	impl_->material_system = MaterialSystem{};
-	impl_->prototype_cube_mesh = {};
+	impl_->unit_box_mesh = {};
 	impl_->default_opaque_material = {};
 	impl_->overlay_program = {};
+	impl_->overlay_line_program = {};
 	impl_->picking_program = {};
 	impl_->tone_map_program = {};
 	impl_->present_program = {};
@@ -1073,7 +1108,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 				snapshot,
 				impl_->mesh_cache,
 				impl_->program_cache,
-				impl_->prototype_cube_mesh,
+				impl_->unit_box_mesh,
 				impl_->picking_program,
 				impl_->completed_bgfx_frame);
 	}
@@ -1083,6 +1118,23 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 	FramePacketStats packet_stats;
 	FrameInstancingStats instancing_stats;
 	FrameUploadStats upload_stats;
+	for (const RenderMeshUpload &upload : snapshot.mesh_uploads()) {
+		if (!impl_->mesh_cache.upload_mesh(upload.desc(), status_)) {
+			RendererDiagnostic diagnostic{
+				.severity = RendererDiagnosticSeverity::Error,
+				.code = RendererDiagnosticCode::ResourceCreationFailed,
+				.message = "Crimson failed to upload a frame mesh.",
+				.subsystem = "gpu.mesh",
+				.resource_name = "FrameMeshUpload",
+				.frame_index = snapshot.frame_index(),
+			};
+			if (!status_.diagnostics.empty()) {
+				diagnostic = status_.diagnostics.back();
+				diagnostic.frame_index = snapshot.frame_index();
+			}
+			return quader::foundation::Result<FrameRenderResult, RendererDiagnostic>::failure(std::move(diagnostic));
+		}
+	}
 	if (impl_->prototype_resources.ready) {
 		const auto kSubmitStart = std::chrono::steady_clock::now();
 		for (std::size_t index = 0; index < snapshot.views().size(); ++index) {
@@ -1101,7 +1153,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 					impl_->material_system.registry(),
 					impl_->material_system,
 					view.camera,
-					impl_->prototype_cube_mesh,
+					impl_->unit_box_mesh,
 					impl_->default_opaque_material,
 					view_aspect_ratio(view));
 			timing_stats.cpu_packet_build_us += elapsed_us_since(kPacketBuildStart);
@@ -1199,7 +1251,8 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 		if (snapshot.viewport_settings().draw_overlays && snapshot.viewport_settings().draw_grid_overlay && impl_->overlay_renderer.ready()) {
 			const OverlayDrawLists kOverlayDrawLists = OverlaySystem{}.prepare(
 					snapshot.overlays(),
-					snapshot.grid_overlay_payloads());
+					snapshot.grid_overlay_payloads(),
+					snapshot.line_overlay_payloads());
 			const std::uint32_t kOverlayPacketCount = size_to_u32(kOverlayDrawLists.command_count());
 			queue_stats.draw_packet_count += kOverlayPacketCount;
 			packet_stats.draw_packet_count += kOverlayPacketCount;
@@ -1227,6 +1280,30 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 					impl_->overlay_renderer,
 					impl_->program_cache,
 					impl_->overlay_program,
+					kToneMappedFramebuffer);
+			queue_stats.overlay_draw_count += submit_line_overlay_bucket(
+					kOverlayDrawLists.depth_tested,
+					OverlayDepthMode::DepthTested,
+					snapshot.views(),
+					impl_->overlay_renderer,
+					impl_->program_cache,
+					impl_->overlay_line_program,
+					kToneMappedFramebuffer);
+			queue_stats.overlay_draw_count += submit_line_overlay_bucket(
+					kOverlayDrawLists.xray,
+					OverlayDepthMode::XRay,
+					snapshot.views(),
+					impl_->overlay_renderer,
+					impl_->program_cache,
+					impl_->overlay_line_program,
+					kToneMappedFramebuffer);
+			queue_stats.overlay_draw_count += submit_line_overlay_bucket(
+					kOverlayDrawLists.always_on_top,
+					OverlayDepthMode::AlwaysOnTop,
+					snapshot.views(),
+					impl_->overlay_renderer,
+					impl_->program_cache,
+					impl_->overlay_line_program,
 					kToneMappedFramebuffer);
 		}
 

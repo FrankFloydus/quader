@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/material/material_system.hpp"
 #include "crimson/pipeline/draw_packet.hpp"
 #include "crimson/pipeline/instancing_batcher.hpp"
@@ -158,6 +167,32 @@ TEST(RenderPacketPipeline, TransparentSortIsBackToFrontWithStableTies) {
 	expect_true(
 			kPackets.transparent[1].object_id == 10 && kPackets.transparent[2].object_id == 20,
 			"same-depth transparent packets use stable object id tie-breakers");
+}
+
+TEST(RenderPacketPipeline, MeshlessObjectsRequireExplicitBuiltInMesh) {
+	crimson::MaterialSystem materials;
+	const crimson::RenderMaterialHandle kOpaque = materials.create_default_material(crimson::BaseShaderId::OpaquePbr).value();
+	crimson::RenderObject skipped = object(1, kOpaque, crimson::BaseShaderId::OpaquePbr, crimson::RenderQueue::Opaque, bounds(0.0F, 0.0F, -5.0F));
+	skipped.mesh = {};
+	skipped.built_in_mesh = crimson::BuiltInRenderMesh::None;
+	crimson::RenderObject built_in = skipped;
+	built_in.object_id = 2;
+	built_in.built_in_mesh = crimson::BuiltInRenderMesh::UnitBox;
+
+	const std::array<crimson::RenderObject, 2> kObjects = { skipped, built_in };
+	const crimson::RenderMeshHandle kUnitBox = crimson::RenderMeshHandle{ 9, 1 };
+	const crimson::DrawPacketBuildResult kPackets = crimson::build_draw_packets(
+			kObjects,
+			materials.registry(),
+			materials,
+			camera(),
+			kUnitBox,
+			kOpaque,
+			1.0F);
+
+	expect_true(kPackets.opaque.size() == 1, "only explicit built-in mesh object emits a draw packet");
+	expect_true(kPackets.opaque[0].object_id == 2, "meshless ordinary object is skipped");
+	expect_true(kPackets.opaque[0].mesh == kUnitBox, "explicit built-in unit box object uses the unit-box handle");
 }
 
 TEST(RenderPacketPipeline, InstancingKeysExcludeTransformAndObjectId) {

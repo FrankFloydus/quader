@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "ui/actions/editor_action_state_provider.hpp"
 
 #include "commands/command_history.hpp"
@@ -23,7 +32,7 @@ namespace {
 }
 
 [[nodiscard]] bool has_any_registered_tool(const quader::tools::ToolManager &tool_manager) {
-	return tool_manager.has_tool(quader::tools::ToolId::Select) || tool_manager.has_tool(quader::tools::ToolId::Move) || tool_manager.has_tool(quader::tools::ToolId::Rotate) || tool_manager.has_tool(quader::tools::ToolId::Scale);
+	return tool_manager.has_tool(quader::tools::ToolId::Select) || tool_manager.has_tool(quader::tools::ToolId::Move) || tool_manager.has_tool(quader::tools::ToolId::Rotate) || tool_manager.has_tool(quader::tools::ToolId::Scale) || tool_manager.has_tool(quader::tools::ToolId::Box);
 }
 
 [[nodiscard]] ActionId action_for_tool(quader::tools::ToolId id) noexcept {
@@ -36,6 +45,8 @@ namespace {
 			return ActionId::RotateTool;
 		case quader::tools::ToolId::Scale:
 			return ActionId::ScaleTool;
+		case quader::tools::ToolId::Box:
+			return ActionId::BoxTool;
 	}
 
 	return ActionId::SelectTool;

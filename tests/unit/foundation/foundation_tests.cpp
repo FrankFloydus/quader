@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "foundation/assert.hpp"
 #include "foundation/diagnostic.hpp"
 #include "foundation/id.hpp"

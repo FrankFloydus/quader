@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/frame/frame_snapshot.hpp"
 
 #include <utility>
@@ -9,22 +18,26 @@ FrameSnapshot::FrameSnapshot(
 		double elapsed_seconds,
 		ViewportExtent target_extent,
 		std::vector<RenderView> views,
+		std::vector<RenderMeshUpload> mesh_uploads,
 		std::vector<RenderObject> objects,
 		std::vector<RenderLight> lights,
 		RenderEnvironment environment,
 		std::vector<OverlayCommand> overlays,
 		std::vector<GridOverlayCommand> grid_overlay_payloads,
+		std::vector<LineOverlaySegment> line_overlay_payloads,
 		std::vector<PickingRequest> picking_requests,
 		ViewportSettings viewport_settings,
 		DebugViewMode debug_view) : frame_index_(frame_index),
 									elapsed_seconds_(elapsed_seconds),
 									target_extent_(target_extent),
 									views_(std::move(views)),
+									mesh_uploads_(std::move(mesh_uploads)),
 									objects_(std::move(objects)),
 									lights_(std::move(lights)),
 									environment_(environment),
 									overlays_(std::move(overlays)),
 									grid_overlay_payloads_(std::move(grid_overlay_payloads)),
+									line_overlay_payloads_(std::move(line_overlay_payloads)),
 									picking_requests_(std::move(picking_requests)),
 									viewport_settings_(viewport_settings),
 									debug_view_(debug_view) {
@@ -46,6 +59,10 @@ std::span<const RenderView> FrameSnapshot::views() const noexcept {
 	return views_;
 }
 
+std::span<const RenderMeshUpload> FrameSnapshot::mesh_uploads() const noexcept {
+	return mesh_uploads_;
+}
+
 std::span<const RenderObject> FrameSnapshot::objects() const noexcept {
 	return objects_;
 }
@@ -64,6 +81,10 @@ std::span<const OverlayCommand> FrameSnapshot::overlays() const noexcept {
 
 std::span<const GridOverlayCommand> FrameSnapshot::grid_overlay_payloads() const noexcept {
 	return grid_overlay_payloads_;
+}
+
+std::span<const LineOverlaySegment> FrameSnapshot::line_overlay_payloads() const noexcept {
+	return line_overlay_payloads_;
 }
 
 std::span<const PickingRequest> FrameSnapshot::picking_requests() const noexcept {

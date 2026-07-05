@@ -1,0 +1,56 @@
+var renderer__diagnostics_8hpp =
+[
+    [ "crimson::RendererCapabilityStatus", "structcrimson_1_1_renderer_capability_status.html", "structcrimson_1_1_renderer_capability_status" ],
+    [ "crimson::RendererDiagnostic", "structcrimson_1_1_renderer_diagnostic.html", "structcrimson_1_1_renderer_diagnostic" ],
+    [ "crimson::RendererStatus", "structcrimson_1_1_renderer_status.html", "structcrimson_1_1_renderer_status" ],
+    [ "crimson::RendererCapability", "namespacecrimson.html#a6ac4785673501704d1fee62873e24559", [
+      [ "crimson::RendererCapability::Instancing", "namespacecrimson.html#a6ac4785673501704d1fee62873e24559addcb6ddc2c9a604e667096ede4a77493", null ],
+      [ "crimson::RendererCapability::Texture2D", "namespacecrimson.html#a6ac4785673501704d1fee62873e24559aa6e2bae752d3bf4e34cb392bca789995", null ],
+      [ "crimson::RendererCapability::TextureCube", "namespacecrimson.html#a6ac4785673501704d1fee62873e24559a0a152d9f3e1df14068c5857fb3352505", null ],
+      [ "crimson::RendererCapability::FloatingPointRenderTarget", "namespacecrimson.html#a6ac4785673501704d1fee62873e24559a211e97f9b496d22691d21ea8f5794756", null ],
+      [ "crimson::RendererCapability::RenderToTexture", "namespacecrimson.html#a6ac4785673501704d1fee62873e24559a7f02541564a7b19fcef17964dcfb6f98", null ],
+      [ "crimson::RendererCapability::DepthTexture", "namespacecrimson.html#a6ac4785673501704d1fee62873e24559a8ff61f00665b2125149bf524b747994f", null ],
+      [ "crimson::RendererCapability::SrgbTextureSampling", "namespacecrimson.html#a6ac4785673501704d1fee62873e24559a5a97788aed81dda6f630bdc455e34921", null ],
+      [ "crimson::RendererCapability::SrgbBackbuffer", "namespacecrimson.html#a6ac4785673501704d1fee62873e24559a51fcfdbf26b82280a25f94103a642dbb", null ],
+      [ "crimson::RendererCapability::ManualSrgbFinalConversion", "namespacecrimson.html#a6ac4785673501704d1fee62873e24559a96f2cc63592a33077d0c3104407c76c5", null ],
+      [ "crimson::RendererCapability::IntegerPickingTarget", "namespacecrimson.html#a6ac4785673501704d1fee62873e24559acbd36cc980616f9f7cd41158007ba782", null ],
+      [ "crimson::RendererCapability::Rgba8PickingTarget", "namespacecrimson.html#a6ac4785673501704d1fee62873e24559a29ff2b8cd30ada9d25057e8961a718d0", null ],
+      [ "crimson::RendererCapability::Readback", "namespacecrimson.html#a6ac4785673501704d1fee62873e24559ac99f8222cb93c13ac08c48a6cbb7b0ae", null ]
+    ] ],
+    [ "crimson::RendererDiagnosticCode", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858", [
+      [ "crimson::RendererDiagnosticCode::SurfaceUnavailable", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a6e1031d6c4481801e1aec09eb649e4f2", null ],
+      [ "crimson::RendererDiagnosticCode::BackendUnsupported", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a9ca3549b7f1c7c017edb8953a5587e3b", null ],
+      [ "crimson::RendererDiagnosticCode::CapabilityMissing", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858aaf593f4a14c62795c6a4e77ec7be79ff", null ],
+      [ "crimson::RendererDiagnosticCode::RuntimeInitializationFailed", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858aa1e2f17923f1c42fbe06a249c47decb6", null ],
+      [ "crimson::RendererDiagnosticCode::ShaderManifestInvalid", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858ae74b6702734192132603f89eca73b47a", null ],
+      [ "crimson::RendererDiagnosticCode::ShaderTargetMissing", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a98a242c89f9241cd039a354fc2cf9251", null ],
+      [ "crimson::RendererDiagnosticCode::ShaderFileMissing", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858aaca688f1086d21d7ce7dbf47018d7176", null ],
+      [ "crimson::RendererDiagnosticCode::ShaderProgramCreationFailed", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a401d73a15dfbf0005548a24ec806a40a", null ],
+      [ "crimson::RendererDiagnosticCode::ResourceCreationFailed", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858ae2faa5c6f73ebccbf0827364211b7922", null ],
+      [ "crimson::RendererDiagnosticCode::FrameGraphValidationFailed", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a1668f7d69db5f361b07d7874ededd4ee", null ],
+      [ "crimson::RendererDiagnosticCode::InvalidFrameSnapshot", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a26d4b3c0a83f8764942ca405b7f28f37", null ],
+      [ "crimson::RendererDiagnosticCode::ResizeFailed", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a009734b13b1ad7154ce2d7c96a3b0718", null ],
+      [ "crimson::RendererDiagnosticCode::ColorSpaceInvalid", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858ae3db22c57dc4726563fb7ed80c64272c", null ],
+      [ "crimson::RendererDiagnosticCode::MaterialSchemaInvalid", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a93a5c75bc236f655791639771381c81f", null ],
+      [ "crimson::RendererDiagnosticCode::MaterialValidationFailed", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a57e4c49b2be8ed73010c160029578470", null ],
+      [ "crimson::RendererDiagnosticCode::PickingReadbackFailed", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a888bdb3a93a7d7f7feb6ec091ef8e5b4", null ],
+      [ "crimson::RendererDiagnosticCode::FrameBufferUnsupported", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858ad65b0fb817876c39acca9959e310c377", null ],
+      [ "crimson::RendererDiagnosticCode::ResourceLifetimeError", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a5a7aa22d4d75f57d70a4a5608bfd2ca6", null ],
+      [ "crimson::RendererDiagnosticCode::PerformanceCounterInvalid", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a7b6a87822299a2ed47b26f56f05d7b1b", null ],
+      [ "crimson::RendererDiagnosticCode::GoldenCaptureUnsupported", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a2b96563196e4efbd7768e125debec742", null ],
+      [ "crimson::RendererDiagnosticCode::GoldenReadbackFailed", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858aad58f4adce295ade6450aa7c77bfd04d", null ],
+      [ "crimson::RendererDiagnosticCode::UploadSkippedInvalidResource", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a1b321bb895aa0cd0baf26059ec74fbcd", null ],
+      [ "crimson::RendererDiagnosticCode::BenchmarkConfigurationInvalid", "namespacecrimson.html#aa4883a797c51eb996297e0550998d858a471f9f6193e37aba5017a819f9feefec", null ]
+    ] ],
+    [ "crimson::RendererDiagnosticSeverity", "namespacecrimson.html#ac9ef2c2adcdca4961143b45190461b21", [
+      [ "crimson::RendererDiagnosticSeverity::Info", "namespacecrimson.html#ac9ef2c2adcdca4961143b45190461b21a4059b0251f66a18cb56f544728796875", null ],
+      [ "crimson::RendererDiagnosticSeverity::Warning", "namespacecrimson.html#ac9ef2c2adcdca4961143b45190461b21a0eaadb4fcb48a0a0ed7bc9868be9fbaa", null ],
+      [ "crimson::RendererDiagnosticSeverity::Error", "namespacecrimson.html#ac9ef2c2adcdca4961143b45190461b21a902b0d55fddef6f8d651fe1035b7d4bd", null ],
+      [ "crimson::RendererDiagnosticSeverity::Fatal", "namespacecrimson.html#ac9ef2c2adcdca4961143b45190461b21a882384ec38ce8d9582b57e70861730e4", null ]
+    ] ],
+    [ "crimson::has_error_diagnostic", "namespacecrimson.html#a13a2bbaad6465aa436dc91e72c959b54", null ],
+    [ "crimson::has_structured_context", "namespacecrimson.html#a51831258d4d42cd5b57ad68caa5881d2", null ],
+    [ "crimson::renderer_capability_name", "namespacecrimson.html#a3a36b694c948805d169b846d2a75e46b", null ],
+    [ "crimson::renderer_diagnostic_code_name", "namespacecrimson.html#ae640e5fc4e80067a4d1fa05356558920", null ],
+    [ "crimson::renderer_diagnostic_severity_name", "namespacecrimson.html#adfa5d737dfb1bff219d778c2edc13d20", null ]
+];

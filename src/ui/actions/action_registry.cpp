@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "ui/actions/action_registry.hpp"
 
 #include "foundation/assert.hpp"
@@ -124,6 +133,12 @@ void register_standard_actions(ActionRegistry &registry) {
 														  {},
 														  true,
 												  });
+	registry.register_action(ActionId::BoxTool, {
+														QStringLiteral("Box"),
+														QStringLiteral("Activate the Box creation tool when tool services are available."),
+														QKeySequence(Qt::Key_B),
+														true,
+												});
 
 	registry.register_action(ActionId::CreateCube, {
 														   QStringLiteral("Cube"),

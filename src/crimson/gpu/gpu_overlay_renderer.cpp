@@ -1,8 +1,19 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/gpu/gpu_overlay_renderer.hpp"
 
 #include "crimson/gpu/gpu_handles.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <string>
 
 #include <bgfx/bgfx.h>
@@ -12,6 +23,12 @@ namespace crimson::gpu {
 namespace {
 
 struct GridVertex {
+	float x;
+	float y;
+	float z;
+};
+
+struct LineVertex {
 	float x;
 	float y;
 	float z;
@@ -47,8 +64,10 @@ void push_overlay_resource_error(RendererStatus &status, std::string resource_na
 
 struct GpuOverlayRenderer::Impl {
 	bgfx::VertexLayout grid_vertex_layout{};
+	bgfx::VertexLayout line_vertex_layout{};
 	UniqueVertexBufferHandle grid_vertex_buffer;
 	UniqueIndexBufferHandle grid_index_buffer;
+	UniqueUniformHandle line_color_uniform;
 	UniqueUniformHandle grid_plane_size_uniform;
 	UniqueUniformHandle grid_color_uniform;
 	UniqueUniformHandle major_grid_color_uniform;
@@ -75,10 +94,15 @@ bool GpuOverlayRenderer::initialize(RendererStatus &status) {
 			.begin()
 			.add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
 			.end();
+	impl_->line_vertex_layout
+			.begin()
+			.add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+			.end();
 	impl_->grid_vertex_buffer.reset(bgfx::createVertexBuffer(
 			bgfx::makeRef(kGridVertices, sizeof(kGridVertices)),
 			impl_->grid_vertex_layout));
 	impl_->grid_index_buffer.reset(bgfx::createIndexBuffer(bgfx::makeRef(kGridIndices, sizeof(kGridIndices))));
+	impl_->line_color_uniform.reset(bgfx::createUniform("u_lineColor", bgfx::UniformType::Vec4));
 	impl_->grid_plane_size_uniform.reset(bgfx::createUniform("u_gridPlaneSize", bgfx::UniformType::Vec4));
 	impl_->grid_color_uniform.reset(bgfx::createUniform("u_gridColor", bgfx::UniformType::Vec4));
 	impl_->major_grid_color_uniform.reset(bgfx::createUniform("u_majorGridColor", bgfx::UniformType::Vec4));
@@ -91,7 +115,7 @@ bool GpuOverlayRenderer::initialize(RendererStatus &status) {
 	impl_->grid_params1_uniform.reset(bgfx::createUniform("u_gridParams1", bgfx::UniformType::Vec4));
 	impl_->grid_params2_uniform.reset(bgfx::createUniform("u_gridParams2", bgfx::UniformType::Vec4));
 
-	impl_->ready = impl_->grid_vertex_buffer.valid() && impl_->grid_index_buffer.valid() && impl_->grid_plane_size_uniform.valid() && impl_->grid_color_uniform.valid() && impl_->major_grid_color_uniform.valid() && impl_->origin_u_color_uniform.valid() && impl_->origin_v_color_uniform.valid() && impl_->camera_position_uniform.valid() && impl_->grid_u_axis_uniform.valid() && impl_->grid_v_axis_uniform.valid() && impl_->grid_params0_uniform.valid() && impl_->grid_params1_uniform.valid() && impl_->grid_params2_uniform.valid();
+	impl_->ready = impl_->grid_vertex_buffer.valid() && impl_->grid_index_buffer.valid() && impl_->line_color_uniform.valid() && impl_->grid_plane_size_uniform.valid() && impl_->grid_color_uniform.valid() && impl_->major_grid_color_uniform.valid() && impl_->origin_u_color_uniform.valid() && impl_->origin_v_color_uniform.valid() && impl_->camera_position_uniform.valid() && impl_->grid_u_axis_uniform.valid() && impl_->grid_v_axis_uniform.valid() && impl_->grid_params0_uniform.valid() && impl_->grid_params1_uniform.valid() && impl_->grid_params2_uniform.valid();
 	if (!impl_->ready) {
 		push_overlay_resource_error(status, "GpuOverlayRenderer");
 		shutdown();
@@ -104,6 +128,7 @@ bool GpuOverlayRenderer::initialize(RendererStatus &status) {
 void GpuOverlayRenderer::shutdown() noexcept {
 	impl_->grid_vertex_buffer.reset();
 	impl_->grid_index_buffer.reset();
+	impl_->line_color_uniform.reset();
 	impl_->grid_plane_size_uniform.reset();
 	impl_->grid_color_uniform.reset();
 	impl_->major_grid_color_uniform.reset();
@@ -183,6 +208,50 @@ std::uint32_t GpuOverlayRenderer::submit_grid(
 	bgfx::setVertexBuffer(0, impl_->grid_vertex_buffer.get());
 	bgfx::setIndexBuffer(impl_->grid_index_buffer.get());
 	bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_INV_SRC_ALPHA));
+	bgfx::submit(view_id, program);
+	return 1;
+}
+
+std::uint32_t GpuOverlayRenderer::submit_lines(
+		bgfx::ViewId view_id,
+		const PreparedLineOverlayCommand &lines,
+		bgfx::ProgramHandle program) const noexcept {
+	if (!impl_->ready || !bgfx::isValid(program) || lines.segments.empty()) {
+		return 0;
+	}
+
+	const std::uint32_t kVertexCount = static_cast<std::uint32_t>(std::min<std::size_t>(
+			lines.segments.size() * 2U,
+			std::numeric_limits<std::uint32_t>::max()));
+	if (kVertexCount < 2U || bgfx::getAvailTransientVertexBuffer(kVertexCount, impl_->line_vertex_layout) < kVertexCount) {
+		return 0;
+	}
+
+	bgfx::TransientVertexBuffer vertices{};
+	bgfx::allocTransientVertexBuffer(&vertices, kVertexCount, impl_->line_vertex_layout);
+	auto *data = reinterpret_cast<LineVertex *>(vertices.data);
+	std::uint32_t vertex_index = 0;
+	for (const LineOverlaySegment &segment : lines.segments) {
+		if (vertex_index + 1U >= kVertexCount) {
+			break;
+		}
+		data[vertex_index++] = LineVertex{ segment.start.x, segment.start.y, segment.start.z };
+		data[vertex_index++] = LineVertex{ segment.end.x, segment.end.y, segment.end.z };
+	}
+
+	float transform[16];
+	bx::mtxIdentity(transform);
+	std::uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_PT_LINES | BGFX_STATE_MSAA | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+	if (lines.command.depth_mode == OverlayDepthMode::DepthTested) {
+		state |= BGFX_STATE_DEPTH_TEST_LESS;
+	} else if (lines.command.depth_mode == OverlayDepthMode::XRay) {
+		state |= BGFX_STATE_DEPTH_TEST_LEQUAL;
+	}
+
+	bgfx::setTransform(transform);
+	bgfx::setUniform(impl_->line_color_uniform.get(), lines.color_linear_sdr.data());
+	bgfx::setVertexBuffer(0, &vertices, 0, vertex_index);
+	bgfx::setState(state);
 	bgfx::submit(view_id, program);
 	return 1;
 }

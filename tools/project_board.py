@@ -35,6 +35,7 @@ MUTATING_COMMANDS = {
     "assign",
     "assignment-status",
     "coordination-note",
+    "request-changes",
     "set-active",
     "clear-active",
     "edit-brief",
@@ -83,6 +84,13 @@ ASSIGNMENT_RE = re.compile(
     r"(?P<brief>.*)$"
 )
 COORDINATION_RE = re.compile(r"^  Coordination: (?P<note>.*)$")
+REWORK_RE = re.compile(
+    r"^  Rework: "
+    r"\[owner:(?P<owner>[a-z-]+)\]"
+    r"\[agent:(?P<agent>[A-Za-z0-9_.:-]+|-|[A-Za-z0-9_.:-]*-[A-Za-z0-9_.:-]*)\]"
+    r"\[checked:(?P<checked>[^\]]+)\] "
+    r"(?P<note>.+)$"
+)
 ACTIVE_RE = re.compile(
     r"^  Active: "
     r"\[lead:(?P<lead>[A-Za-z0-9_.:-]+|-|[A-Za-z0-9_.:-]*-[A-Za-z0-9_.:-]*)\]"
@@ -294,12 +302,24 @@ def validate_board(verbose: bool = True) -> set[int]:
             raise SystemExit(f"invalid priority for #{entry.task_id}: {entry.priority}")
         if entry.entry_type not in TYPES:
             raise SystemExit(f"invalid type for #{entry.task_id}: {entry.entry_type}")
+        authority_status = None
+        has_rework = False
         for continuation in entry.lines[1:]:
             if continuation and not continuation.startswith("  "):
                 raise SystemExit(
                     f"entry #{entry.task_id} continuation line must be indented: {continuation}"
                 )
+            if continuation.startswith("  Authority: "):
+                match = AUTHORITY_RE.match(continuation)
+                if match:
+                    authority_status = match.group("status")
+            if continuation.startswith("  Rework: "):
+                has_rework = True
             validate_metadata_line(entry.task_id, continuation)
+        if entry.section == "In Progress" and authority_status == "changes-requested" and not has_rework:
+            raise SystemExit(
+                f"entry #{entry.task_id} is changes-requested in In Progress but has no Rework metadata"
+            )
     if verbose:
         print(f"validated {len(entries)} board entries")
     return ids
@@ -383,6 +403,20 @@ def validate_metadata_line(task_id: int, line: str) -> None:
     if line.startswith("  Coordination: "):
         if not COORDINATION_RE.match(line):
             raise SystemExit(f"invalid coordination metadata for #{task_id}: {line}")
+        return
+
+    if line.startswith("  Rework: "):
+        match = REWORK_RE.match(line)
+        if not match:
+            raise SystemExit(f"invalid rework metadata for #{task_id}: {line}")
+        owner = match.group("owner")
+        checked = match.group("checked")
+        note = match.group("note").strip()
+        if owner not in AUTHORITY_OWNERS:
+            raise SystemExit(f"invalid rework owner for #{task_id}: {owner}")
+        validate_checked_timestamp(task_id, checked)
+        if not note:
+            raise SystemExit(f"empty rework note for #{task_id}")
         return
 
     if line.startswith("  Active: "):
@@ -601,6 +635,8 @@ def reopened_entry_lines(entry: ArchiveEntry, reason: str) -> list[str]:
         if line.startswith("  Resolution: "):
             result.append(f"  Previous resolution: {line.removeprefix('  Resolution: ')}")
             continue
+        if line.startswith("  Rework: "):
+            continue
         result.append(line)
 
     if not freshness_added:
@@ -670,7 +706,7 @@ def insert_existing_entry(lines: list[str], entry_lines: list[str], target_secti
     lines[insert_at:insert_at] = [""] + entry_lines + [""]
 
 
-def move_entry(lines: list[str], task_id: int, target_section: str) -> None:
+def move_entry(lines: list[str], task_id: int, target_section: str, announce: bool = True) -> None:
     entries = parse_entries(lines)
     entry = find_entry(entries, task_id)
     entry_lines = entry.lines[:]
@@ -682,7 +718,8 @@ def move_entry(lines: list[str], task_id: int, target_section: str) -> None:
         insert_at -= 1
     lines[insert_at:insert_at] = [""] + entry_lines + [""]
     write_board(lines)
-    print(f"moved #{task_id} to {target_section}")
+    if announce:
+        print(f"moved #{task_id} to {target_section}")
 
 
 def replace_entry(lines: list[str], entry: Entry, new_entry_lines: list[str]) -> None:
@@ -770,6 +807,35 @@ def set_active(lines: list[str], task_id: int, lead: str, status: str, workers: 
         task_id,
         "  Active: ",
         f"  Active: [lead:{lead}][status:{status}][workers:{workers}] {note}",
+    )
+
+
+def request_changes(lines: list[str], task_id: int, owner: str, agent: str, summary: str, rework: str) -> None:
+    if "\n" in summary or "\r" in summary:
+        raise SystemExit("request-changes summary must be a single line")
+    if "\n" in rework or "\r" in rework:
+        raise SystemExit("request-changes rework must be a single line")
+    if not summary.strip():
+        raise SystemExit("request-changes summary must not be empty")
+    if not rework.strip():
+        raise SystemExit("request-changes rework must not be empty")
+
+    entry = find_entry(parse_entries(lines), task_id)
+    if entry.section != "In Review":
+        raise SystemExit(f"request-changes only moves In Review -> In Progress; #{task_id} is in {entry.section}")
+
+    checked = normalize_checked("now")
+    upsert_line(
+        lines,
+        task_id,
+        "  Authority: ",
+        f"  Authority: [owner:{owner}][status:changes-requested][agent:{agent}] {summary.strip()}",
+    )
+    upsert_line(
+        lines,
+        task_id,
+        "  Rework: ",
+        f"  Rework: [owner:{owner}][agent:{agent}][checked:{checked}] {rework.strip()}",
     )
 
 
@@ -953,6 +1019,14 @@ def main(argv: list[str]) -> int:
     add_authorization(coordination)
     coordination.add_argument("--id", type=int, required=True)
     coordination.add_argument("--note", required=True)
+
+    request_changes_cmd = sub.add_parser("request-changes")
+    add_authorization(request_changes_cmd)
+    request_changes_cmd.add_argument("--id", type=int, required=True)
+    request_changes_cmd.add_argument("--owner", choices=sorted(AUTHORITY_OWNERS), required=True)
+    request_changes_cmd.add_argument("--agent", required=True)
+    request_changes_cmd.add_argument("--summary", required=True)
+    request_changes_cmd.add_argument("--rework", required=True)
 
     active = sub.add_parser("set-active")
     add_authorization(active)
@@ -1141,6 +1215,13 @@ def main(argv: list[str]) -> int:
         print(f"updated coordination note for #{args.id}")
         return 0
 
+    if args.command == "request-changes":
+        request_changes(lines, args.id, args.owner, args.agent, args.summary, args.rework)
+        move_entry(lines, args.id, "In Progress", announce=False)
+        validate_board(verbose=False)
+        print(f"requested changes for #{args.id}")
+        return 0
+
     if args.command == "set-active":
         set_active(lines, args.id, args.lead, args.status, args.workers, args.note)
         write_board(lines)
@@ -1193,6 +1274,17 @@ def main(argv: list[str]) -> int:
             raise SystemExit(
                 f"review only moves In Progress -> In Review; #{args.id} is in {entry.section}"
             )
+        authority_offset = find_line_index(entry, "  Authority: ")
+        if authority_offset is not None:
+            match = AUTHORITY_RE.match(entry.lines[authority_offset])
+            if match and match.group("status") == "changes-requested":
+                upsert_line(
+                    lines,
+                    args.id,
+                    "  Authority: ",
+                    f"  Authority: [owner:{match.group('owner')}][status:pending]"
+                    f"[agent:{match.group('agent')}] Rework resubmitted for review; verify Rework before approval.",
+                )
         move_entry(lines, args.id, "In Review")
         return 0
 

@@ -1,0 +1,26 @@
+var searchData=
+[
+  ['label_0',['label',['../structcrimson_1_1_material_ui_field_desc.html#a06d71944d3af8c37c2f004a27e33d42e',1,'crimson::MaterialUiFieldDesc::label'],['../structquader_1_1ui_1_1_property_descriptor.html#ad26bdbfcbd763a699a5ea125231cf498',1,'quader::ui::PropertyDescriptor::label'],['../structquader_1_1ui_1_1_file_dialog_filter.html#aa57b8ef4ff61b7ae5330a98bdddadde3',1,'quader::ui::FileDialogFilter::label']]],
+  ['last_5fstats_5fseconds_1',['last_stats_seconds',['../structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a7472c3046be2468b97a55fe1ad90b4ee',1,'crimson::gpu::GpuDevice::Impl']]],
+  ['latest_5fframe_5fstats_2',['latest_frame_stats',['../structcrimson_1_1_renderer_diagnostics_snapshot.html#a243f6afe938333939d0b61681d43d67f',1,'crimson::RendererDiagnosticsSnapshot::latest_frame_stats'],['../structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#af22a9b3b3ba3d3657a3d9277db89f25d',1,'crimson::gpu::GpuDevice::Impl::latest_frame_stats']]],
+  ['latest_5fpass_5fstats_3',['latest_pass_stats',['../structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a0f41974cb0e85d4f99cc60c3d6079ae4',1,'crimson::gpu::GpuDevice::Impl']]],
+  ['layout_5fmode_4',['layout_mode',['../structquader_1_1ui_1_1_viewport_render_request.html#a3fb1d65c35a588bb18e265b9defb107e',1,'quader::ui::ViewportRenderRequest']]],
+  ['line_5',['line',['../structquader_1_1io_1_1_source_location.html#a4e483d11d602b191f6b4bf114a2b93b9',1,'quader::io::SourceLocation']]],
+  ['line_5fcolor_5funiform_6',['line_color_uniform',['../structcrimson_1_1gpu_1_1_gpu_overlay_renderer_1_1_impl.html#a9e14e5f4c578b43b9d4f9d31ab15b102',1,'crimson::gpu::GpuOverlayRenderer::Impl']]],
+  ['line_5fcommands_7',['line_commands',['../structcrimson_1_1_overlay_draw_bucket.html#aac53d3d0758dbae6a9f445fe9040b503',1,'crimson::OverlayDrawBucket']]],
+  ['line_5fending_8',['line_ending',['../structquader_1_1io_1_1_export_options.html#a4f682d308c0ca7b426bb836c3675b080',1,'quader::io::ExportOptions']]],
+  ['line_5foverlay_5fpayloads_9',['line_overlay_payloads',['../structcrimson_1_1_prototype_viewport_frame.html#a1001fba54f321508c6a9cd9db2780ded',1,'crimson::PrototypeViewportFrame']]],
+  ['line_5fvertex_5flayout_10',['line_vertex_layout',['../structcrimson_1_1gpu_1_1_gpu_overlay_renderer_1_1_impl.html#a32216376f1476b2c2588257e6a3d13ad',1,'crimson::gpu::GpuOverlayRenderer::Impl']]],
+  ['live_5fedges_11',['live_edges',['../structquader_1_1mesh_1_1_mesh_compaction_report.html#a35119a8f0d86842a324ce50eec0576ec',1,'quader::mesh::MeshCompactionReport']]],
+  ['live_5ffaces_12',['live_faces',['../structquader_1_1mesh_1_1_mesh_compaction_report.html#afeb166e7311d1505bf5d4576b6a241f8',1,'quader::mesh::MeshCompactionReport']]],
+  ['live_5fhalfedges_13',['live_halfedges',['../structquader_1_1mesh_1_1_mesh_compaction_report.html#acef0d6767551c50bd2911b5cf8672de3',1,'quader::mesh::MeshCompactionReport']]],
+  ['live_5fmaterial_5fcount_14',['live_material_count',['../structcrimson_1_1_frame_stats.html#a9c65a32bcf5b9373cd93a0eb40f453b1',1,'crimson::FrameStats::live_material_count'],['../structcrimson_1_1_frame_resource_stats.html#aeae34115a9b18b281267cbec17caf342',1,'crimson::FrameResourceStats::live_material_count']]],
+  ['live_5fmesh_5fcount_15',['live_mesh_count',['../structcrimson_1_1_frame_stats.html#a547f49b8f48c125cd5279c500cade635',1,'crimson::FrameStats::live_mesh_count'],['../structcrimson_1_1_frame_resource_stats.html#a7947c9905b5a2253ea6cb1b9404baba9',1,'crimson::FrameResourceStats::live_mesh_count']]],
+  ['live_5fprogram_5fcount_16',['live_program_count',['../structcrimson_1_1_frame_stats.html#a6a56568ba44b045271e179d406164222',1,'crimson::FrameStats::live_program_count'],['../structcrimson_1_1_frame_resource_stats.html#a1ed2f66c81c40ca04e6e46b3726f7529',1,'crimson::FrameResourceStats::live_program_count']]],
+  ['live_5ftexture_5fcount_17',['live_texture_count',['../structcrimson_1_1_frame_stats.html#aea6a36c7f81e847ab728b4ad77edd9c0',1,'crimson::FrameStats::live_texture_count'],['../structcrimson_1_1_frame_resource_stats.html#a1dc00f4a0a9b3a036e08965bdb4f952a',1,'crimson::FrameResourceStats::live_texture_count']]],
+  ['live_5fvertices_18',['live_vertices',['../structquader_1_1mesh_1_1_mesh_compaction_report.html#a79caaca74e545b0422ef7a1a5a225db1',1,'quader::mesh::MeshCompactionReport']]],
+  ['location_19',['location',['../structquader_1_1io_1_1_io_diagnostic.html#a942c205da8d2a877b061812ae5a31f43',1,'quader::io::IoDiagnostic']]],
+  ['locked_5fforward_20',['locked_forward',['../structquader_1_1ui_1_1_viewport_camera_state.html#a842dfaa4f36884ef4b2d99ac8bea6ed9',1,'quader::ui::ViewportCameraState']]],
+  ['locked_5forthographic_5fview_21',['locked_orthographic_view',['../structquader_1_1ui_1_1_viewport_camera_state.html#afc192c5b3e94595a4040d5f27dcf401e',1,'quader::ui::ViewportCameraState']]],
+  ['locked_5fup_22',['locked_up',['../structquader_1_1ui_1_1_viewport_camera_state.html#a189834249e27497dfb7ebb02667cf615',1,'quader::ui::ViewportCameraState']]]
+];

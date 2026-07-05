@@ -1,10 +1,19 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "tools/tool_manager.hpp"
 
 #include <utility>
 
 namespace quader::tools {
 
-ToolManager::ToolManager(ToolContext context) : context_(context) {
+ToolManager::ToolManager(ToolContext context) : context_(std::move(context)) {
 }
 
 bool ToolManager::register_tool(std::unique_ptr<ITool> tool) {

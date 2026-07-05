@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "../document/document_test_helpers.hpp"
 
 #include <gtest/gtest.h>
@@ -231,19 +240,23 @@ TEST(UiActionWiring, ToolActionsRouteToToolManagerAndRefreshCheckedState) {
 	auto move_tool = std::make_unique<CountingTool>(quader::tools::ToolId::Move);
 	auto rotate_tool = std::make_unique<CountingTool>(quader::tools::ToolId::Rotate);
 	auto scale_tool = std::make_unique<CountingTool>(quader::tools::ToolId::Scale);
+	auto box_tool = std::make_unique<CountingTool>(quader::tools::ToolId::Box);
 	auto *select = select_tool.get();
 	auto *move = move_tool.get();
+	auto *box = box_tool.get();
 
 	EXPECT_TRUE(fixture.tool_manager.register_tool(std::move(select_tool)));
 	EXPECT_TRUE(fixture.tool_manager.register_tool(std::move(move_tool)));
 	EXPECT_TRUE(fixture.tool_manager.register_tool(std::move(rotate_tool)));
 	EXPECT_TRUE(fixture.tool_manager.register_tool(std::move(scale_tool)));
+	EXPECT_TRUE(fixture.tool_manager.register_tool(std::move(box_tool)));
 	EXPECT_TRUE(fixture.tool_manager.set_active_tool(quader::tools::ToolId::Select));
 
 	fixture.action_state_updater.refresh();
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::SelectTool).isEnabled());
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::SelectTool).isChecked());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::MoveTool).isChecked());
+	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::BoxTool).isChecked());
 
 	fixture.actions.action(quader::ui::ActionId::MoveTool).trigger();
 	const auto kActiveToolId = fixture.tool_manager.active_tool_id();
@@ -256,6 +269,15 @@ TEST(UiActionWiring, ToolActionsRouteToToolManagerAndRefreshCheckedState) {
 	EXPECT_EQ(move->activations, 1);
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SelectTool).isChecked());
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::MoveTool).isChecked());
+
+	fixture.actions.action(quader::ui::ActionId::BoxTool).trigger();
+	const auto kBoxToolId = fixture.tool_manager.active_tool_id();
+	ASSERT_TRUE(kBoxToolId.has_value());
+	EXPECT_EQ(*kBoxToolId, quader::tools::ToolId::Box);
+	EXPECT_EQ(box->activations, 1);
+	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::MoveTool).isChecked());
+	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::BoxTool).isChecked());
+	EXPECT_EQ(fixture.actions.action(quader::ui::ActionId::BoxTool).shortcut(), QKeySequence(Qt::Key_B));
 }
 
 } // namespace

@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/gpu/gpu_device.hpp"
 #include "crimson/gpu/gpu_resources.hpp"
 #include "crimson/gpu/shader_library.hpp"
@@ -125,6 +134,11 @@ TEST(GpuShell, ShaderLibraryResolvesManifestTargetShaderPaths) {
 					crimson::ShaderProgramId::OverlayUnlit,
 					crimson::gpu::ShaderStage::Vertex) == "overlay_unlit.vs.bin",
 			"OverlayUnlit vertex shader name is stable");
+	expect_true(
+			crimson::gpu::shader_file_name(
+					crimson::ShaderProgramId::OverlayLine,
+					crimson::gpu::ShaderStage::Fragment) == "overlay_line.fs.bin",
+			"OverlayLine fragment shader name is stable");
 	expect_true(
 			crimson::gpu::shader_file_name(
 					crimson::ShaderProgramId::Picking,

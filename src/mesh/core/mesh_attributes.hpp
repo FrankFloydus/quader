@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #pragma once
 
 #include "foundation/id.hpp"
@@ -20,60 +29,106 @@
 
 namespace quader::mesh {
 
+/// Mesh element domain that owns an attribute array.
 enum class AttributeDomain {
+	/// One value per vertex slot.
 	Vertex,
+	/// One value per halfedge slot.
 	Halfedge,
+	/// One value per edge slot.
 	Edge,
+	/// One value per face slot.
 	Face,
 };
 
+/// Runtime value kind stored by an attribute array.
 enum class AttributeValueType {
+	/// Single `float` value.
 	Float32,
+	/// `Vec2` single-precision value.
 	Vec2Float32,
+	/// `Vec3` single-precision value.
 	Vec3Float32,
+	/// Unsigned 32-bit integer value.
 	UInt32,
 };
 
+/// Descriptor for one mesh attribute array.
 struct AttributeDescriptor {
+	/// Stable attribute identifier.
 	AttributeId id;
+	/// Mesh element domain indexed by this attribute.
 	AttributeDomain domain = AttributeDomain::Vertex;
+	/// Stored value type.
 	AttributeValueType value_type = AttributeValueType::Float32;
+	/// Unique attribute name within `domain`.
 	std::string name;
 };
 
+/**
+ * Compile-time mapping from C++ attribute value types to runtime descriptors.
+ *
+ * @tparam T Candidate attribute value type.
+ */
 template <class T>
 struct AttributeValueTraits {
+	/// False for unsupported attribute value types.
 	static constexpr bool kSupported = false;
 };
 
+/// Attribute value traits for `float`.
 template <>
 struct AttributeValueTraits<float> {
+	/// `float` is supported as an attribute value.
 	static constexpr bool kSupported = true;
+	/// Runtime descriptor value type for `float`.
 	static constexpr AttributeValueType kValueType = AttributeValueType::Float32;
 };
 
+/// Attribute value traits for `Vec2`.
 template <>
 struct AttributeValueTraits<quader::math::Vec2> {
+	/// `Vec2` is supported as an attribute value.
 	static constexpr bool kSupported = true;
+	/// Runtime descriptor value type for `Vec2`.
 	static constexpr AttributeValueType kValueType = AttributeValueType::Vec2Float32;
 };
 
+/// Attribute value traits for `Vec3`.
 template <>
 struct AttributeValueTraits<quader::math::Vec3> {
+	/// `Vec3` is supported as an attribute value.
 	static constexpr bool kSupported = true;
+	/// Runtime descriptor value type for `Vec3`.
 	static constexpr AttributeValueType kValueType = AttributeValueType::Vec3Float32;
 };
 
+/// Attribute value traits for `std::uint32_t`.
 template <>
 struct AttributeValueTraits<std::uint32_t> {
+	/// `std::uint32_t` is supported as an attribute value.
 	static constexpr bool kSupported = true;
+	/// Runtime descriptor value type for `std::uint32_t`.
 	static constexpr AttributeValueType kValueType = AttributeValueType::UInt32;
 };
 
+/**
+ * Owns typed attribute arrays for mesh element domains.
+ *
+ * Attribute arrays are resized by domain and keep a default value used for new
+ * slots or slot reset. Attribute IDs are index-only and remain valid while
+ * their storage slot exists.
+ */
 class MeshAttributes final {
 public:
+	/// Create an empty attribute collection.
 	MeshAttributes() = default;
 
+	/**
+	 * Deep-copy all attribute storage.
+	 *
+	 * @param other Attribute collection to copy.
+	 */
 	MeshAttributes(const MeshAttributes &other) : domain_sizes_(other.domain_sizes_) {
 		storages_.reserve(other.storages_.size());
 		for (const auto &storage : other.storages_) {
@@ -81,6 +136,12 @@ public:
 		}
 	}
 
+	/**
+	 * Deep-copy all attribute storage.
+	 *
+	 * @param other Attribute collection to copy.
+	 * @return This collection.
+	 */
 	MeshAttributes &operator=(const MeshAttributes &other) {
 		if (this == &other) {
 			return *this;
@@ -97,9 +158,20 @@ public:
 		return *this;
 	}
 
+	/// Move an attribute collection.
 	MeshAttributes(MeshAttributes &&) noexcept = default;
+	/// Move-assign an attribute collection.
 	MeshAttributes &operator=(MeshAttributes &&) noexcept = default;
 
+	/**
+	 * Create a typed attribute array.
+	 *
+	 * @tparam T Supported attribute value type.
+	 * @param domain Mesh element domain indexed by the attribute.
+	 * @param name Name unique within `domain`.
+	 * @param default_value Value used for all current and future slots.
+	 * @return Attribute id, or an error when the name already exists.
+	 */
 	template <class T>
 	[[nodiscard]] quader::foundation::Result<AttributeId, MeshError> create(AttributeDomain domain,
 			std::string name,
@@ -122,10 +194,21 @@ public:
 		return quader::foundation::Result<AttributeId, MeshError>::success(kId);
 	}
 
+	/**
+	 * Return the number of attribute arrays.
+	 *
+	 * @return Attribute storage count.
+	 */
 	[[nodiscard]] std::size_t attribute_count() const noexcept {
 		return storages_.size();
 	}
 
+	/**
+	 * Find an attribute descriptor.
+	 *
+	 * @param id Attribute id to resolve.
+	 * @return Pointer valid until mutation, or `nullptr` for invalid ids.
+	 */
 	[[nodiscard]] const AttributeDescriptor *descriptor(AttributeId id) const noexcept {
 		if (!is_valid_attribute_id(id)) {
 			return nullptr;
@@ -134,6 +217,14 @@ public:
 		return &storages_[id.index()]->descriptor();
 	}
 
+	/**
+	 * Access a mutable attribute slot.
+	 *
+	 * @tparam T Expected attribute value type.
+	 * @param id Attribute id to resolve.
+	 * @param slot Domain slot index.
+	 * @return Pointer valid until attribute storage mutation, or an error.
+	 */
 	template <class T>
 	[[nodiscard]] quader::foundation::Result<T *, MeshError> value(AttributeId id,
 			quader::foundation::IdIndex slot) {
@@ -152,6 +243,14 @@ public:
 		return quader::foundation::Result<T *, MeshError>::success(&storage->values()[slot]);
 	}
 
+	/**
+	 * Access an immutable attribute slot.
+	 *
+	 * @tparam T Expected attribute value type.
+	 * @param id Attribute id to resolve.
+	 * @param slot Domain slot index.
+	 * @return Pointer valid until attribute storage mutation, or an error.
+	 */
 	template <class T>
 	[[nodiscard]] quader::foundation::Result<const T *, MeshError> value(AttributeId id,
 			quader::foundation::IdIndex slot) const {
@@ -170,6 +269,12 @@ public:
 		return quader::foundation::Result<const T *, MeshError>::success(&storage->values()[slot]);
 	}
 
+	/**
+	 * Resize all attribute arrays for a domain.
+	 *
+	 * @param domain Domain whose arrays are resized.
+	 * @param size New slot count.
+	 */
 	void resize_domain(AttributeDomain domain, std::size_t size) {
 		domain_sizes_[domain_index(domain)] = size;
 		for (auto &storage : storages_) {
@@ -179,6 +284,12 @@ public:
 		}
 	}
 
+	/**
+	 * Reset a domain slot to each attribute array's default value.
+	 *
+	 * @param domain Domain containing `slot`.
+	 * @param slot Slot index to reset when present.
+	 */
 	void reset_slot_to_defaults(AttributeDomain domain, quader::foundation::IdIndex slot) {
 		for (auto &storage : storages_) {
 			if (storage->descriptor().domain == domain) {

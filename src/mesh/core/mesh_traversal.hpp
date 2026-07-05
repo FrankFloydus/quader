@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #pragma once
 
 #include "foundation/result.hpp"
@@ -10,6 +19,13 @@
 
 namespace quader::mesh {
 
+/**
+ * Return the vertices that bound a face.
+ *
+ * @param mesh Mesh to query.
+ * @param face Face whose halfedge cycle is traversed.
+ * @return Vertex IDs in face-cycle order, or a mesh error.
+ */
 [[nodiscard]] inline quader::foundation::Result<std::vector<VertexId>, MeshError> face_vertices(
 		const Polyhedron &mesh,
 		FaceId face) {
@@ -35,6 +51,13 @@ namespace quader::mesh {
 	return quader::foundation::Result<std::vector<VertexId>, MeshError>::success(std::move(vertices));
 }
 
+/**
+ * Return the edges that bound a face.
+ *
+ * @param mesh Mesh to query.
+ * @param face Face whose halfedge cycle is traversed.
+ * @return Edge IDs in face-cycle order, or a mesh error.
+ */
 [[nodiscard]] inline quader::foundation::Result<std::vector<EdgeId>, MeshError> face_edges(
 		const Polyhedron &mesh,
 		FaceId face) {
@@ -59,6 +82,14 @@ namespace quader::mesh {
 	return quader::foundation::Result<std::vector<EdgeId>, MeshError>::success(std::move(edges));
 }
 
+/**
+ * Find a directed halfedge between two vertices.
+ *
+ * @param mesh Mesh to scan.
+ * @param origin Origin vertex.
+ * @param target Target vertex.
+ * @return Matching halfedge, or `HalfedgeId::invalid()` when absent or inputs are invalid.
+ */
 [[nodiscard]] inline HalfedgeId find_halfedge(const Polyhedron &mesh,
 		VertexId origin,
 		VertexId target) noexcept {

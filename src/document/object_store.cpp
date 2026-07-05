@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "document/object_store.hpp"
 
 #include <algorithm>
@@ -8,7 +17,8 @@ namespace quader::document {
 quader::foundation::Result<ObjectId, DocumentError> ObjectStore::create_mesh_object(
 		std::string name,
 		quader::mesh::Polyhedron mesh,
-		Transform transform) {
+		Transform transform,
+		PbrMaterial material) {
 	const auto kIndex = allocate_slot();
 	auto &slot = slots_[kIndex];
 	const ObjectId kId{ kIndex, slot.generation };
@@ -18,6 +28,7 @@ quader::foundation::Result<ObjectId, DocumentError> ObjectStore::create_mesh_obj
 		kId,
 		std::move(name),
 		transform,
+		material,
 		std::move(mesh),
 	};
 

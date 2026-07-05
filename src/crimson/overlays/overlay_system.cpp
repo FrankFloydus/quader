@@ -1,8 +1,18 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/overlays/overlay_system.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <utility>
 
 namespace crimson {
 namespace {
@@ -57,6 +67,26 @@ void append_grid_payloads(
 	}
 }
 
+void append_line_payloads(
+		OverlayDrawBucket &bucket,
+		const OverlayCommand &command,
+		std::span<const LineOverlaySegment> line_payloads) {
+	const std::size_t kBegin = static_cast<std::size_t>(command.payload_offset);
+	const std::size_t kCount = static_cast<std::size_t>(command.payload_count);
+	if (kBegin >= line_payloads.size() || kCount == 0 || kBegin + kCount > line_payloads.size()) {
+		return;
+	}
+
+	PreparedLineOverlayCommand prepared;
+	prepared.command = command;
+	prepared.color_linear_sdr = to_linear_sdr_array(command.color_srgb, command.opacity);
+	prepared.segments.reserve(kCount);
+	for (std::size_t index = kBegin; index < kBegin + kCount; ++index) {
+		prepared.segments.push_back(line_payloads[index]);
+	}
+	bucket.line_commands.push_back(std::move(prepared));
+}
+
 } // namespace
 
 RenderQueue render_queue_for_overlay_depth_mode(OverlayDepthMode depth_mode) noexcept {
@@ -83,12 +113,13 @@ std::array<float, 4> to_linear_sdr_array(ColorSrgb color, float opacity) noexcep
 }
 
 std::size_t OverlayDrawLists::command_count() const noexcept {
-	return depth_tested.commands.size() + depth_tested.grid_commands.size() + xray.commands.size() + xray.grid_commands.size() + always_on_top.commands.size() + always_on_top.grid_commands.size();
+	return depth_tested.commands.size() + depth_tested.grid_commands.size() + depth_tested.line_commands.size() + xray.commands.size() + xray.grid_commands.size() + xray.line_commands.size() + always_on_top.commands.size() + always_on_top.grid_commands.size() + always_on_top.line_commands.size();
 }
 
 OverlayDrawLists OverlaySystem::prepare(
 		std::span<const OverlayCommand> commands,
-		std::span<const GridOverlayCommand> grid_payloads) const {
+		std::span<const GridOverlayCommand> grid_payloads,
+		std::span<const LineOverlaySegment> line_payloads) const {
 	OverlayDrawLists lists;
 	for (const OverlayCommand &command : commands) {
 		if (command.base_shader != BaseShaderId::OverlayUnlit) {
@@ -104,6 +135,8 @@ OverlayDrawLists OverlaySystem::prepare(
 
 		if (command.primitive == OverlayPrimitive::Grid) {
 			append_grid_payloads(bucket, command, grid_payloads);
+		} else if (command.primitive == OverlayPrimitive::LineList) {
+			append_line_payloads(bucket, command, line_payloads);
 		}
 	}
 

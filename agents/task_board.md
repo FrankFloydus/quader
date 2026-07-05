@@ -43,6 +43,7 @@ Common optional lines:
   Plans: agents/plans/implementation_feature_renderer_doc.md
   Source refs: C:\path\reference | src/foo.cpp:12-88; include/foo.h:4-31
   Authority: [owner:renderer][status:pending][agent:pending] Renderer architect owns final review.
+  Rework: [owner:renderer][agent:quader-renderer-architect][checked:2026-07-05T12:30:00Z] Current architect-requested corrections after a rejected review.
   Active: [lead:root][status:running][workers:4] Parallel implementation slices are active.
   Coordination: Short coordination note.
 ```
@@ -93,6 +94,14 @@ Move:
 python tools/project_board.py move --architect-authorized --id 25 --to "In Progress"
 ```
 
+Request changes after rejected review:
+
+```powershell
+python tools/project_board.py request-changes --architect-authorized --id 25 --owner renderer --agent quader-renderer-architect --summary "Overlay validation is incomplete." --rework "Add the missing overlay regression test and rerun the targeted renderer test."
+```
+
+Use `request-changes` for rejected review closeout. Do not use a plain `move --to "In Progress"` for rejected review cards.
+
 Move to review:
 
 ```powershell
@@ -111,6 +120,8 @@ Record or clear active coordination:
 python tools/project_board.py set-active --architect-authorized --id 25 --lead root --status running --workers 4 --note "Executing independent slices."
 python tools/project_board.py clear-active --architect-authorized --id 25
 ```
+
+Coordination notes are context only. They are not the authoritative correction list for rejected reviews; that must be stored in `Rework:` through `request-changes`.
 
 Archive approved task:
 
@@ -179,6 +190,8 @@ Fresh requests do not become direct edits. The v2 flow is:
 
 Reference/parity tasks must include `Source refs:` with exact source folder path and file-to-line mapping.
 
+Renderer parity tasks that reference `C:\Users\Drako\Desktop\quader-windows\quader-app` must point `quader-renderer-architect` at that app's renderer internals. The task must not assume the reference app's renderer math, projection, picking, shader/material, or coordinate-space conventions match Crimson/current runtime behavior.
+
 ## Execution Coordination
 
 Root coordinates execution. Up to 6 workers may run in parallel when tasks or slices are independent.
@@ -198,6 +211,7 @@ Root:
 - integrates worker output,
 - runs required build/tests,
 - deploys for user-visible runtime changes,
+- creates a dev-build archive before review for runnable/runtime-affecting work, or records a valid `Dev build checkpoint deferred:` blocker,
 - asks the owning architect for review,
 - applies exact architect-issued board commands.
 
@@ -208,9 +222,15 @@ In Review cards are not perform-task prompts. They are closeout prompts.
 For a single review card or a batch, the owning architect returns one decision per task:
 
 - `approved`: archive with `complete --architect-authorized`.
-- `changes-requested`: move back to `In Progress`, update `Authority:` or `Coordination:` if useful, then execute only the requested corrections.
+- `changes-requested`: use `request-changes --architect-authorized` with mandatory actionable `--rework`; this moves the task back to `In Progress`, updates `Authority: [status:changes-requested]`, and stores the current `Rework:` correction list.
 - `stale`: mark freshness `stale` and return to software-architect finalization.
 - `superseded`: mark freshness `superseded`; do not implement.
+
+When a returned task is copied from `In Progress`, the copied prompt must prioritize `Rework:` over the original broad task brief. If a task is `changes-requested` without `Rework:`, stop and recover the architect rejection note before implementation.
+
+For C++/CMake/shader/runtime-affecting tasks, review must also check dev-build closeout. If no archived dev version/path is reported and no valid `Dev build checkpoint deferred:` blocker exists, the decision is `changes-requested`, not `approved`.
+
+Documentation closeout blocks only stale, incomplete, or contradictory existing documentation, documentation-specific tasks, or explicit task/plan documentation requirements. Missing Doxygen notes for newly added, previously undocumented code are not a reason to reject an otherwise valid implementation; record `Docs maintainer follow-up:` and route it after approval.
 
 For a mixed batch, root archives only approved tasks and moves or marks only the rejected tasks. Do not rerun implementation for approved tasks, and do not archive rejected tasks.
 

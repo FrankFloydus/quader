@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "commands/document_commands.hpp"
 
 #include <utility>
@@ -13,9 +22,11 @@ namespace {
 
 CreateMeshObjectCommand::CreateMeshObjectCommand(std::string name,
 		quader::mesh::Polyhedron mesh,
-		quader::document::Transform transform) : name_(std::move(name)),
-												 mesh_(std::move(mesh)),
-												 transform_(transform) {
+		quader::document::Transform transform,
+		quader::document::PbrMaterial material) : name_(std::move(name)),
+												  mesh_(std::move(mesh)),
+												  transform_(transform),
+												  material_(material) {
 }
 
 std::string_view CreateMeshObjectCommand::name() const noexcept {
@@ -44,7 +55,7 @@ CommandResult CreateMeshObjectCommand::execute(quader::document::Document &docum
 		return CommandResult::rejected("create command has no mesh data to execute");
 	}
 
-	auto created = document.create_mesh_object(name_, std::move(*mesh_), transform_);
+	auto created = document.create_mesh_object(name_, std::move(*mesh_), transform_, material_);
 	if (!created) {
 		mesh_.reset();
 		return rejected_from_document_error(std::move(created).error());

@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "document_test_helpers.hpp"
 
 #include <gtest/gtest.h>
@@ -45,6 +54,7 @@ TEST(Document, CreateMeshObjectStoresMeshTransformDirtyFlagsAndEvents) {
 	EXPECT_TRUE(stored != nullptr);
 	EXPECT_EQ(stored->name, std::string("Triangle"));
 	EXPECT_TRUE(stored->transform == transform);
+	EXPECT_EQ(stored->material, quader::document::default_box_material());
 	EXPECT_EQ(stored->mesh.vertex_count(), 3U);
 	EXPECT_EQ(stored->mesh.face_count(), 1U);
 	EXPECT_TRUE(quader::mesh::validate_mesh(stored->mesh).ok());
@@ -59,6 +69,35 @@ TEST(Document, CreateMeshObjectStoresMeshTransformDirtyFlagsAndEvents) {
 	EXPECT_EQ(kChanges[1].kind, quader::document::DocumentChangeKind::DirtyStateChanged);
 	EXPECT_TRUE(quader::document::has_dirty_flag(kChanges[1].dirty_flags,
 			quader::document::DocumentDirtyFlag::Objects));
+}
+
+TEST(Document, CreateMeshObjectStoresExplicitMaterialValues) {
+	quader::document::Document document;
+	auto mesh_fixture = quader::tests::document_fixtures::make_triangle_mesh();
+	const quader::document::PbrMaterial kMaterial{
+		.base_color = { 0.25F, 0.5F, 0.75F },
+		.roughness = 0.8F,
+		.metallic = 0.1F,
+	};
+
+	const auto kObject = document.create_mesh_object("Material Object",
+			std::move(mesh_fixture.mesh),
+			quader::document::Transform{},
+			kMaterial);
+	EXPECT_TRUE(kObject);
+	const auto *stored = document.find_mesh_object(kObject.value());
+	EXPECT_TRUE(stored != nullptr);
+	EXPECT_EQ(stored->material, kMaterial);
+
+	auto invalid_mesh = quader::tests::document_fixtures::make_triangle_mesh();
+	quader::document::PbrMaterial invalid_material = kMaterial;
+	invalid_material.roughness = std::numeric_limits<float>::infinity();
+	const auto kInvalid = document.create_mesh_object("Invalid Material",
+			std::move(invalid_mesh.mesh),
+			quader::document::Transform{},
+			invalid_material);
+	EXPECT_FALSE(kInvalid);
+	EXPECT_EQ(kInvalid.error().code, quader::document::DocumentErrorCode::InvalidMaterial);
 }
 
 TEST(Document, DeleteObjectPrunesSelectionInvalidatesStaleIdAndReusesGeneration) {

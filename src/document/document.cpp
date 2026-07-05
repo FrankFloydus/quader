@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "document/document.hpp"
 
 #include "mesh/core/mesh_validation.hpp"
@@ -32,11 +41,18 @@ namespace {
 quader::foundation::Result<ObjectId, DocumentError> Document::create_mesh_object(
 		std::string name,
 		quader::mesh::Polyhedron mesh,
-		Transform transform) {
+		Transform transform,
+		PbrMaterial material) {
 	if (!is_finite(transform)) {
 		return quader::foundation::Result<ObjectId, DocumentError>::failure(
 				make_document_error(DocumentErrorCode::InvalidTransform,
 						"cannot create a mesh object with a non-finite transform"));
+	}
+
+	if (!is_valid(material)) {
+		return quader::foundation::Result<ObjectId, DocumentError>::failure(
+				make_document_error(DocumentErrorCode::InvalidMaterial,
+						"cannot create a mesh object with invalid material values"));
 	}
 
 	auto mesh_validation = validate_mesh(mesh);
@@ -45,7 +61,7 @@ quader::foundation::Result<ObjectId, DocumentError> Document::create_mesh_object
 				std::move(mesh_validation).error());
 	}
 
-	auto created = objects_.create_mesh_object(std::move(name), std::move(mesh), transform);
+	auto created = objects_.create_mesh_object(std::move(name), std::move(mesh), transform, material);
 	if (!created) {
 		return created;
 	}
@@ -309,6 +325,12 @@ quader::foundation::Result<void, DocumentError> Document::validate_mesh_object(
 		return quader::foundation::Result<void, DocumentError>::failure(
 				make_document_error(DocumentErrorCode::InvalidTransform,
 						"mesh object has a non-finite transform"));
+	}
+
+	if (!is_valid(object.material)) {
+		return quader::foundation::Result<void, DocumentError>::failure(
+				make_document_error(DocumentErrorCode::InvalidMaterial,
+						"mesh object has invalid material values"));
 	}
 
 	return validate_mesh(object.mesh);

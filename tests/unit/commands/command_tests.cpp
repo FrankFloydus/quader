@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "../document/document_test_helpers.hpp"
 
 #include <gtest/gtest.h>
@@ -58,6 +67,7 @@ TEST(Command, CreateMeshObjectCommandExecutesUndoesAndRedoesSemanticState) {
 	EXPECT_EQ(kAfter.objects.size(), 1U);
 	EXPECT_EQ(kAfter.objects.front().name, std::string("Triangle"));
 	EXPECT_TRUE(kAfter.objects.front().transform == kTransform);
+	EXPECT_EQ(kAfter.objects.front().material, quader::document::default_box_material());
 	EXPECT_EQ(kAfter.objects.front().vertex_count, 3U);
 	EXPECT_EQ(kAfter.objects.front().face_count, 1U);
 
@@ -73,6 +83,38 @@ TEST(Command, CreateMeshObjectCommandExecutesUndoesAndRedoesSemanticState) {
 	EXPECT_EQ(capture_command_state(document), kAfter);
 	EXPECT_TRUE(history.can_undo());
 	EXPECT_FALSE(history.can_redo());
+}
+
+TEST(Command, CreateMeshObjectCommandRoundTripsMaterialOnUndoRedo) {
+	quader::document::Document document;
+	quader::commands::CommandHistory history;
+	auto mesh = quader::tests::document_fixtures::make_triangle_mesh();
+	const quader::document::PbrMaterial kMaterial{
+		.base_color = { 0.5F, 0.5F, 0.5F },
+		.roughness = 1.0F,
+		.metallic = 0.0F,
+	};
+
+	auto result = history.execute(std::make_unique<quader::commands::CreateMeshObjectCommand>(
+										  "Box",
+										  std::move(mesh.mesh),
+										  quader::document::Transform{},
+										  kMaterial),
+			document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	const auto kCreatedState = capture_command_state(document);
+	ASSERT_EQ(kCreatedState.objects.size(), 1U);
+	EXPECT_EQ(kCreatedState.objects.front().material, kMaterial);
+
+	result = history.undo(document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	EXPECT_TRUE(capture_command_state(document).objects.empty());
+
+	result = history.redo(document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	const auto kRedoneState = capture_command_state(document);
+	ASSERT_EQ(kRedoneState.objects.size(), 1U);
+	EXPECT_EQ(kRedoneState.objects.front().material, kMaterial);
 }
 
 TEST(Command, DeleteObjectCommandRestoresObjectAndSelectionOnUndoRedo) {

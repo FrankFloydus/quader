@@ -1,6 +1,16 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "app/application.hpp"
 
 #include "app/app_services.hpp"
+#include "tools/box_tool.hpp"
 #include "tools/tool.hpp"
 #include "ui/actions/action_registry.hpp"
 #include "ui/qt_app/main_window.hpp"
@@ -34,6 +44,7 @@ void register_shell_tools(quader::tools::ToolManager &tool_manager) {
 	(void)tool_manager.register_tool(std::make_unique<ShellTool>(quader::tools::ToolId::Move));
 	(void)tool_manager.register_tool(std::make_unique<ShellTool>(quader::tools::ToolId::Rotate));
 	(void)tool_manager.register_tool(std::make_unique<ShellTool>(quader::tools::ToolId::Scale));
+	(void)tool_manager.register_tool(std::make_unique<quader::tools::BoxTool>());
 	(void)tool_manager.set_active_tool(quader::tools::ToolId::Select);
 }
 
@@ -48,8 +59,12 @@ AppServices::AppServices() : tool_manager(quader::tools::ToolContext{ document, 
 			document_ui,
 			import_ui,
 			viewport_diagnostics,
+			tool_manager,
 		} {
 	ui::register_standard_actions(actions);
+	tool_manager.context().set_after_command_applied([this]() {
+		document_ui.refresh_from_document();
+	});
 	register_shell_tools(tool_manager);
 	action_state_updater.refresh();
 }

@@ -14,13 +14,63 @@ adapted into Quader-owned policy. Useful reference sections:
 
 ## Core Rule
 
-Project-owned C++ files must have the Quader copyright block at the top, and
-project-owned public/protected C++ APIs must be documented where they are first
-declared using Javadoc-style Doxygen comments.
+Project-owned C++ files must have the Quader copyright block at the top.
+Project-owned public/protected C++ APIs should be documented where they are
+first declared using Javadoc-style Doxygen comments. Full documentation coverage
+is maintained by `quader-docs-mantainer` and documentation-specific tasks; it is
+not an automatic implementation-review blocker for newly added code.
 
 Documentation maintenance is allowed to change comments and copyright headers.
 It must not change behavior, public API shape, build semantics, tests, task-board
 state, versions, or public release notes.
+
+## Documentation Sync Rule
+
+When an agent changes any project-owned C++ symbol that already has
+documentation, it must update that documentation in the same edit.
+
+This applies to documented:
+
+- classes and structs,
+- functions and methods,
+- constructors and destructors,
+- enum types and enum values,
+- variables, constants, data members, aliases, templates, concepts, callbacks,
+  handles, descriptors, options, results, and other named API elements,
+- implementation comments that describe behavior, invariants, lifetime,
+  ownership, threading, performance, side effects, or error handling.
+
+Do not leave stale comments with a note to fix later. Do not create a separate
+documentation cleanup task for symbol-level documentation that was made stale by
+the current code change. Update the existing comment in place, near the
+declaration or implementation it documents.
+
+If the correct updated documentation cannot be stated confidently from the code,
+tests, and active architecture docs, stop and report the ambiguity instead of
+guessing.
+
+Architecture plans and implementation prompts must call this out when the task
+changes documented APIs. Reviews must reject work when code changed a documented
+symbol but left the associated documentation stale, incomplete, or contradictory.
+
+## Review Blocking Scope
+
+Documentation review blockers are limited to stale or contradictory existing
+documentation, documentation-specific tasks, and explicit documentation
+requirements in the accepted task brief or active plan.
+
+Architects and reviewers must not block an implementation solely because a newly
+added file, class, function, variable, enum, or other previously undocumented
+symbol lacks a new Doxygen note, when the change did not alter existing
+documented code. Report that as:
+
+```text
+Docs maintainer follow-up:
+```
+
+Root may route that follow-up to `quader-docs-mantainer` after the fix or
+feature is accepted. Critical fixes must not be held back only for missing
+documentation on new, previously undocumented code.
 
 ## File Scope
 

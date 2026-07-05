@@ -1,15 +1,30 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "ui/viewport/crimson_viewport_render_host.hpp"
 #include "ui/viewport/viewport_camera_controller.hpp"
+#include "ui/viewport/tool_preview_overlay_adapter.hpp"
 #include "ui/viewport/viewport_controller.hpp"
 #include "ui/viewport/viewport_layout_state.hpp"
 #include "ui/viewport/viewport_render_host.hpp"
 
 #include <gtest/gtest.h>
 
+#include "commands/command_history.hpp"
+#include "document/document.hpp"
 #include "math/vec3.hpp"
+#include "tools/tool.hpp"
+#include "tools/tool_manager.hpp"
 
 #include <cmath>
 #include <cstdio>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -73,6 +88,30 @@ struct FakeRenderHost final : quader::ui::IViewportRenderHost {
 	QString renderer_name() const override {
 		return QStringLiteral("FakeRenderer");
 	}
+};
+
+class ViewportRecordingTool final : public quader::tools::ITool {
+public:
+	[[nodiscard]] quader::tools::ToolId id() const noexcept override {
+		return quader::tools::ToolId::Select;
+	}
+
+	void cancel(quader::tools::ToolContext &context) override {
+		(void)context;
+		++cancellations;
+	}
+
+	[[nodiscard]] bool on_pointer_event(const quader::tools::PointerEvent &event,
+			quader::tools::ToolContext &context) override {
+		(void)context;
+		++pointer_events;
+		last_pointer = event;
+		return true;
+	}
+
+	int pointer_events = 0;
+	int cancellations = 0;
+	std::optional<quader::tools::PointerEvent> last_pointer;
 };
 
 TEST(Viewport, LayoutStateClampsQuadPanesAndHitTests) {
@@ -146,6 +185,158 @@ TEST(Viewport, ControllerForwardsSurfaceResizeAndQuadRenderRequests) {
 	controller.set_prototype_animation_enabled(false);
 	controller.render_frame(2.0, 0.016F);
 	EXPECT_FALSE(host.last_animation_enabled);
+}
+
+TEST(Viewport, ControllerRoutesUnconsumedLeftPointerEventsToActiveTool) {
+	FakeRenderHost host;
+	quader::document::Document document;
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager tools{ quader::tools::ToolContext{ document, history } };
+	auto tool = std::make_unique<ViewportRecordingTool>();
+	auto *recording_tool = tool.get();
+	ASSERT_TRUE(tools.register_tool(std::move(tool)));
+	ASSERT_TRUE(tools.set_active_tool(quader::tools::ToolId::Select));
+
+	quader::ui::ViewportController controller(host, tools);
+	EXPECT_TRUE(controller.handle_mouse_press(quader::ui::ViewportMouseButton::Left,
+			{ 320.0, 240.0 },
+			false,
+			{ 640, 480 }));
+
+	ASSERT_EQ(recording_tool->pointer_events, 1);
+	ASSERT_TRUE(recording_tool->last_pointer.has_value());
+	const quader::tools::PointerEvent &kLastPointer = recording_tool->last_pointer.value();
+	EXPECT_EQ(kLastPointer.button, quader::tools::PointerButton::Left);
+	EXPECT_EQ(kLastPointer.phase, quader::tools::PointerPhase::Press);
+	EXPECT_EQ(kLastPointer.view_index, 0U);
+	EXPECT_FLOAT_EQ(kLastPointer.position.x, 320.0F);
+	EXPECT_FLOAT_EQ(kLastPointer.position.y, 240.0F);
+	EXPECT_TRUE(kLastPointer.ray.has_value());
+	EXPECT_FALSE(kLastPointer.navigation_active);
+}
+
+TEST(Viewport, ControllerDispatchesPaneLocalPointerAndViewIndexInQuadLayout) {
+	FakeRenderHost host;
+	quader::document::Document document;
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager tools{ quader::tools::ToolContext{ document, history } };
+	auto tool = std::make_unique<ViewportRecordingTool>();
+	auto *recording_tool = tool.get();
+	ASSERT_TRUE(tools.register_tool(std::move(tool)));
+	ASSERT_TRUE(tools.set_active_tool(quader::tools::ToolId::Select));
+
+	quader::ui::ViewportController controller(host, tools);
+	controller.set_quad_viewports_enabled(true);
+
+	EXPECT_TRUE(controller.handle_mouse_press(quader::ui::ViewportMouseButton::Left,
+			{ 500.0, 100.0 },
+			false,
+			{ 640, 480 }));
+
+	ASSERT_EQ(recording_tool->pointer_events, 1);
+	ASSERT_TRUE(recording_tool->last_pointer.has_value());
+	const quader::tools::PointerEvent &kLastPointer = recording_tool->last_pointer.value();
+	EXPECT_EQ(kLastPointer.view_index, 1U);
+	EXPECT_FLOAT_EQ(kLastPointer.position.x, 178.0F);
+	EXPECT_FLOAT_EQ(kLastPointer.position.y, 100.0F);
+	EXPECT_TRUE(kLastPointer.ray.has_value());
+}
+
+TEST(Viewport, ToolPreviewOverlayAdapterUsesReferenceStyleAndActiveViewOnly) {
+	quader::tools::ToolPreview preview;
+	preview.active = true;
+	preview.view_index = 2U;
+	preview.world_segments.push_back(quader::tools::ToolPreviewWorldSegment{
+			.start = { 0.0F, 0.0F, 0.0F },
+			.end = { 1.0F, 0.0F, 0.0F },
+	});
+
+	std::vector<crimson::OverlayCommand> overlays;
+	std::vector<crimson::LineOverlaySegment> line_payloads;
+	quader::ui::append_tool_preview_line_overlays(preview, 4U, overlays, line_payloads);
+
+	ASSERT_EQ(overlays.size(), 1U);
+	ASSERT_EQ(line_payloads.size(), 1U);
+	EXPECT_EQ(overlays.front().view_index, 2U);
+	EXPECT_EQ(overlays.front().primitive, crimson::OverlayPrimitive::LineList);
+	EXPECT_EQ(overlays.front().depth_mode, crimson::OverlayDepthMode::AlwaysOnTop);
+	EXPECT_FLOAT_EQ(overlays.front().color_srgb.r, 1.0F);
+	EXPECT_FLOAT_EQ(overlays.front().color_srgb.g, 235.0F / 255.0F);
+	EXPECT_FLOAT_EQ(overlays.front().color_srgb.b, 41.0F / 255.0F);
+	EXPECT_FLOAT_EQ(overlays.front().color_srgb.a, 209.0F / 255.0F);
+	EXPECT_FLOAT_EQ(overlays.front().opacity, 1.0F);
+	EXPECT_FLOAT_EQ(overlays.front().thickness_px, 2.0F);
+	EXPECT_EQ(overlays.front().payload_offset, 0U);
+	EXPECT_EQ(overlays.front().payload_count, 1U);
+}
+
+TEST(Viewport, ToolPreviewOverlayAdapterConvertsBoxPreviewToLineVolume) {
+	quader::tools::ToolPreview preview;
+	preview.active = true;
+	preview.view_index = 1U;
+	preview.boxes.push_back(quader::tools::ToolPreviewBox{
+			.corners = {
+					quader::math::Vec3{ 0.0F, 0.0F, 0.0F },
+					quader::math::Vec3{ 1.0F, 0.0F, 0.0F },
+					quader::math::Vec3{ 1.0F, 0.0F, 1.0F },
+					quader::math::Vec3{ 0.0F, 0.0F, 1.0F },
+					quader::math::Vec3{ 0.0F, 1.0F, 0.0F },
+					quader::math::Vec3{ 1.0F, 1.0F, 0.0F },
+					quader::math::Vec3{ 1.0F, 1.0F, 1.0F },
+					quader::math::Vec3{ 0.0F, 1.0F, 1.0F },
+			},
+			.active = true,
+	});
+
+	std::vector<crimson::OverlayCommand> overlays;
+	std::vector<crimson::LineOverlaySegment> line_payloads;
+	quader::ui::append_tool_preview_line_overlays(preview, 2U, overlays, line_payloads);
+
+	ASSERT_EQ(overlays.size(), 1U);
+	EXPECT_EQ(overlays.front().view_index, 1U);
+	EXPECT_EQ(overlays.front().payload_count, 12U);
+	EXPECT_EQ(line_payloads.size(), 12U);
+}
+
+TEST(Viewport, NavigationCaptureTakesPrecedenceOverToolRoutingAndShortcuts) {
+	FakeRenderHost host;
+	quader::document::Document document;
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager tools{ quader::tools::ToolContext{ document, history } };
+	auto tool = std::make_unique<ViewportRecordingTool>();
+	auto *recording_tool = tool.get();
+	ASSERT_TRUE(tools.register_tool(std::move(tool)));
+	ASSERT_TRUE(tools.set_active_tool(quader::tools::ToolId::Select));
+
+	quader::ui::ViewportController controller(host, tools);
+	EXPECT_TRUE(controller.handle_mouse_press(quader::ui::ViewportMouseButton::Right,
+			{ 320.0, 240.0 },
+			false,
+			{ 640, 480 }));
+	EXPECT_EQ(controller.navigation_mode(), quader::ui::NavigationMode::Fly);
+	EXPECT_TRUE(controller.handle_mouse_move({ 360.0, 240.0 }, { 640, 480 }));
+	EXPECT_TRUE(controller.handle_key(quader::ui::ViewportKey::Other, true, false));
+	EXPECT_EQ(recording_tool->pointer_events, 0);
+
+	EXPECT_TRUE(controller.handle_mouse_release(quader::ui::ViewportMouseButton::Right,
+			{ 360.0, 240.0 },
+			{ 640, 480 }));
+	EXPECT_EQ(controller.navigation_mode(), quader::ui::NavigationMode::None);
+}
+
+TEST(Viewport, EscapeCancelsActiveToolWhenNavigationIsInactive) {
+	FakeRenderHost host;
+	quader::document::Document document;
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager tools{ quader::tools::ToolContext{ document, history } };
+	auto tool = std::make_unique<ViewportRecordingTool>();
+	auto *recording_tool = tool.get();
+	ASSERT_TRUE(tools.register_tool(std::move(tool)));
+	ASSERT_TRUE(tools.set_active_tool(quader::tools::ToolId::Select));
+
+	quader::ui::ViewportController controller(host, tools);
+	EXPECT_TRUE(controller.handle_key(quader::ui::ViewportKey::Escape, true, false));
+	EXPECT_EQ(recording_tool->cancellations, 1);
 }
 
 TEST(Viewport, RenderResultCarriesTypedPickResultsWithoutSelectionMutation) {

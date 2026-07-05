@@ -1,15 +1,35 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "ui/viewport/crimson_viewport_render_host.hpp"
 
 #include "crimson/frame/frame_builder.hpp"
 #include "crimson/renderer.hpp"
+#include "document/document.hpp"
+#include "geometry/normals.hpp"
+#include "math/aabb.hpp"
+#include "math/scalar.hpp"
+#include "mesh/core/mesh_traversal.hpp"
+#include "tools/tool_manager.hpp"
+#include "tools/tool_preview.hpp"
+#include "ui/viewport/tool_preview_overlay_adapter.hpp"
 
 #include <QCoreApplication>
 
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -76,6 +96,210 @@ namespace {
 	return value > static_cast<std::uint32_t>(std::numeric_limits<int>::max())
 			? std::numeric_limits<int>::max()
 			: static_cast<int>(value);
+}
+
+constexpr float kPi = 3.14159265358979323846F;
+
+[[nodiscard]] float radians_from_degrees(float degrees) noexcept {
+	return degrees * kPi / 180.0F;
+}
+
+[[nodiscard]] quader::math::Vec3 rotate_x(quader::math::Vec3 value, float radians) noexcept {
+	const float kSin = std::sin(radians);
+	const float kCos = std::cos(radians);
+	return { value.x, value.y * kCos - value.z * kSin, value.y * kSin + value.z * kCos };
+}
+
+[[nodiscard]] quader::math::Vec3 rotate_y(quader::math::Vec3 value, float radians) noexcept {
+	const float kSin = std::sin(radians);
+	const float kCos = std::cos(radians);
+	return { value.x * kCos + value.z * kSin, value.y, -value.x * kSin + value.z * kCos };
+}
+
+[[nodiscard]] quader::math::Vec3 rotate_z(quader::math::Vec3 value, float radians) noexcept {
+	const float kSin = std::sin(radians);
+	const float kCos = std::cos(radians);
+	return { value.x * kCos - value.y * kSin, value.x * kSin + value.y * kCos, value.z };
+}
+
+[[nodiscard]] quader::math::Vec3 rotate_euler(quader::math::Vec3 value,
+		quader::math::Vec3 degrees) noexcept {
+	value = rotate_x(value, radians_from_degrees(degrees.x));
+	value = rotate_y(value, radians_from_degrees(degrees.y));
+	return rotate_z(value, radians_from_degrees(degrees.z));
+}
+
+[[nodiscard]] quader::math::Vec3 transform_point(quader::math::Vec3 point,
+		quader::document::Transform transform) noexcept {
+	point = quader::math::Vec3{
+		point.x * transform.scale.x,
+		point.y * transform.scale.y,
+		point.z * transform.scale.z,
+	};
+	return rotate_euler(point, transform.rotation_euler) + transform.translation;
+}
+
+[[nodiscard]] std::array<float, 16> render_transform_from(
+		quader::document::Transform transform) noexcept {
+	const quader::math::Vec3 kColumn0 = rotate_euler({ transform.scale.x, 0.0F, 0.0F }, transform.rotation_euler);
+	const quader::math::Vec3 kColumn1 = rotate_euler({ 0.0F, transform.scale.y, 0.0F }, transform.rotation_euler);
+	const quader::math::Vec3 kColumn2 = rotate_euler({ 0.0F, 0.0F, transform.scale.z }, transform.rotation_euler);
+	return {
+		kColumn0.x,
+		kColumn0.y,
+		kColumn0.z,
+		0.0F,
+		kColumn1.x,
+		kColumn1.y,
+		kColumn1.z,
+		0.0F,
+		kColumn2.x,
+		kColumn2.y,
+		kColumn2.z,
+		0.0F,
+		transform.translation.x,
+		transform.translation.y,
+		transform.translation.z,
+		1.0F,
+	};
+}
+
+[[nodiscard]] crimson::RenderMeshHandle render_mesh_handle_for(
+		quader::document::ObjectId id) noexcept {
+	return crimson::RenderMeshHandle{ id.index() + 1U, id.generation() };
+}
+
+[[nodiscard]] crimson::RenderObjectId render_object_id_for(
+		quader::document::ObjectId id) noexcept {
+	return (static_cast<crimson::RenderObjectId>(id.generation()) << 32U) | static_cast<crimson::RenderObjectId>(id.index());
+}
+
+[[nodiscard]] std::uint64_t hash_combine(std::uint64_t seed, std::uint64_t value) noexcept {
+	return seed ^ (value + 0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U));
+}
+
+[[nodiscard]] std::uint64_t hash_float(float value) noexcept {
+	return std::bit_cast<std::uint32_t>(value);
+}
+
+void append_revision_point(std::uint64_t &hash, quader::math::Vec3 point) noexcept {
+	hash = hash_combine(hash, hash_float(point.x));
+	hash = hash_combine(hash, hash_float(point.y));
+	hash = hash_combine(hash, hash_float(point.z));
+}
+
+void append_upload_vertex(crimson::RenderMeshUpload &upload,
+		quader::math::Vec3 position,
+		quader::math::Vec3 normal) {
+	upload.position_normal_interleaved.push_back(position.x);
+	upload.position_normal_interleaved.push_back(position.y);
+	upload.position_normal_interleaved.push_back(position.z);
+	upload.position_normal_interleaved.push_back(normal.x);
+	upload.position_normal_interleaved.push_back(normal.y);
+	upload.position_normal_interleaved.push_back(normal.z);
+	upload.indices.push_back(static_cast<std::uint32_t>(upload.indices.size()));
+}
+
+[[nodiscard]] quader::math::Vec3 normalized_or(quader::math::Vec3 value,
+		quader::math::Vec3 fallback) noexcept {
+	const quader::math::Vec3 kNormalized = quader::math::normalized(value);
+	return quader::math::length_squared(kNormalized) <= quader::math::kDefaultEpsilon * quader::math::kDefaultEpsilon
+			? fallback
+			: kNormalized;
+}
+
+[[nodiscard]] crimson::RenderMeshRevision revision_for_mesh(
+		const quader::mesh::Polyhedron &mesh) {
+	std::uint64_t geometry_hash = 1469598103934665603ULL;
+	for (const auto kVertex : mesh.vertex_ids()) {
+		auto position = mesh.vertex_position(kVertex);
+		if (position) {
+			append_revision_point(geometry_hash, position.value());
+		}
+	}
+
+	std::uint64_t topology_hash = 1099511628211ULL;
+	for (const auto kFace : mesh.face_ids()) {
+		topology_hash = hash_combine(topology_hash, kFace.index());
+		auto vertices = quader::mesh::face_vertices(mesh, kFace);
+		if (vertices) {
+			topology_hash = hash_combine(topology_hash, vertices.value().size());
+			for (const auto kVertex : vertices.value()) {
+				topology_hash = hash_combine(topology_hash, kVertex.index());
+			}
+		}
+	}
+
+	return crimson::RenderMeshRevision{
+		.geometry_version = geometry_hash,
+		.topology_version = topology_hash,
+		.attribute_version = geometry_hash ^ topology_hash,
+	};
+}
+
+[[nodiscard]] std::optional<crimson::RenderMeshUpload> make_mesh_upload(
+		const quader::document::MeshObject &object) {
+	crimson::RenderMeshUpload upload;
+	upload.handle = render_mesh_handle_for(object.id);
+	upload.revision = revision_for_mesh(object.mesh);
+
+	for (const auto kVertex : object.mesh.vertex_ids()) {
+		auto position = object.mesh.vertex_position(kVertex);
+		if (!position) {
+			return std::nullopt;
+		}
+		quader::math::expand(upload.bounds, position.value());
+	}
+	if (quader::math::empty(upload.bounds)) {
+		return std::nullopt;
+	}
+
+	for (const auto kFace : object.mesh.face_ids()) {
+		auto face_vertices = quader::mesh::face_vertices(object.mesh, kFace);
+		if (!face_vertices || face_vertices.value().size() < 3U) {
+			continue;
+		}
+
+		std::vector<quader::math::Vec3> points;
+		points.reserve(face_vertices.value().size());
+		for (const auto kVertex : face_vertices.value()) {
+			auto position = object.mesh.vertex_position(kVertex);
+			if (!position) {
+				points.clear();
+				break;
+			}
+			points.push_back(position.value());
+		}
+		if (points.size() < 3U) {
+			continue;
+		}
+
+		const quader::math::Vec3 kNormal = normalized_or(
+				quader::geometry::polygon_normal(points),
+				{ 0.0F, 1.0F, 0.0F });
+		for (std::size_t index = 1U; index + 1U < points.size(); ++index) {
+			append_upload_vertex(upload, points[0], kNormal);
+			append_upload_vertex(upload, points[index], kNormal);
+			append_upload_vertex(upload, points[index + 1U], kNormal);
+		}
+	}
+
+	if (upload.indices.empty()) {
+		return std::nullopt;
+	}
+	return upload;
+}
+
+[[nodiscard]] quader::math::Aabb world_bounds_for(
+		const quader::document::MeshObject &object) {
+	quader::math::Aabb bounds;
+	for (const auto kVertex : object.mesh.vertex_ids()) {
+		auto position = object.mesh.vertex_position(kVertex);
+		if (position) {
+			quader::math::expand(bounds, transform_point(position.value(), object.transform));
+		}
+	}
+	return bounds;
 }
 
 [[nodiscard]] ViewportFrameStats viewport_frame_stats_from(const crimson::FrameStats &stats) noexcept {
@@ -155,6 +379,9 @@ ViewportDiagnosticsSnapshot viewport_diagnostics_from_crimson(
 class CrimsonViewportRenderHost final : public IViewportRenderHost {
 public:
 	CrimsonViewportRenderHost();
+	CrimsonViewportRenderHost(
+			const quader::document::Document &document,
+			const quader::tools::ToolManager &tool_manager);
 	~CrimsonViewportRenderHost() override;
 
 	[[nodiscard]] ViewportRenderResult initialize_surface(
@@ -184,13 +411,28 @@ private:
 			std::span<const ViewportPane> panes) const;
 	[[nodiscard]] std::vector<crimson::PickingRequest> make_picking_requests(
 			std::span<const ViewportPickRequest> requests) const;
+	void append_document_render_data(
+			std::vector<crimson::RenderMeshUpload> &mesh_uploads,
+			std::vector<crimson::RenderObject> &objects) const;
+	void append_tool_preview_overlays(
+			std::size_t view_count,
+			std::vector<crimson::OverlayCommand> &overlays,
+			std::vector<crimson::LineOverlaySegment> &line_payloads) const;
 
 	std::unique_ptr<crimson::Renderer> renderer_;
 	QString renderer_name_;
 	std::optional<ViewportFrameStats> latest_stats_;
+	const quader::document::Document *document_ = nullptr;
+	const quader::tools::ToolManager *tool_manager_ = nullptr;
 };
 
 CrimsonViewportRenderHost::CrimsonViewportRenderHost() = default;
+
+CrimsonViewportRenderHost::CrimsonViewportRenderHost(
+		const quader::document::Document &document,
+		const quader::tools::ToolManager &tool_manager) : document_(&document),
+														  tool_manager_(&tool_manager) {
+}
 
 CrimsonViewportRenderHost::~CrimsonViewportRenderHost() {
 	shutdown_surface();
@@ -242,10 +484,20 @@ ViewportRenderResult CrimsonViewportRenderHost::render_frame(const ViewportRende
 	const auto kCameras = make_cameras(request.cameras);
 	const auto kViews = make_views(request.panes);
 	const std::vector<crimson::PickingRequest> kPickingRequests = make_picking_requests(request.picking_requests);
+	std::vector<crimson::RenderMeshUpload> mesh_uploads;
+	std::vector<crimson::RenderObject> objects;
+	append_document_render_data(mesh_uploads, objects);
+	std::vector<crimson::OverlayCommand> overlays;
+	std::vector<crimson::LineOverlaySegment> line_overlay_payloads;
+	append_tool_preview_overlays(request.panes.size(), overlays, line_overlay_payloads);
 	const auto kFrame = crimson::PrototypeViewportFrame{
 		.target_extent = make_extent(request.surface_size, request.device_pixel_ratio),
 		.views = std::span<const crimson::PrototypeViewportView>(kViews.data(), request.panes.size()),
 		.cameras = std::span<const crimson::PrototypeCamera>(kCameras.data(), kCameras.size()),
+		.mesh_uploads = std::span<const crimson::RenderMeshUpload>(mesh_uploads.data(), mesh_uploads.size()),
+		.objects = std::span<const crimson::RenderObject>(objects.data(), objects.size()),
+		.overlays = std::span<const crimson::OverlayCommand>(overlays.data(), overlays.size()),
+		.line_overlay_payloads = std::span<const crimson::LineOverlaySegment>(line_overlay_payloads.data(), line_overlay_payloads.size()),
 		.picking_requests = std::span<const crimson::PickingRequest>(kPickingRequests.data(), kPickingRequests.size()),
 		.animation_enabled = request.prototype_animation_enabled,
 		.elapsed_seconds = request.elapsed_seconds,
@@ -384,8 +636,70 @@ std::vector<crimson::PickingRequest> CrimsonViewportRenderHost::make_picking_req
 	return result;
 }
 
+void CrimsonViewportRenderHost::append_document_render_data(
+		std::vector<crimson::RenderMeshUpload> &mesh_uploads,
+		std::vector<crimson::RenderObject> &objects) const {
+	if (document_ == nullptr) {
+		return;
+	}
+
+	const std::vector<quader::document::ObjectId> kObjectIds = document_->object_ids();
+	mesh_uploads.reserve(mesh_uploads.size() + kObjectIds.size());
+	objects.reserve(objects.size() + kObjectIds.size());
+	for (const quader::document::ObjectId kObjectId : kObjectIds) {
+		const quader::document::MeshObject *object = document_->find_mesh_object(kObjectId);
+		if (object == nullptr) {
+			continue;
+		}
+
+		std::optional<crimson::RenderMeshUpload> upload = make_mesh_upload(*object);
+		if (!upload) {
+			continue;
+		}
+
+		const crimson::RenderMeshHandle kMeshHandle = upload->handle;
+		const quader::math::Aabb kWorldBounds = world_bounds_for(*object);
+		if (quader::math::empty(kWorldBounds)) {
+			continue;
+		}
+
+		mesh_uploads.push_back(std::move(*upload));
+		objects.push_back(crimson::RenderObject{
+				.object_id = render_object_id_for(kObjectId),
+				.mesh = kMeshHandle,
+				.built_in_mesh = crimson::BuiltInRenderMesh::None,
+				.material = {},
+				.base_shader = crimson::BaseShaderId::OpaquePbr,
+				.world_from_object = render_transform_from(object->transform),
+				.world_bounds = kWorldBounds,
+				.queue = crimson::RenderQueue::Opaque,
+				.submesh_index = 0,
+				.visible = true,
+				.pickable = true,
+		});
+	}
+}
+
+void CrimsonViewportRenderHost::append_tool_preview_overlays(
+		std::size_t view_count,
+		std::vector<crimson::OverlayCommand> &overlays,
+		std::vector<crimson::LineOverlaySegment> &line_payloads) const {
+	if (tool_manager_ == nullptr) {
+		return;
+	}
+
+	const quader::tools::ToolPreview kPreview = tool_manager_->preview();
+	append_tool_preview_line_overlays(kPreview, view_count, overlays, line_payloads);
+}
+
 std::unique_ptr<IViewportRenderHost> create_crimson_viewport_render_host() {
 	return std::make_unique<CrimsonViewportRenderHost>();
+}
+
+std::unique_ptr<IViewportRenderHost> create_crimson_viewport_render_host(
+		const quader::document::Document &document,
+		const quader::tools::ToolManager &tool_manager) {
+	return std::make_unique<CrimsonViewportRenderHost>(document, tool_manager);
 }
 
 } // namespace quader::ui

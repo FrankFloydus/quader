@@ -1,6 +1,16 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/gpu/gpu_picking.hpp"
 
 #include "crimson/gpu/gpu_handles.hpp"
+#include "crimson/scene/render_camera_projection.hpp"
 
 #include <algorithm>
 #include <array>
@@ -30,38 +40,6 @@ constexpr bgfx::ViewId kPickingBlitViewId = 33;
 	return { value.x, value.y, value.z };
 }
 
-[[nodiscard]] bool homogeneous_depth() noexcept {
-	const bgfx::Caps *caps = bgfx::getCaps();
-	return caps != nullptr && caps->homogeneousDepth;
-}
-
-void build_camera_matrices(const RenderCamera &camera, float aspect, float *view_matrix, float *projection) {
-	bgfx::setViewMode(kPickingViewId, bgfx::ViewMode::Sequential);
-	bx::mtxLookAt(view_matrix, to_bx(camera.eye), to_bx(camera.target), to_bx(camera.up));
-	if (camera.projection == CameraProjection::Orthographic) {
-		const float kExtent = std::max(0.01F, camera.orthographic_height_m) * 0.5F;
-		bx::mtxOrtho(
-				projection,
-				-kExtent * aspect,
-				kExtent * aspect,
-				-kExtent,
-				kExtent,
-				camera.near_plane_m,
-				camera.far_plane_m,
-				0.0F,
-				homogeneous_depth());
-		return;
-	}
-
-	bx::mtxProj(
-			projection,
-			camera.vertical_fov_degrees,
-			aspect,
-			camera.near_plane_m,
-			camera.far_plane_m,
-			homogeneous_depth());
-}
-
 [[nodiscard]] float clamped_request_axis(std::uint16_t value, std::uint16_t start, std::uint16_t extent) noexcept {
 	if (extent == 0) {
 		return 0.0F;
@@ -74,30 +52,21 @@ void build_camera_matrices(const RenderCamera &camera, float aspect, float *view
 void configure_picking_view(const RenderView &view, const PickingRequest &request) {
 	const float kWidth = static_cast<float>(std::max<std::uint16_t>(1, view.rect.width));
 	const float kHeight = static_cast<float>(std::max<std::uint16_t>(1, view.rect.height));
-	const float kAspect = kWidth / kHeight;
-
-	float view_matrix[16];
-	float projection[16];
-	build_camera_matrices(view.camera, kAspect, view_matrix, projection);
-
-	float view_projection[16];
-	bx::mtxMul(view_projection, view_matrix, projection);
-
-	float inverse_view_projection[16];
-	bx::mtxInverse(inverse_view_projection, view_projection);
-
 	const float kRequestX = clamped_request_axis(request.x_px, view.rect.x, view.rect.width);
 	const float kRequestY = clamped_request_axis(request.y_px, view.rect.y, view.rect.height);
-	const float kMouseXNdc = (kRequestX / kWidth) * 2.0F - 1.0F;
-	const float kMouseYNdc = ((kHeight - kRequestY) / kHeight) * 2.0F - 1.0F;
 
-	const bx::Vec3 kPickEye = bx::mulH({ kMouseXNdc, kMouseYNdc, 0.0F }, inverse_view_projection);
-	const bx::Vec3 kPickAt = bx::mulH({ kMouseXNdc, kMouseYNdc, 1.0F }, inverse_view_projection);
+	const RenderCameraRay kPickRay = render_camera_ray_from_viewport_point(
+			view.camera,
+			RenderCameraViewportSize{ kWidth, kHeight },
+			quader::math::Vec2{ kRequestX, kRequestY },
+			current_render_homogeneous_depth());
+	const bx::Vec3 kPickEye = to_bx(kPickRay.origin);
+	const bx::Vec3 kPickAt = to_bx(kPickRay.origin + kPickRay.direction);
 
 	float pick_view[16];
 	float pick_projection[16];
 	bx::mtxLookAt(pick_view, kPickEye, kPickAt, to_bx(view.camera.up));
-	bx::mtxProj(pick_projection, 3.0F, 1.0F, view.camera.near_plane_m, view.camera.far_plane_m, homogeneous_depth());
+	bx::mtxProj(pick_projection, 3.0F, 1.0F, view.camera.near_plane_m, view.camera.far_plane_m, current_render_homogeneous_depth());
 
 	bgfx::setViewName(kPickingViewId, "PickingPass");
 	bgfx::setViewMode(kPickingViewId, bgfx::ViewMode::Sequential);
@@ -255,7 +224,7 @@ GpuPickingFrameResult GpuPicking::submit_frame_requests(
 		const FrameSnapshot &snapshot,
 		const GpuMeshCache &mesh_cache,
 		const GpuProgramCache &program_cache,
-		RenderMeshHandle fallback_mesh,
+		RenderMeshHandle unit_box_mesh,
 		RenderProgramHandle picking_program,
 		std::uint32_t completed_bgfx_frame) {
 	GpuPickingFrameResult result;
@@ -299,7 +268,11 @@ GpuPickingFrameResult GpuPicking::submit_frame_requests(
 			continue;
 		}
 
-		const RenderMeshHandle kMeshHandle = is_valid_handle(object.mesh) ? object.mesh : fallback_mesh;
+		if (!is_valid_handle(object.mesh) && object.built_in_mesh == BuiltInRenderMesh::None) {
+			continue;
+		}
+
+		const RenderMeshHandle kMeshHandle = is_valid_handle(object.mesh) ? object.mesh : unit_box_mesh;
 		const GpuMeshResource *mesh = mesh_cache.get(kMeshHandle);
 		if (mesh == nullptr || !mesh->valid()) {
 			continue;

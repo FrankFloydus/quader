@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #pragma once
 
 #include "ui/actions/editor_state_snapshot.hpp"
@@ -18,14 +27,18 @@ class PanelHost;
 class ViewportController;
 class ViewportWidget;
 
+/// Top-level Qt shell for menus, panels, status UI, and viewport hosting.
 class MainWindow final : public QMainWindow {
 	Q_OBJECT
 
 public:
+	/// Construct the main window over a non-owning UI context.
 	explicit MainWindow(UiContext &context, QWidget *parent = nullptr);
+	/// Destroy the viewport host and child widgets.
 	~MainWindow() override;
 
 protected:
+	/// Save workspace state before accepting close.
 	void closeEvent(QCloseEvent *event) override;
 
 private:

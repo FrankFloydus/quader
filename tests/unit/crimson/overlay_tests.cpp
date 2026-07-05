@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/frame/frame_builder.hpp"
 #include "crimson/frame/frame_targets.hpp"
 #include "crimson/graph/render_graph.hpp"
@@ -73,10 +82,10 @@ TEST(Overlay, PrototypeGridIsOverlayCommandNotLitObject) {
 	}
 
 	const crimson::FrameSnapshot kSnapshot = std::move(built).value();
-	expect_true(kSnapshot.objects().size() == 1, "prototype still has one lit render object");
-	expect_true(kSnapshot.objects()[0].queue == crimson::RenderQueue::Opaque, "prototype object remains opaque PBR");
+	expect_true(kSnapshot.objects().empty(), "empty document viewport has no default lit render object");
 	expect_true(kSnapshot.overlays().size() == 1, "prototype grid is emitted through overlay commands");
 	expect_true(kSnapshot.grid_overlay_payloads().size() == 1, "prototype grid payload is snapshot-owned");
+	expect_true(kSnapshot.line_overlay_payloads().empty(), "empty document viewport has no preview line payload");
 	expect_true(
 			kSnapshot.overlays()[0].primitive == crimson::OverlayPrimitive::Grid,
 			"prototype overlay command is a grid primitive");
@@ -138,6 +147,32 @@ TEST(Overlay, OverlaySystemBucketsGridCommandsByDepthMode) {
 	expect_true(
 			near(kLists.xray.grid_commands[0].minor_color_linear_sdr[3], 0.5F),
 			"prepared grid payload alpha honors overlay command opacity");
+}
+
+TEST(Overlay, OverlaySystemBucketsLineCommandsByDepthMode) {
+	std::array<crimson::LineOverlaySegment, 2> lines = {
+		crimson::LineOverlaySegment{ .start = { 0.0F, 0.0F, 0.0F }, .end = { 1.0F, 0.0F, 0.0F } },
+		crimson::LineOverlaySegment{ .start = { 1.0F, 0.0F, 0.0F }, .end = { 1.0F, 1.0F, 0.0F } },
+	};
+	std::array<crimson::OverlayCommand, 1> commands = {
+		crimson::OverlayCommand{
+				.view_index = 0,
+				.primitive = crimson::OverlayPrimitive::LineList,
+				.depth_mode = crimson::OverlayDepthMode::AlwaysOnTop,
+				.color_srgb = crimson::ColorSrgb{ 0.0F, 1.0F, 0.0F, 0.5F },
+				.opacity = 0.5F,
+				.payload_offset = 0,
+				.payload_count = 2,
+		},
+	};
+
+	const crimson::OverlayDrawLists kLists = crimson::OverlaySystem{}.prepare(commands, {}, lines);
+	expect_true(kLists.always_on_top.line_commands.size() == 1, "line command is bucketed by overlay depth mode");
+	expect_true(kLists.always_on_top.line_commands[0].segments.size() == 2, "line payload range is copied");
+	expect_true(
+			near(kLists.always_on_top.line_commands[0].color_linear_sdr[3], 0.25F),
+			"line overlay command alpha honors command opacity");
+	expect_true(kLists.command_count() == 2, "line draw lists retain command and line payload records");
 }
 
 TEST(Overlay, OverlayPassesStayAfterToneMapAndOutOfHdrSceneColor) {

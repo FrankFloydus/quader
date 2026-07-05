@@ -1,0 +1,23 @@
+/* Quader overrides for Doxygen Awesome.
+ *
+ * Keep this file narrow: Doxygen Awesome owns the palette, dark-mode variables,
+ * spacing, and most motion. These rules only remove the generated sidebar fade
+ * that repeats when static Doxygen pages navigate.
+ */
+
+html {
+    scrollbar-gutter: stable;
+}
+
+#side-nav,
+#nav-tree,
+#nav-tree-contents,
+#doc-content,
+#page-nav,
+#page-nav-tree,
+#page-nav-contents,
+.ui-resizable-e,
+#page-nav-resize-handle {
+    animation: none !important;
+    transition: none !important;
+}

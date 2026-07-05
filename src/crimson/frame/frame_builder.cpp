@@ -1,10 +1,17 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/frame/frame_builder.hpp"
 
 #include "crimson/overlays/grid_overlay.hpp"
 
 #include <algorithm>
-#include <array>
-#include <cmath>
 #include <cstddef>
 #include <string>
 #include <utility>
@@ -40,47 +47,6 @@ namespace {
 		.vertical_fov_degrees = camera.fov_degrees,
 		.orthographic_height_m = camera.orthographic_size,
 	};
-}
-
-[[nodiscard]] std::array<float, 16> rotation_xy(float x_radians, float y_radians) noexcept {
-	const float kSx = std::sin(x_radians);
-	const float kCx = std::cos(x_radians);
-	const float kSy = std::sin(y_radians);
-	const float kCy = std::cos(y_radians);
-
-	return {
-		kCy,
-		kSx * kSy,
-		-kCx * kSy,
-		0.0F,
-		0.0F,
-		kCx,
-		kSx,
-		0.0F,
-		kSy,
-		-kSx * kCy,
-		kCx * kCy,
-		0.0F,
-		0.0F,
-		0.0F,
-		0.0F,
-		1.0F,
-	};
-}
-
-[[nodiscard]] RenderObject make_prototype_cube(double elapsed_seconds, bool animation_enabled) {
-	const float kAnimationTime = animation_enabled ? static_cast<float>(elapsed_seconds) : 0.0F;
-	RenderObject object;
-	object.object_id = 1;
-	object.base_shader = BaseShaderId::OpaquePbr;
-	object.queue = RenderQueue::Opaque;
-	object.world_from_object = rotation_xy(kAnimationTime * 0.8F, kAnimationTime * 1.1F);
-	object.world_bounds = quader::math::Aabb{
-		.min = { -1.0F, -1.0F, -1.0F },
-		.max = { 1.0F, 1.0F, 1.0F },
-	};
-	object.visible = true;
-	return object;
 }
 
 } // namespace
@@ -126,7 +92,7 @@ quader::foundation::Result<FrameSnapshot, RendererDiagnostic> FrameBuilder::buil
 	}
 
 	std::vector<OverlayCommand> overlays;
-	overlays.reserve(views.size());
+	overlays.reserve(views.size() + frame.overlays.size());
 	std::vector<GridOverlayCommand> grid_overlay_payloads;
 	grid_overlay_payloads.reserve(views.size());
 	for (const RenderView &view : views) {
@@ -136,16 +102,19 @@ quader::foundation::Result<FrameSnapshot, RendererDiagnostic> FrameBuilder::buil
 				static_cast<std::uint32_t>(grid_overlay_payloads.size())));
 		grid_overlay_payloads.push_back(grid);
 	}
+	overlays.insert(overlays.end(), frame.overlays.begin(), frame.overlays.end());
 
-	std::vector<RenderObject> objects;
-	objects.push_back(make_prototype_cube(frame.elapsed_seconds, frame.animation_enabled));
+	std::vector<RenderMeshUpload> mesh_uploads(frame.mesh_uploads.begin(), frame.mesh_uploads.end());
+	std::vector<RenderObject> objects(frame.objects.begin(), frame.objects.end());
+	std::vector<LineOverlaySegment> line_overlay_payloads(
+			frame.line_overlay_payloads.begin(),
+			frame.line_overlay_payloads.end());
 
 	std::vector<RenderLight> lights;
 	lights.push_back(RenderLight{});
 
 	std::vector<PickingRequest> picking_requests(frame.picking_requests.begin(), frame.picking_requests.end());
 
-	// Preserve the non-physical prototype cube lighting until a later task gives the fixture physical luminance.
 	ViewportSettings viewport_settings;
 	viewport_settings.exposure_ev100 = 0.0F;
 
@@ -154,11 +123,13 @@ quader::foundation::Result<FrameSnapshot, RendererDiagnostic> FrameBuilder::buil
 			frame.elapsed_seconds,
 			frame.target_extent,
 			std::move(views),
+			std::move(mesh_uploads),
 			std::move(objects),
 			std::move(lights),
 			RenderEnvironment{},
 			std::move(overlays),
 			std::move(grid_overlay_payloads),
+			std::move(line_overlay_payloads),
 			std::move(picking_requests),
 			viewport_settings,
 			DebugViewMode::FinalColor,

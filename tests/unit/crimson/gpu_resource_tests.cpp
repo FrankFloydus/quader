@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/gpu/gpu_frame_resources.hpp"
 #include "crimson/gpu/gpu_resources.hpp"
 #include "crimson/gpu/gpu_view_policy.hpp"
@@ -116,6 +125,21 @@ TEST(GpuResource, ResourceTableAcceptsMoveOnlyRaiiResources) {
 	expect_true(FakeHandleTraits::last_destroyed == 31, "table destroy releases expected handle id");
 	expect_true(table.live_count() == 0, "table destroy decrements live count");
 	expect_true(table.get(kHandle) == nullptr, "destroyed public handle no longer resolves");
+}
+
+TEST(GpuResource, ResourceTableUpsertsCallerOwnedHandles) {
+	FakeHandleTraits::reset_counts();
+	crimson::gpu::GpuResourceTable<MoveOnlyResource, crimson::RenderMeshHandle> table;
+	const crimson::RenderMeshHandle kHandle{ 12, 3 };
+
+	expect_true(table.upsert(kHandle, MoveOnlyResource{ 41 }), "external handle upsert succeeds");
+	expect_true(table.live_count() == 1, "external handle upsert creates one live slot");
+	expect_true(table.get(kHandle) != nullptr, "external handle resolves after upsert");
+
+	expect_true(table.upsert(kHandle, MoveOnlyResource{ 42 }), "same external handle can replace resource");
+	expect_true(table.live_count() == 1, "external handle replacement keeps live count stable");
+	expect_true(FakeHandleTraits::destroy_count == 1, "replacement destroys previous resource");
+	expect_true(FakeHandleTraits::last_destroyed == 41, "replacement destroys expected resource");
 }
 
 TEST(GpuResource, FrameResourcesFollowRenderGraphTargetGenerations) {

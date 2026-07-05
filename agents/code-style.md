@@ -5,7 +5,8 @@ are the root `.clang-format` and `.clang-tidy` files.
 
 For C++ copyright headers and Doxygen/API documentation, read
 `agents/documentation-policy.md`; that policy is separate from clang-format and
-clang-tidy style.
+clang-tidy style. If a code change makes existing symbol documentation stale,
+update that documentation in the same edit.
 
 ## Required Read
 
@@ -13,6 +14,18 @@ Read this file before writing, modifying, reviewing, or planning non-trivial
 C++ source, tests, benchmarks, clang-format, clang-tidy, or style validation.
 If this guide and the clang files disagree, follow the clang files and update
 this guide in the same change.
+
+## Permission Lock
+
+Do not run clang-format, clang-tidy, `check_format`, `check_clang_tidy`,
+`check_static_analysis`, `tools/check_clang_format.py`,
+`tools/check_clang_tidy.py`, raw `clang-format`, raw `clang-tidy`, or any
+CTest/preset command that includes those gates unless the user gives immediate
+explicit permission in the current turn.
+
+A plan or checklist that lists these commands is not permission to run them.
+It is only a gated final-validation candidate unless it explicitly says
+`run now without asking`.
 
 ## Formatting
 
@@ -25,7 +38,7 @@ this guide in the same change.
   headers, then other system headers.
 - Do not align comments or operands manually when clang-format would undo it.
 
-Check formatting with:
+When explicitly authorized, check formatting with:
 
 ```powershell
 cmake --build --preset qt-mingw-debug --target check_format
@@ -43,7 +56,7 @@ Use the repository `.clang-tidy` profile. Important naming rules:
 - macros: `UPPER_CASE`
 - Qt event overrides keep Qt names, such as `resizeEvent` and `mousePressEvent`.
 
-Check tidy diagnostics with:
+When explicitly authorized, check tidy diagnostics with:
 
 ```powershell
 cmake --build --preset qt-mingw-debug --target check_clang_tidy
@@ -60,7 +73,7 @@ cmake --build --preset qt-mingw-debug --target check_clang_tidy
 - If enforcing the requested style causes broad churn or conflicts with an
   accepted plan, stop and report a `Workaround/Deviation Report`.
 
-Run the full static validation when style or quality-gate behavior changes:
+When explicitly authorized, run the full static validation when style or quality-gate behavior changes:
 
 ```powershell
 cmake --build --preset qt-mingw-debug --target check_static_analysis

@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/gpu/shader_library_runtime.hpp"
 
 #include <cstdint>
@@ -192,6 +201,8 @@ std::string_view shader_file_name(ShaderProgramId program, ShaderStage stage) no
 			return stage == ShaderStage::Vertex ? "transparent_pbr.vs.bin" : "transparent_pbr.fs.bin";
 		case ShaderProgramId::OverlayUnlit:
 			return stage == ShaderStage::Vertex ? "overlay_unlit.vs.bin" : "overlay_unlit.fs.bin";
+		case ShaderProgramId::OverlayLine:
+			return stage == ShaderStage::Vertex ? "overlay_line.vs.bin" : "overlay_line.fs.bin";
 		case ShaderProgramId::Picking:
 			return stage == ShaderStage::Vertex ? "picking.vs.bin" : "picking.fs.bin";
 	}

@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "ui/actions/action_state_updater.hpp"
 
 #include <QSignalBlocker>
@@ -55,11 +64,13 @@ void ActionStateUpdater::refresh_from_snapshot(const EditorStateSnapshot &snapsh
 	set_enabled(actions_, ActionId::MoveTool, kToolsEnabled);
 	set_enabled(actions_, ActionId::RotateTool, kToolsEnabled);
 	set_enabled(actions_, ActionId::ScaleTool, kToolsEnabled);
+	set_enabled(actions_, ActionId::BoxTool, kToolsEnabled);
 
 	set_checked(actions_, ActionId::SelectTool, kToolsEnabled && snapshot.active_tool == ActionId::SelectTool);
 	set_checked(actions_, ActionId::MoveTool, kToolsEnabled && snapshot.active_tool == ActionId::MoveTool);
 	set_checked(actions_, ActionId::RotateTool, kToolsEnabled && snapshot.active_tool == ActionId::RotateTool);
 	set_checked(actions_, ActionId::ScaleTool, kToolsEnabled && snapshot.active_tool == ActionId::ScaleTool);
+	set_checked(actions_, ActionId::BoxTool, kToolsEnabled && snapshot.active_tool == ActionId::BoxTool);
 
 	const bool kCreationEnabled = snapshot.has_active_document && snapshot.creation_available;
 	set_enabled(actions_, ActionId::CreateCube, kCreationEnabled);

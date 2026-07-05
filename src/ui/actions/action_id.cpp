@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "ui/actions/action_id.hpp"
 
 namespace quader::ui {
@@ -30,6 +39,8 @@ std::string_view action_id_name(ActionId id) noexcept {
 			return "RotateTool";
 		case ActionId::ScaleTool:
 			return "ScaleTool";
+		case ActionId::BoxTool:
+			return "BoxTool";
 		case ActionId::CreateCube:
 			return "CreateCube";
 		case ActionId::CreateLight:

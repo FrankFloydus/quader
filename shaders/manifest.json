@@ -99,6 +99,19 @@
       }
     },
     {
+      "id": "OverlayLine",
+      "stages": {
+        "vertex": {
+          "source": "overlay_line.vs.sc",
+          "output": "overlay_line.vs.bin"
+        },
+        "fragment": {
+          "source": "overlay_line.fs.sc",
+          "output": "overlay_line.fs.bin"
+        }
+      }
+    },
+    {
       "id": "Picking",
       "stages": {
         "vertex": {

@@ -28,6 +28,19 @@ below the requested scope, adding broad suppressions, changing style to match
 current code instead of the requested policy, or marking validation complete
 when the requested gate is not actually enforced.
 
+### Style/static-analysis run permission
+
+Do not run clang-format, clang-tidy, `check_format`, `check_clang_tidy`,
+`check_static_analysis`, `tools/check_clang_format.py`,
+`tools/check_clang_tidy.py`, raw `clang-format`, raw `clang-tidy`, or any
+CTest/preset command that includes those gates unless the user gives immediate
+explicit permission in the current turn.
+
+If a full CTest preset includes style/static-analysis tests, use targeted test
+binaries or targeted CTest selections instead. An architect plan or task
+verification checklist that lists style/static-analysis commands is not
+permission to run them unless it explicitly says `run now without asking`.
+
 ### What agents MUST test
 
 Prefer small, deterministic tests for pure logic and editor model behavior:

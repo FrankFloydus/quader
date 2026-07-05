@@ -1,0 +1,22 @@
+var searchData=
+[
+  ['b_0',['b',['../structcrimson_1_1_color_srgb.html#ab694a0ccda56cf567fc958352d8f5f0d',1,'crimson::ColorSrgb::b'],['../structcrimson_1_1_color_linear.html#a4bef48768189cd3ec96fc4ed22fe1054',1,'crimson::ColorLinear::b'],['../structcrimson_1_1_material_color_srgb.html#acd38590b7fcb3ce82fac5f46871423f8',1,'crimson::MaterialColorSrgb::b']]],
+  ['backend_1',['backend',['../classquader_1_1mesh_1_1detail_1_1_open_mesh_storage.html#aa664dbbfcaeb0d101fb1176211f776e2',1,'quader::mesh::detail::OpenMeshStorage']]],
+  ['backend_5fname_2',['backend_name',['../structcrimson_1_1_renderer_status.html#a07bd61b953e4f5a319fc8e6b50699b24',1,'crimson::RendererStatus']]],
+  ['backend_5fpreference_3',['backend_preference',['../structcrimson_1_1_renderer_config.html#a24a736fa9e9e09975d42858284e3f2f5',1,'crimson::RendererConfig']]],
+  ['base_5fcolor_4',['base_color',['../structquader_1_1document_1_1_pbr_material.html#af288f597cde6e7f27ea3611ececfe73e',1,'quader::document::PbrMaterial']]],
+  ['base_5fcolor_5ffactor_5',['base_color_factor',['../structquader_1_1io_1_1gltf_1_1_gltf_pbr_metallic_roughness.html#ad206d9486b99326b6d98da411306b446',1,'quader::io::gltf::GltfPbrMetallicRoughness']]],
+  ['base_5fcolor_5ffactor_5flinear_6',['base_color_factor_linear',['../structcrimson_1_1gpu_1_1_gpu_pbr_material_block.html#afd46759fd4b818a5e1be4e799c3a1e82',1,'crimson::gpu::GpuPbrMaterialBlock']]],
+  ['base_5fcolor_5ftexture_7',['base_color_texture',['../structquader_1_1io_1_1gltf_1_1_gltf_pbr_metallic_roughness.html#a08479adb802c48a3a0623235449b24f6',1,'quader::io::gltf::GltfPbrMetallicRoughness']]],
+  ['base_5fcolor_5funiform_8',['base_color_uniform',['../structcrimson_1_1gpu_1_1_gpu_material_cache_1_1_impl.html#a54cbd9447e68e23ec6bc74c03ca8c4ef',1,'crimson::gpu::GpuMaterialCache::Impl']]],
+  ['base_5fshader_9',['base_shader',['../structcrimson_1_1_overlay_command.html#aff22f9e74944f6bf8b5c04c6acf3731c',1,'crimson::OverlayCommand::base_shader'],['../structcrimson_1_1_draw_packet.html#ae7319b837c9f1c9f6339449231a9331a',1,'crimson::DrawPacket::base_shader'],['../structcrimson_1_1_instance_batch_key.html#ad7211c618ae2830d0347a712e0202708',1,'crimson::InstanceBatchKey::base_shader'],['../structcrimson_1_1_render_object.html#ae6bf00ba560ef2f042ea41d901ca7f01',1,'crimson::RenderObject::base_shader']]],
+  ['base_5fshader_5fid_10',['base_shader_id',['../structcrimson_1_1_material_instance.html#a081ebcd61400b660fdd2feb4ce03afb5',1,'crimson::MaterialInstance']]],
+  ['batch_5fcount_11',['batch_count',['../structcrimson_1_1_frame_instancing_stats.html#a808da302e35bed099a1a4bef4c671054',1,'crimson::FrameInstancingStats']]],
+  ['binding_5fname_12',['binding_name',['../structcrimson_1_1_material_ui_field_desc.html#af2b37629bfc7db8b4d0f6cf1c125a180',1,'crimson::MaterialUiFieldDesc']]],
+  ['blend_5fmode_13',['blend_mode',['../structcrimson_1_1_base_shader_definition.html#a90f859570ded080d994b0ee343e0f51e',1,'crimson::BaseShaderDefinition']]],
+  ['bounds_14',['bounds',['../structcrimson_1_1_render_mesh_upload_desc.html#ac1715abb7c1bb0ed714a1711783ecbfc',1,'crimson::RenderMeshUploadDesc::bounds'],['../structcrimson_1_1_render_mesh_upload.html#aa67feb03151912cd250a251397c7cda1',1,'crimson::RenderMeshUpload::bounds']]],
+  ['boxes_15',['boxes',['../structquader_1_1tools_1_1_tool_preview.html#a5c380e86fb5bbeee1d2e89243d547904',1,'quader::tools::ToolPreview']]],
+  ['built_5fin_5fmesh_16',['built_in_mesh',['../structcrimson_1_1_render_object.html#a9030821788101ba4ca8051e357c5699a',1,'crimson::RenderObject']]],
+  ['button_17',['button',['../structquader_1_1tools_1_1_pointer_event.html#ae4841fef144759e07fc51726287e37b4',1,'quader::tools::PointerEvent']]],
+  ['bytes_18',['bytes',['../structcrimson_1_1gpu_1_1_gpu_picking_1_1_impl_1_1_pending_readback.html#a7b5586afdbbb9a70aba99ea1c510c6bd',1,'crimson::gpu::GpuPicking::Impl::PendingReadback::bytes'],['../structcrimson_1_1_packed_picking_id_rgba8.html#a63ae6a7b3d18f0021cd91aad7b9b2c50',1,'crimson::PackedPickingIdRgba8::bytes']]]
+];

@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #pragma once
 
 #include "ui/panels/panel_context.hpp"
@@ -14,16 +23,21 @@ namespace quader::ui {
 
 class DiagnosticsItemModel;
 
+/// Dockable panel that displays renderer diagnostics and frame stats.
 class DiagnosticsPanel final : public QWidget {
 	Q_OBJECT
 
 public:
+	/// Construct the diagnostics panel with non-owning UI service context.
 	explicit DiagnosticsPanel(PanelContext context, QWidget *parent = nullptr);
 
+	/// Return the diagnostics model owned by the panel.
 	[[nodiscard]] DiagnosticsItemModel &model() noexcept;
+	/// Return the tree view owned by the panel.
 	[[nodiscard]] QTreeView &tree_view() noexcept;
 
 protected:
+	/// Refresh diagnostics when the panel is shown.
 	void showEvent(QShowEvent *event) override;
 
 private Q_SLOTS:

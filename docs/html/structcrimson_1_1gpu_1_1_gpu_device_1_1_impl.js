@@ -1,0 +1,26 @@
+var structcrimson_1_1gpu_1_1_gpu_device_1_1_impl =
+[
+    [ "completed_bgfx_frame", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a44f216f115face17d0c36a4ab7266371", null ],
+    [ "default_opaque_material", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#ada5db9c4e195998facbf02eab55b7556", null ],
+    [ "frame_index", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#abe895d0c15e33d270e9cdff530261924", null ],
+    [ "frame_resources", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a8e88b4c195f65653743f16b89da46374", null ],
+    [ "last_stats_seconds", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a7472c3046be2468b97a55fe1ad90b4ee", null ],
+    [ "latest_frame_stats", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#af22a9b3b3ba3d3657a3d9277db89f25d", null ],
+    [ "latest_pass_stats", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a0f41974cb0e85d4f99cc60c3d6079ae4", null ],
+    [ "material_cache", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a3ff60b5592fe03ba84890748a4090251", null ],
+    [ "material_system", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a548d28bc19db72dbbbbbae1628a08c28", null ],
+    [ "mesh_cache", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a52aec743ea262d62695a33090e60a53c", null ],
+    [ "overlay_line_program", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a5f5b33d4c3b64766a3e03c18fd5ead23", null ],
+    [ "overlay_program", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a8b63028cdd3965de00ac03f48e0f3b79", null ],
+    [ "overlay_renderer", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a7a44185b9f34ee396571d475c095e823", null ],
+    [ "picking", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a1bff974294b2c4c0f75e51b30e31ab42", null ],
+    [ "picking_program", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#ae49faa924a5517b567699bd8920b6c69", null ],
+    [ "post_resources", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a68892fc026f45bfe3f3cda12d07e6495", null ],
+    [ "present_program", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#ac0527144683aff896bff9c505f3fac79", null ],
+    [ "previous_runtime_upload_stats", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a7a625cae91b9cb49d24027bf4bfa812d", null ],
+    [ "program_cache", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a72e6923e1e18a59135452094f9c2c6c0", null ],
+    [ "prototype_resources", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a7d27e48b56d27e5baf27ef24de58910c", null ],
+    [ "stats_frame_count", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a4b7ad140b9b0da3a161ba2b222a0d6cc", null ],
+    [ "tone_map_program", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a90d646a58d569b0763871dcfc722a83a", null ],
+    [ "unit_box_mesh", "structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a102404f7a39b8c8bb0d8bbe331acb815", null ]
+];

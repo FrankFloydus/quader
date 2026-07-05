@@ -1,17 +1,35 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "../document/document_test_helpers.hpp"
 
 #include <gtest/gtest.h>
 
 #include "commands/document_commands.hpp"
 #include "foundation/logging.hpp"
+#include "geometry/normals.hpp"
+#include "mesh/core/mesh_traversal.hpp"
+#include "mesh/core/mesh_validation.hpp"
+#include "tools/box_tool.hpp"
 #include "tools/tool_manager.hpp"
 
+#include <algorithm>
+#include <array>
+#include <limits>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -34,6 +52,121 @@ DocumentSemanticState capture_tool_state(const quader::document::Document &docum
 
 bool vec2_exactly_equal(quader::math::Vec2 left, quader::math::Vec2 right) {
 	return left.x == right.x && left.y == right.y;
+}
+
+quader::math::Vec3 average_points(std::span<const quader::math::Vec3> points) {
+	quader::math::Vec3 average;
+	for (quader::math::Vec3 point : points) {
+		average = average + point;
+	}
+	return points.empty() ? average : average / static_cast<float>(points.size());
+}
+
+std::vector<quader::math::Vec3> face_points(
+		const quader::mesh::Polyhedron &mesh,
+		quader::mesh::FaceId face) {
+	auto vertices = quader::mesh::face_vertices(mesh, face);
+	EXPECT_TRUE(vertices);
+	std::vector<quader::math::Vec3> points;
+	if (!vertices) {
+		return points;
+	}
+
+	points.reserve(vertices.value().size());
+	for (const quader::mesh::VertexId kVertex : vertices.value()) {
+		auto position = mesh.vertex_position(kVertex);
+		EXPECT_TRUE(position);
+		if (position) {
+			points.push_back(position.value());
+		}
+	}
+	return points;
+}
+
+quader::math::Vec3 mesh_center(const quader::mesh::Polyhedron &mesh) {
+	std::vector<quader::math::Vec3> points;
+	points.reserve(mesh.vertex_count());
+	for (const quader::mesh::VertexId kVertex : mesh.vertex_ids()) {
+		auto position = mesh.vertex_position(kVertex);
+		EXPECT_TRUE(position);
+		if (position) {
+			points.push_back(position.value());
+		}
+	}
+	return average_points(points);
+}
+
+void expect_ground_box_faces_oriented_outward(const quader::mesh::Polyhedron &mesh) {
+	const quader::math::Vec3 kCenter = mesh_center(mesh);
+	int up_faces = 0;
+	int down_faces = 0;
+	for (const quader::mesh::FaceId kFace : mesh.face_ids()) {
+		const std::vector<quader::math::Vec3> kPoints = face_points(mesh, kFace);
+		ASSERT_GE(kPoints.size(), 3U);
+		const quader::math::Vec3 kNormal = quader::geometry::polygon_normal(kPoints);
+		const quader::math::Vec3 kFaceCenter = average_points(kPoints);
+		EXPECT_GT(quader::math::dot(kNormal, kFaceCenter - kCenter), 0.0F);
+
+		const quader::math::Vec3 kUnitNormal = quader::math::normalized(kNormal);
+		if (quader::math::dot(kUnitNormal, { 0.0F, 1.0F, 0.0F }) > 0.999F) {
+			++up_faces;
+		}
+		if (quader::math::dot(kUnitNormal, { 0.0F, -1.0F, 0.0F }) > 0.999F) {
+			++down_faces;
+		}
+	}
+	EXPECT_EQ(up_faces, 1);
+	EXPECT_EQ(down_faces, 1);
+}
+
+quader::tools::PointerEvent grid_event(quader::math::Vec3 point,
+		quader::math::Vec2 screen,
+		quader::tools::PointerPhase phase,
+		quader::tools::PointerButton button = quader::tools::PointerButton::None,
+		bool pressed = false) {
+	return quader::tools::PointerEvent{
+		.position = screen,
+		.button = button,
+		.pressed = pressed,
+		.phase = phase,
+		.snap_to_grid = true,
+		.grid_size = 1.0F,
+		.ray = quader::tools::ViewportRay{
+				.origin = point + quader::math::Vec3{ 0.0F, 10.0F, 0.0F },
+				.direction = { 0.0F, -1.0F, 0.0F },
+		},
+	};
+}
+
+quader::tools::PointerEvent surface_event(quader::math::Vec3 point,
+		quader::math::Vec3 normal,
+		quader::math::Vec2 screen,
+		quader::tools::PointerPhase phase,
+		quader::tools::PointerButton button = quader::tools::PointerButton::None,
+		bool pressed = false,
+		std::optional<quader::tools::ViewportRay> ray = std::nullopt) {
+	return quader::tools::PointerEvent{
+		.position = screen,
+		.button = button,
+		.pressed = pressed,
+		.phase = phase,
+		.snap_to_grid = true,
+		.grid_size = 1.0F,
+		.ray = ray,
+		.surface_hit = quader::tools::SurfaceHit{
+				.position = point,
+				.normal = normal,
+				.object_id = 7,
+				.kind = quader::tools::SurfaceHitKind::Face,
+		},
+	};
+}
+
+quader::tools::ViewportRay x_axis_ray_to(quader::math::Vec3 point_on_x_plane) {
+	return quader::tools::ViewportRay{
+		.origin = { 0.0F, point_on_x_plane.y, point_on_x_plane.z },
+		.direction = { 1.0F, 0.0F, 0.0F },
+	};
 }
 
 class RecordingTool final : public quader::tools::ITool {
@@ -229,6 +362,10 @@ TEST(ToolManager, ToolCommitsDocumentChangesOnlyThroughCommandHistory) {
 
 	quader::commands::CommandHistory history;
 	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	int applied_callback_count = 0;
+	manager.context().set_after_command_applied([&applied_callback_count]() {
+		++applied_callback_count;
+	});
 
 	auto tool = std::make_unique<RecordingTool>(quader::tools::ToolId::Select, fixture.object);
 	auto *recording_tool = tool.get();
@@ -242,6 +379,7 @@ TEST(ToolManager, ToolCommitsDocumentChangesOnlyThroughCommandHistory) {
 	}));
 	EXPECT_EQ(capture_tool_state(fixture.document), kBefore);
 	EXPECT_FALSE(history.can_undo());
+	EXPECT_EQ(applied_callback_count, 0);
 
 	EXPECT_TRUE(manager.dispatch_key_event(quader::tools::KeyEvent{ 13, true, false }));
 	if (!recording_tool->last_command_status.has_value()) {
@@ -251,6 +389,7 @@ TEST(ToolManager, ToolCommitsDocumentChangesOnlyThroughCommandHistory) {
 	EXPECT_EQ(*recording_tool->last_command_status, quader::commands::CommandStatus::Applied);
 	EXPECT_TRUE(history.can_undo());
 	EXPECT_EQ(history.undo_name(), std::string_view("Rename Object"));
+	EXPECT_EQ(applied_callback_count, 1);
 
 	const auto kAfter = capture_tool_state(fixture.document);
 	EXPECT_EQ(kAfter.objects.size(), 1U);
@@ -314,6 +453,267 @@ TEST(ToolManager, SwitchingAndCancelSemanticsAreExplicit) {
 	manager.clear_active_tool();
 	EXPECT_EQ(move->deactivations, 1);
 	EXPECT_FALSE(manager.dispatch_key_event(quader::tools::KeyEvent{ 27, true, false }));
+}
+
+TEST(BoxTool, HoverShowsSnappedFootprintInSourceView) {
+	quader::document::Document document;
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::BoxTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Box));
+
+	auto event = grid_event({ 0.2F, 0.0F, 0.3F },
+			{ 12.0F, 16.0F },
+			quader::tools::PointerPhase::Hover);
+	event.view_index = 2;
+	EXPECT_TRUE(manager.dispatch_pointer_event(event));
+
+	const auto kPreview = manager.preview();
+	EXPECT_TRUE(kPreview.active);
+	EXPECT_TRUE(kPreview.overlay_only);
+	ASSERT_TRUE(kPreview.view_index.has_value());
+	EXPECT_EQ(*kPreview.view_index, 2U);
+	EXPECT_EQ(kPreview.world_segments.size(), 4U);
+	EXPECT_TRUE(kPreview.boxes.empty());
+	EXPECT_EQ(document.object_count(), 0U);
+	EXPECT_FALSE(history.can_undo());
+}
+
+TEST(BoxTool, GroundPlaneBasisMatchesReferenceSignedParity) {
+	const quader::tools::BoxConstructionPlane kPlane = quader::tools::make_box_construction_plane(
+			{ 0.0F, 0.0F, 0.0F },
+			{ 0.0F, 1.0F, 0.0F });
+
+	EXPECT_TRUE(quader::math::nearly_equal(kPlane.axis_u, quader::math::Vec3{ 1.0F, 0.0F, 0.0F }));
+	EXPECT_TRUE(quader::math::nearly_equal(kPlane.axis_v, quader::math::Vec3{ 0.0F, 0.0F, -1.0F }));
+}
+
+TEST(BoxTool, GridFootprintReleaseCommitsDefaultHeightThroughCommandHistory) {
+	quader::document::Document document;
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::BoxTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Box));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(grid_event({ 0.2F, 0.0F, 0.3F },
+			{ 10.0F, 100.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true)));
+	EXPECT_TRUE(manager.dispatch_pointer_event(grid_event({ 2.2F, 0.0F, 3.2F },
+			{ 40.0F, 100.0F },
+			quader::tools::PointerPhase::Move)));
+	const auto kPreview = manager.preview();
+	EXPECT_TRUE(kPreview.active);
+	EXPECT_TRUE(kPreview.overlay_only);
+	EXPECT_EQ(kPreview.world_segments.size(), 4U);
+	ASSERT_EQ(kPreview.boxes.size(), 1U);
+	EXPECT_TRUE(kPreview.boxes.front().active);
+	EXPECT_TRUE(manager.dispatch_pointer_event(grid_event({ 2.2F, 0.0F, 3.2F },
+			{ 40.0F, 100.0F },
+			quader::tools::PointerPhase::Release,
+			quader::tools::PointerButton::Left,
+			false)));
+
+	ASSERT_EQ(document.object_count(), 1U);
+	EXPECT_TRUE(history.can_undo());
+	EXPECT_TRUE(manager.preview().empty());
+	const auto kIds = document.object_ids();
+	ASSERT_EQ(kIds.size(), 1U);
+	const auto *object = document.find_mesh_object(kIds.front());
+	ASSERT_TRUE(object != nullptr);
+	EXPECT_EQ(object->name, std::string("Box"));
+	EXPECT_EQ(object->material, quader::document::default_box_material());
+	EXPECT_EQ(object->mesh.vertex_count(), 8U);
+	EXPECT_EQ(object->mesh.edge_count(), 12U);
+	EXPECT_EQ(object->mesh.face_count(), 6U);
+	float max_y = -std::numeric_limits<float>::infinity();
+	for (const auto kVertex : object->mesh.vertex_ids()) {
+		max_y = std::max(max_y, object->mesh.vertex_position(kVertex).value().y);
+	}
+	EXPECT_TRUE(quader::math::nearly_equal(max_y, 1.0F));
+	EXPECT_TRUE(quader::mesh::validate_mesh(object->mesh).ok());
+
+	auto result = history.undo(document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	EXPECT_EQ(document.object_count(), 0U);
+}
+
+TEST(BoxTool, GridFootprintDragDirectionsCommitOutwardNormals) {
+	const quader::math::Vec3 kStart{ 0.2F, 0.0F, 0.2F };
+	const std::array<quader::math::Vec3, 4> kEnds{
+		quader::math::Vec3{ 2.2F, 0.0F, 2.2F },
+		quader::math::Vec3{ -2.2F, 0.0F, 2.2F },
+		quader::math::Vec3{ 2.2F, 0.0F, -2.2F },
+		quader::math::Vec3{ -2.2F, 0.0F, -2.2F },
+	};
+
+	for (const quader::math::Vec3 kEnd : kEnds) {
+		SCOPED_TRACE(::testing::Message() << "end " << kEnd.x << ", " << kEnd.y << ", " << kEnd.z);
+		quader::document::Document document;
+		quader::commands::CommandHistory history;
+		quader::tools::ToolManager manager{ quader::tools::ToolContext{ document, history } };
+		EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::BoxTool>()));
+		EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Box));
+
+		EXPECT_TRUE(manager.dispatch_pointer_event(grid_event(kStart,
+				{ 10.0F, 100.0F },
+				quader::tools::PointerPhase::Press,
+				quader::tools::PointerButton::Left,
+				true)));
+		EXPECT_TRUE(manager.dispatch_pointer_event(grid_event(kEnd,
+				{ 40.0F, 100.0F },
+				quader::tools::PointerPhase::Move)));
+		EXPECT_TRUE(manager.dispatch_pointer_event(grid_event(kEnd,
+				{ 40.0F, 100.0F },
+				quader::tools::PointerPhase::Release,
+				quader::tools::PointerButton::Left,
+				false)));
+
+		ASSERT_EQ(document.object_count(), 1U);
+		const auto kIds = document.object_ids();
+		ASSERT_EQ(kIds.size(), 1U);
+		const auto *object = document.find_mesh_object(kIds.front());
+		ASSERT_TRUE(object != nullptr);
+		EXPECT_TRUE(quader::mesh::validate_mesh(object->mesh).ok());
+		expect_ground_box_faces_oriented_outward(object->mesh);
+	}
+}
+
+TEST(BoxTool, SecondClickWhileDraggingCommitsFootprint) {
+	quader::document::Document document;
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::BoxTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Box));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(grid_event({ 0.0F, 0.0F, 0.0F },
+			{ 10.0F, 100.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true)));
+	EXPECT_TRUE(manager.dispatch_pointer_event(grid_event({ 1.2F, 0.0F, 1.2F },
+			{ 24.0F, 100.0F },
+			quader::tools::PointerPhase::Move)));
+	EXPECT_TRUE(manager.dispatch_pointer_event(grid_event({ 1.2F, 0.0F, 1.2F },
+			{ 24.0F, 100.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true)));
+
+	EXPECT_EQ(document.object_count(), 1U);
+	EXPECT_TRUE(history.can_undo());
+	EXPECT_TRUE(manager.preview().empty());
+}
+
+TEST(BoxTool, SurfaceHitSeedsVerticalConstructionPlane) {
+	quader::document::Document document;
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::BoxTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Box));
+
+	const quader::math::Vec3 kNormal{ -1.0F, 0.0F, 0.0F };
+	EXPECT_TRUE(manager.dispatch_pointer_event(surface_event({ 5.0F, 0.2F, 0.2F },
+			kNormal,
+			{ 10.0F, 90.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true,
+			x_axis_ray_to({ 5.0F, 0.2F, 0.2F }))));
+	EXPECT_TRUE(manager.dispatch_pointer_event(surface_event({ 5.0F, 2.2F, 3.2F },
+			kNormal,
+			{ 40.0F, 90.0F },
+			quader::tools::PointerPhase::Move,
+			quader::tools::PointerButton::None,
+			false,
+			x_axis_ray_to({ 5.0F, 2.2F, 3.2F }))));
+	EXPECT_TRUE(manager.dispatch_pointer_event(surface_event({ 5.0F, 2.2F, 3.2F },
+			kNormal,
+			{ 40.0F, 90.0F },
+			quader::tools::PointerPhase::Release,
+			quader::tools::PointerButton::Left,
+			false,
+			x_axis_ray_to({ 5.0F, 2.2F, 3.2F }))));
+	const auto *box_tool = static_cast<const quader::tools::BoxTool *>(manager.active_tool());
+	ASSERT_TRUE(box_tool != nullptr);
+	EXPECT_EQ(box_tool->state().stage, quader::tools::BoxToolStage::Idle);
+	EXPECT_TRUE(manager.preview().empty());
+	ASSERT_EQ(document.object_count(), 1U);
+	const auto kIds = document.object_ids();
+	const auto *object = document.find_mesh_object(kIds.front());
+	ASSERT_TRUE(object != nullptr);
+	float min_x = std::numeric_limits<float>::infinity();
+	float max_x = -std::numeric_limits<float>::infinity();
+	for (const auto kVertex : object->mesh.vertex_ids()) {
+		const auto kPosition = object->mesh.vertex_position(kVertex).value();
+		min_x = std::min(min_x, kPosition.x);
+		max_x = std::max(max_x, kPosition.x);
+	}
+	EXPECT_TRUE(quader::math::nearly_equal(min_x, 4.0F));
+	EXPECT_TRUE(quader::math::nearly_equal(max_x, 5.0F));
+}
+
+TEST(BoxTool, ActiveVerticalSurfaceDragIgnoresLaterSurfaceHits) {
+	quader::document::Document document;
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::BoxTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Box));
+
+	const quader::math::Vec3 kNormal{ -1.0F, 0.0F, 0.0F };
+	EXPECT_TRUE(manager.dispatch_pointer_event(surface_event({ 5.0F, 0.2F, 0.2F },
+			kNormal,
+			{ 10.0F, 90.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true,
+			x_axis_ray_to({ 5.0F, 0.2F, 0.2F }))));
+
+	const quader::tools::PointerEvent kMoveWithDistractingHit = surface_event({ 5.0F, 0.2F, 3.2F },
+			kNormal,
+			{ 40.0F, 90.0F },
+			quader::tools::PointerPhase::Move,
+			quader::tools::PointerButton::None,
+			false,
+			x_axis_ray_to({ 5.0F, 2.2F, 3.2F }));
+	EXPECT_TRUE(manager.dispatch_pointer_event(kMoveWithDistractingHit));
+	EXPECT_TRUE(manager.dispatch_pointer_event(surface_event({ 5.0F, 0.2F, 3.2F },
+			kNormal,
+			{ 40.0F, 90.0F },
+			quader::tools::PointerPhase::Release,
+			quader::tools::PointerButton::Left,
+			false,
+			x_axis_ray_to({ 5.0F, 2.2F, 3.2F }))));
+
+	ASSERT_EQ(document.object_count(), 1U);
+	const auto kIds = document.object_ids();
+	const auto *object = document.find_mesh_object(kIds.front());
+	ASSERT_TRUE(object != nullptr);
+	float max_y = -std::numeric_limits<float>::infinity();
+	for (const auto kVertex : object->mesh.vertex_ids()) {
+		max_y = std::max(max_y, object->mesh.vertex_position(kVertex).value().y);
+	}
+	EXPECT_TRUE(quader::math::nearly_equal(max_y, 3.0F));
+}
+
+TEST(BoxTool, EscapeCancelClearsPreviewWithoutMutatingDocument) {
+	quader::document::Document document;
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::BoxTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Box));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(grid_event({ 0.0F, 0.0F, 0.0F },
+			{ 10.0F, 100.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true)));
+	EXPECT_FALSE(manager.preview().empty());
+	EXPECT_TRUE(manager.dispatch_key_event(quader::tools::KeyEvent{ 27, true, false }));
+	EXPECT_TRUE(manager.preview().empty());
+	EXPECT_EQ(document.object_count(), 0U);
+	EXPECT_FALSE(history.can_undo());
 }
 
 } // namespace

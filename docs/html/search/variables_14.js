@@ -1,0 +1,20 @@
+var searchData=
+[
+  ['u_5faxis_0',['u_axis',['../structcrimson_1_1_grid_overlay_command.html#ad58ccb444f9a87f36cdb06f6238c95a9',1,'crimson::GridOverlayCommand']]],
+  ['ui_1',['ui',['../structquader_1_1ui_1_1_panel_context.html#aa8695970f6ee36c3d3f14de862187046',1,'quader::ui::PanelContext']]],
+  ['ui_5fcontext_2',['ui_context',['../structquader_1_1app_1_1_app_services.html#a48094197cab492eebedf928043e110b5',1,'quader::app::AppServices']]],
+  ['ui_5fschema_3',['ui_schema',['../structcrimson_1_1_base_shader_definition.html#a2b5adabded8165a47d44309cd5f22f44',1,'crimson::BaseShaderDefinition']]],
+  ['undo_5ftext_4',['undo_text',['../structquader_1_1ui_1_1_editor_state_snapshot.html#ac9e7e17ce9465e380048a6fe283b6900',1,'quader::ui::EditorStateSnapshot']]],
+  ['unit_5',['unit',['../structcrimson_1_1_renderer_counter.html#ad7584683319038ddd398e773e58bdd30',1,'crimson::RendererCounter::unit'],['../structquader_1_1ui_1_1_viewport_renderer_counter.html#aec91edaf0cf85bb50ae5b774cf01cf06',1,'quader::ui::ViewportRendererCounter::unit']]],
+  ['unit_5fbox_5fmesh_6',['unit_box_mesh',['../structcrimson_1_1gpu_1_1_gpu_device_1_1_impl.html#a102404f7a39b8c8bb0d8bbe331acb815',1,'crimson::gpu::GpuDevice::Impl']]],
+  ['unsupported_5fextensions_7',['unsupported_extensions',['../structquader_1_1io_1_1gltf_1_1_gltf_material_source.html#a838136aefb9ac8c34b9879495dc2a5eb',1,'quader::io::gltf::GltfMaterialSource']]],
+  ['up_8',['up',['../structcrimson_1_1_camera_frustum.html#a9c5ed5651705645cef17c60c5ea20d88',1,'crimson::CameraFrustum::up'],['../structcrimson_1_1_prototype_camera.html#a6f28c349c911d90b67eee0786664d11c',1,'crimson::PrototypeCamera::up'],['../structcrimson_1_1_render_camera.html#acc13e9f18716f54c5668a20f5b3be278',1,'crimson::RenderCamera::up'],['../structquader_1_1ui_1_1_viewport_camera_state.html#a783cb324054428be44fa278f9c523483',1,'quader::ui::ViewportCameraState::up'],['../structquader_1_1ui_1_1_viewport_camera_pose.html#a982278bdf94e6f344bd962f08b2f9c33',1,'quader::ui::ViewportCameraPose::up'],['../structquader_1_1ui_1_1_viewport_camera_snapshot.html#ac413692709880a985e1adb494d2ba599',1,'quader::ui::ViewportCameraSnapshot::up']]],
+  ['upload_5fstats_9',['upload_stats',['../structcrimson_1_1gpu_1_1_gpu_material_cache_1_1_impl.html#acff26bda8bc2f6377b65cf0b6a1f63fe',1,'crimson::gpu::GpuMaterialCache::Impl']]],
+  ['uploaded_5findex_5fbytes_10',['uploaded_index_bytes',['../structcrimson_1_1_frame_upload_stats.html#a15fc8c0ed7ced31dad4939c2bc40495d',1,'crimson::FrameUploadStats::uploaded_index_bytes'],['../structcrimson_1_1_frame_stats.html#a5b0ceca202306aff190f53d828b848d9',1,'crimson::FrameStats::uploaded_index_bytes']]],
+  ['uploaded_5frevision_11',['uploaded_revision',['../structcrimson_1_1_render_mesh_upload_record.html#a5d5c97bd46e7c9918535d298ea936619',1,'crimson::RenderMeshUploadRecord']]],
+  ['uploaded_5ftexture_5fbytes_12',['uploaded_texture_bytes',['../structcrimson_1_1_frame_upload_stats.html#a3fa6b81b3bffc189803d63a46439dba2',1,'crimson::FrameUploadStats']]],
+  ['uploaded_5fvertex_5fbytes_13',['uploaded_vertex_bytes',['../structcrimson_1_1_frame_upload_stats.html#a18f70417aa1b071f97320cffd540e957',1,'crimson::FrameUploadStats::uploaded_vertex_bytes'],['../structcrimson_1_1_frame_stats.html#aa21ee0a6250d957862e13ae2229db7bf',1,'crimson::FrameStats::uploaded_vertex_bytes']]],
+  ['uploads_14',['uploads',['../structcrimson_1_1_frame_stats.html#a0d5126bdbab6f76fce5af3b72e97d1f0',1,'crimson::FrameStats::uploads'],['../structcrimson_1_1_frame_stats_input.html#a2a1cd8390fea8ed4efee340391aae002',1,'crimson::FrameStatsInput::uploads']]],
+  ['uv_5ftransform_5f0_15',['uv_transform_0',['../structcrimson_1_1gpu_1_1_gpu_pbr_material_block.html#a4fa760864bf3bdf64b165c9a4961aaab',1,'crimson::gpu::GpuPbrMaterialBlock']]],
+  ['uv_5ftransform_5funiform_16',['uv_transform_uniform',['../structcrimson_1_1gpu_1_1_gpu_material_cache_1_1_impl.html#a01573267a098f7ff234a5b5d58219f82',1,'crimson::gpu::GpuMaterialCache::Impl']]]
+];

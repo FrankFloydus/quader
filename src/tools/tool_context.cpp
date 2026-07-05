@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "tools/tool_context.hpp"
 
 #include <utility>
@@ -24,7 +33,15 @@ const quader::commands::CommandHistory &ToolContext::command_history() const noe
 
 quader::commands::CommandResult ToolContext::execute_command(
 		std::unique_ptr<quader::commands::ICommand> command) {
-	return command_history_.execute(std::move(command), document_);
+	auto result = command_history_.execute(std::move(command), document_);
+	if (result.is_applied() && after_command_applied_) {
+		after_command_applied_();
+	}
+	return result;
+}
+
+void ToolContext::set_after_command_applied(std::function<void()> callback) {
+	after_command_applied_ = std::move(callback);
 }
 
 } // namespace quader::tools

@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/frame/frame_builder.hpp"
 #include "crimson/scene/render_world.hpp"
 
@@ -85,12 +94,11 @@ TEST(FrameSnapshot, BuilderFreezesPrototypeFrameIntoImmutableSnapshot) {
 	expect_true(snapshot.views()[0].rect.width == 320, "snapshot view rect is immutable from source changes");
 	expect_true(snapshot.views()[0].camera.eye.x == 0.0F, "snapshot camera is immutable from source changes");
 	expect_true(snapshot.elapsed_seconds() == 2.0, "snapshot keeps copied elapsed seconds");
-	expect_true(snapshot.objects().size() == 1, "prototype snapshot contains one prepared object");
-	expect_true(
-			snapshot.objects()[0].base_shader == crimson::BaseShaderId::OpaquePbr && snapshot.objects()[0].queue == crimson::RenderQueue::Opaque,
-			"prototype cube is prepared as an OpaquePbr render object");
+	expect_true(snapshot.objects().empty(), "empty prototype frame has no default render object");
+	expect_true(snapshot.mesh_uploads().empty(), "empty prototype frame has no mesh uploads");
 	expect_true(snapshot.overlays().size() == 1, "prototype snapshot contains one overlay command");
 	expect_true(snapshot.grid_overlay_payloads().size() == 1, "prototype snapshot contains one grid overlay payload");
+	expect_true(snapshot.line_overlay_payloads().empty(), "empty prototype frame has no line overlay payload");
 	expect_true(snapshot.picking_requests().size() == 1, "prototype snapshot copies picking requests");
 	expect_true(snapshot.picking_requests()[0].x_px == 12, "picking request is immutable from source changes");
 	expect_true(
@@ -102,9 +110,91 @@ TEST(FrameSnapshot, BuilderFreezesPrototypeFrameIntoImmutableSnapshot) {
 	expect_true(
 			snapshot.overlays()[0].payload_offset == 0 && snapshot.overlays()[0].payload_count == 1,
 			"grid overlay command points at immutable grid payload data");
-	expect_true(
-			snapshot.objects()[0].world_from_object != crimson::identity_transform(),
-			"animated prototype object has a prepared transform");
+}
+
+TEST(FrameSnapshot, BuilderCopiesCallerRenderObjectsAndOverlayPayloads) {
+	std::array<crimson::PrototypeCamera, 1> cameras = { make_camera() };
+	std::array<crimson::PrototypeViewportView, 1> views = {
+		crimson::PrototypeViewportView{
+				.rect = crimson::PrototypeViewportRect{ 0, 0, 320, 200 },
+				.camera_index = 0,
+				.debug_name = "Perspective",
+		},
+	};
+	crimson::RenderMeshUpload upload;
+	upload.handle = crimson::RenderMeshHandle{ 7, 2 };
+	upload.revision = crimson::RenderMeshRevision{ 1, 2, 3 };
+	upload.position_normal_interleaved = {
+		0.0F,
+		0.0F,
+		0.0F,
+		0.0F,
+		1.0F,
+		0.0F,
+		1.0F,
+		0.0F,
+		0.0F,
+		0.0F,
+		1.0F,
+		0.0F,
+		0.0F,
+		1.0F,
+		0.0F,
+		0.0F,
+		1.0F,
+		0.0F,
+	};
+	upload.indices = { 0, 1, 2 };
+	upload.bounds = quader::math::Aabb{ .min = { 0.0F, 0.0F, 0.0F }, .max = { 1.0F, 1.0F, 0.0F } };
+	std::array<crimson::RenderMeshUpload, 1> uploads = { upload };
+	std::array<crimson::RenderObject, 1> objects = {
+		crimson::RenderObject{
+				.object_id = 99,
+				.mesh = crimson::RenderMeshHandle{ 7, 2 },
+				.base_shader = crimson::BaseShaderId::OpaquePbr,
+				.world_bounds = quader::math::Aabb{ .min = { 0.0F, 0.0F, 0.0F }, .max = { 1.0F, 1.0F, 1.0F } },
+				.queue = crimson::RenderQueue::Opaque,
+		},
+	};
+	std::array<crimson::LineOverlaySegment, 1> lines = {
+		crimson::LineOverlaySegment{ .start = { 0.0F, 0.0F, 0.0F }, .end = { 1.0F, 0.0F, 0.0F } },
+	};
+	std::array<crimson::OverlayCommand, 1> overlays = {
+		crimson::OverlayCommand{
+				.view_index = 0,
+				.primitive = crimson::OverlayPrimitive::LineList,
+				.depth_mode = crimson::OverlayDepthMode::AlwaysOnTop,
+				.payload_offset = 0,
+				.payload_count = 1,
+		},
+	};
+	crimson::PrototypeViewportFrame frame{
+		.target_extent = crimson::ViewportExtent{ 640, 480, 1.0F },
+		.views = views,
+		.cameras = cameras,
+		.mesh_uploads = uploads,
+		.objects = objects,
+		.overlays = overlays,
+		.line_overlay_payloads = lines,
+	};
+
+	const crimson::FrameBuilder kBuilder;
+	auto built = kBuilder.build_prototype_snapshot(frame);
+	expect_true(built.has_value(), "valid frame with caller render data builds");
+	if (!built) {
+		return;
+	}
+
+	crimson::FrameSnapshot snapshot = std::move(built).value();
+	objects[0].object_id = 1;
+	uploads[0].indices[0] = 2;
+	lines[0].end.x = 5.0F;
+
+	expect_true(snapshot.mesh_uploads().size() == 1, "snapshot copies mesh upload payloads");
+	expect_true(snapshot.mesh_uploads()[0].indices[0] == 0, "mesh upload indices are immutable from source changes");
+	expect_true(snapshot.objects().size() == 1 && snapshot.objects()[0].object_id == 99, "snapshot copies caller render objects");
+	expect_true(snapshot.line_overlay_payloads().size() == 1, "snapshot copies line overlay payloads");
+	expect_true(snapshot.line_overlay_payloads()[0].end.x == 1.0F, "line overlay payload is immutable from source changes");
 }
 
 TEST(FrameSnapshot, RenderWorldStoresPreparedObjectsById) {

@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "ui/qt_app/main_window.hpp"
 
 #include "ui/actions/action_registry.hpp"
@@ -6,6 +15,7 @@
 #include "ui/panels/panel_host.hpp"
 #include "ui/panels/properties_panel.hpp"
 #include "ui/panels/scene_panel.hpp"
+#include "ui/services/document_ui_controller.hpp"
 #include "ui/services/import_ui_controller.hpp"
 #include "ui/services/notification_service.hpp"
 #include "ui/services/settings_service.hpp"
@@ -86,6 +96,7 @@ void MainWindow::build_menus() {
 	tools_menu->addAction(&context_.actions.action(ActionId::MoveTool));
 	tools_menu->addAction(&context_.actions.action(ActionId::RotateTool));
 	tools_menu->addAction(&context_.actions.action(ActionId::ScaleTool));
+	tools_menu->addAction(&context_.actions.action(ActionId::BoxTool));
 
 	auto *create_menu = menuBar()->addMenu(QStringLiteral("&Create"));
 	create_menu->addAction(&context_.actions.action(ActionId::CreateCube));
@@ -107,9 +118,9 @@ void MainWindow::build_menus() {
 }
 
 void MainWindow::build_central_area() {
-	viewport_render_host_ = create_crimson_viewport_render_host();
+	viewport_render_host_ = create_crimson_viewport_render_host(context_.documents.document(), context_.tools);
 	context_.viewport_diagnostics.attach_render_host(*viewport_render_host_);
-	viewport_controller_ = std::make_unique<ViewportController>(*viewport_render_host_);
+	viewport_controller_ = std::make_unique<ViewportController>(*viewport_render_host_, context_.tools);
 	viewport_ = new ViewportWidget(*viewport_controller_, this);
 	setCentralWidget(viewport_);
 }

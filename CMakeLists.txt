@@ -245,20 +245,32 @@ target_link_libraries(modeling_mesh_core
 
 quader_apply_compile_definitions(modeling_mesh_core)
 
-quader_add_interface_module(modeling_mesh_ops)
+add_library(modeling_mesh_ops STATIC
+    src/mesh/ops/box_builder.cpp
+    src/mesh/ops/box_builder.hpp
+)
+
+target_include_directories(modeling_mesh_ops
+    PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+
 target_link_libraries(modeling_mesh_ops
-    INTERFACE
+    PUBLIC
         modeling_foundation
         modeling_math
         modeling_geometry
         modeling_mesh_core
 )
 
+quader_apply_compile_definitions(modeling_mesh_ops)
+
 add_library(modeling_document STATIC
     src/document/document.cpp
     src/document/document.hpp
     src/document/document_error.hpp
     src/document/document_events.hpp
+    src/document/material.hpp
     src/document/object_id.hpp
     src/document/object_store.cpp
     src/document/object_store.hpp
@@ -346,6 +358,8 @@ target_link_libraries(modeling_commands
 quader_apply_compile_definitions(modeling_commands)
 
 add_library(modeling_tools STATIC
+    src/tools/box_tool.cpp
+    src/tools/box_tool.hpp
     src/tools/editor_input_event.hpp
     src/tools/tool.cpp
     src/tools/tool.hpp
@@ -441,6 +455,8 @@ add_library(crimson STATIC
     src/crimson/post/tone_mapping.cpp
     src/crimson/post/tone_mapping.hpp
     src/crimson/scene/render_camera.hpp
+    src/crimson/scene/render_camera_projection.cpp
+    src/crimson/scene/render_camera_projection.hpp
     src/crimson/scene/render_environment.hpp
     src/crimson/scene/render_light.hpp
     src/crimson/scene/render_object.hpp
@@ -470,6 +486,7 @@ add_library(crimson STATIC
     src/crimson/gpu/gpu_resources.hpp
     src/crimson/gpu/gpu_runtime_resources.hpp
     src/crimson/gpu/gpu_view_policy.hpp
+    src/crimson/gpu/render_camera_projection_runtime.cpp
     src/crimson/gpu/shader_library.cpp
     src/crimson/gpu/shader_library.hpp
     src/crimson/gpu/shader_library_runtime.hpp
@@ -571,6 +588,8 @@ add_library(modeling_ui STATIC
     src/ui/style/ui_metrics.hpp
     src/ui/viewport/crimson_viewport_render_host.cpp
     src/ui/viewport/crimson_viewport_render_host.hpp
+    src/ui/viewport/tool_preview_overlay_adapter.cpp
+    src/ui/viewport/tool_preview_overlay_adapter.hpp
     src/ui/viewport/viewport_camera_controller.cpp
     src/ui/viewport/viewport_camera_controller.hpp
     src/ui/viewport/viewport_controller.cpp
@@ -750,6 +769,17 @@ if(BUILD_TESTING)
     )
 
     quader_discover_gtests(mesh_core_tests)
+
+    add_executable(mesh_ops_tests
+        tests/unit/mesh/mesh_ops_tests.cpp
+    )
+
+    target_link_libraries(mesh_ops_tests
+        PRIVATE
+            modeling_mesh_ops
+    )
+
+    quader_discover_gtests(mesh_ops_tests)
 
     add_executable(document_tests
         tests/unit/document/document_test_helpers.hpp
@@ -1210,6 +1240,8 @@ set(SHADER_SOURCE_FILES
     "${SHADER_SOURCE_DIR}/common/color_space.sh"
     "${SHADER_SOURCE_DIR}/fs_cube.sc"
     "${SHADER_SOURCE_DIR}/fs_grid.sc"
+    "${SHADER_SOURCE_DIR}/overlay_line.fs.sc"
+    "${SHADER_SOURCE_DIR}/overlay_line.vs.sc"
     "${SHADER_SOURCE_DIR}/pbr/alpha_cutout_pbr.fs.sc"
     "${SHADER_SOURCE_DIR}/pbr/alpha_cutout_pbr.vs.sc"
     "${SHADER_SOURCE_DIR}/pbr/opaque_pbr.fs.sc"

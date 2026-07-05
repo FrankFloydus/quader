@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/gpu/gpu_material_cache.hpp"
 #include "crimson/gpu/gpu_pbr_pass.hpp"
 #include "crimson/material/base_shader_registry.hpp"
@@ -328,21 +337,25 @@ TEST(MaterialSystem, PbrPacketPreparationBucketsAndSortsDrawPackets) {
 			materials.create_default_material(crimson::BaseShaderId::AlphaCutoutPbr).value();
 	const crimson::RenderMaterialHandle kTransparent =
 			materials.create_default_material(crimson::BaseShaderId::TransparentPbr).value();
+	const crimson::RenderMeshHandle kMesh{ 1, 1 };
 
 	crimson::RenderObject opaque_object;
 	opaque_object.object_id = 1;
+	opaque_object.mesh = kMesh;
 	opaque_object.material = kOpaque;
 	opaque_object.base_shader = crimson::BaseShaderId::OpaquePbr;
 	opaque_object.queue = crimson::RenderQueue::Opaque;
 
 	crimson::RenderObject cutout_object;
 	cutout_object.object_id = 2;
+	cutout_object.mesh = kMesh;
 	cutout_object.material = kCutout;
 	cutout_object.base_shader = crimson::BaseShaderId::AlphaCutoutPbr;
 	cutout_object.queue = crimson::RenderQueue::AlphaCutout;
 
 	crimson::RenderObject transparent_a;
 	transparent_a.object_id = 4;
+	transparent_a.mesh = kMesh;
 	transparent_a.material = kTransparent;
 	transparent_a.base_shader = crimson::BaseShaderId::TransparentPbr;
 	transparent_a.queue = crimson::RenderQueue::Transparent;

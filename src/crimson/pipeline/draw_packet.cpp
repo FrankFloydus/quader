@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/pipeline/draw_packet.hpp"
 
 #include "crimson/pipeline/draw_packet_sort.hpp"
@@ -30,15 +39,18 @@ namespace {
 		const RenderObject &object,
 		const BaseShaderDefinition &definition,
 		RenderMaterialHandle material,
-		RenderMeshHandle fallback_mesh,
+		RenderMeshHandle unit_box_mesh,
 		const RenderCamera &camera) {
 	const RenderQueue kQueue = object.queue == RenderQueue::PrototypeOpaque
 			? RenderQueue::Opaque
 			: object.queue;
+	const RenderMeshHandle kMesh = is_valid_handle(object.mesh)	 ? object.mesh
+			: object.built_in_mesh == BuiltInRenderMesh::UnitBox ? unit_box_mesh
+																 : RenderMeshHandle{};
 
 	return DrawPacket{
 		.object_id = object.object_id,
-		.mesh = is_valid_handle(object.mesh) ? object.mesh : fallback_mesh,
+		.mesh = kMesh,
 		.material = material,
 		.base_shader = definition.id,
 		.queue = kQueue,
@@ -62,7 +74,7 @@ DrawPacketBuildResult build_draw_packets(
 		const BaseShaderRegistry &registry,
 		const MaterialSystem &materials,
 		const RenderCamera &camera,
-		RenderMeshHandle fallback_mesh,
+		RenderMeshHandle unit_box_mesh,
 		RenderMaterialHandle fallback_material,
 		float view_aspect_ratio) {
 	DrawPacketBuildResult result;
@@ -95,8 +107,11 @@ DrawPacketBuildResult build_draw_packets(
 		if (definition->domain != RenderDomain::LitSurface && definition->domain != RenderDomain::TransparentSurface) {
 			continue;
 		}
+		if (!is_valid_handle(object.mesh) && object.built_in_mesh == BuiltInRenderMesh::None) {
+			continue;
+		}
 
-		DrawPacket packet = packet_from_object(object, *definition, kMaterial, fallback_mesh, camera);
+		DrawPacket packet = packet_from_object(object, *definition, kMaterial, unit_box_mesh, camera);
 		switch (packet.queue) {
 			case RenderQueue::Opaque:
 				result.opaque.push_back(packet);

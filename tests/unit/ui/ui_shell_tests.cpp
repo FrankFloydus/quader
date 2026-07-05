@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "ui/actions/action_registry.hpp"
 #include "ui/actions/action_state_updater.hpp"
 #include "ui/actions/editor_state_snapshot.hpp"
@@ -23,6 +32,7 @@
 #include "document/document.hpp"
 #include "io/import_export_registry.hpp"
 #include "io/import_service.hpp"
+#include "tools/tool_manager.hpp"
 
 #include <QAbstractItemModel>
 #include <QApplication>
@@ -44,7 +54,7 @@
 
 namespace {
 
-constexpr std::array<quader::ui::ActionId, 24> kStandardActions = {
+constexpr std::array<quader::ui::ActionId, 25> kStandardActions = {
 	quader::ui::ActionId::NewScene,
 	quader::ui::ActionId::OpenScene,
 	quader::ui::ActionId::SaveScene,
@@ -58,6 +68,7 @@ constexpr std::array<quader::ui::ActionId, 24> kStandardActions = {
 	quader::ui::ActionId::MoveTool,
 	quader::ui::ActionId::RotateTool,
 	quader::ui::ActionId::ScaleTool,
+	quader::ui::ActionId::BoxTool,
 	quader::ui::ActionId::CreateCube,
 	quader::ui::ActionId::CreateLight,
 	quader::ui::ActionId::CreateCamera,
@@ -76,6 +87,7 @@ struct UiFixture {
 	QSettings settings_store;
 	quader::document::Document document;
 	quader::commands::CommandHistory command_history;
+	quader::tools::ToolManager tool_manager;
 	quader::io::ImportExportRegistry io_registry;
 	quader::io::ImportService import_service;
 	quader::ui::ActionRegistry actions;
@@ -89,7 +101,7 @@ struct UiFixture {
 	quader::ui::ImportUiController import_ui;
 	quader::ui::UiContext context;
 
-	UiFixture() : settings_store(settings_dir.path() + QStringLiteral("/settings.ini"), QSettings::IniFormat), import_service(io_registry), action_state_updater(actions, editor_state), settings(settings_store), document_ui(document, command_history, action_state_updater, notifications), import_ui(file_dialogs, io_registry, import_service, notifications), context{
+	UiFixture() : settings_store(settings_dir.path() + QStringLiteral("/settings.ini"), QSettings::IniFormat), tool_manager(quader::tools::ToolContext{ document, command_history }), import_service(io_registry), action_state_updater(actions, editor_state), settings(settings_store), document_ui(document, command_history, action_state_updater, notifications), import_ui(file_dialogs, io_registry, import_service, notifications), context{
 				actions,
 				action_state_updater,
 				editor_state,
@@ -98,6 +110,7 @@ struct UiFixture {
 				document_ui,
 				import_ui,
 				viewport_diagnostics,
+				tool_manager,
 			} {
 		quader::ui::register_standard_actions(actions);
 		action_state_updater.refresh();

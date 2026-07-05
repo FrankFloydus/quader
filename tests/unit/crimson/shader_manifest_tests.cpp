@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "crimson/gpu/shader_library.hpp"
 
 #include <gtest/gtest.h>
@@ -98,6 +107,13 @@ TEST(ShaderManifest, RuntimeLookupPointsToCompiledTargetFolders) {
 			crimson::gpu::ShaderTarget::Vulkan,
 			"vulkan/overlay_unlit.fs.bin",
 			"OverlayUnlit shader path uses the Vulkan compiled target folder");
+
+	expect_shader_path(library,
+			crimson::ShaderProgramId::OverlayLine,
+			crimson::gpu::ShaderStage::Vertex,
+			crimson::gpu::ShaderTarget::Direct3D12,
+			"dx12/overlay_line.vs.bin",
+			"OverlayLine shader path uses the Direct3D12 compiled target folder");
 
 	expect_shader_path(library,
 			crimson::ShaderProgramId::Picking,

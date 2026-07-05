@@ -1,3 +1,12 @@
+/*
+ * This file is part of Quader.
+ *
+ * Copyright (c) 2026 Francesco Di Blasi.
+ * All rights reserved.
+ *
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * in whole or in part, is prohibited without prior written permission.
+ */
 #include "ui/viewport/viewport_widget.hpp"
 
 #include <QCursor>
@@ -145,13 +154,13 @@ void ViewportWidget::mousePressEvent(QMouseEvent *event) {
 		}
 	}
 
-	controller_.handle_mouse_press(
+	const bool kHandled = controller_.handle_mouse_press(
 			mouse_button_from(event->button()),
 			viewport_point_from(event->position() * devicePixelRatioF()),
 			event->modifiers().testFlag(Qt::ShiftModifier),
 			pixel_size());
 
-	if (event->button() == Qt::MiddleButton || event->button() == Qt::RightButton) {
+	if (kHandled || event->button() == Qt::MiddleButton || event->button() == Qt::RightButton) {
 		event->accept();
 		return;
 	}
@@ -166,8 +175,7 @@ void ViewportWidget::mouseMoveEvent(QMouseEvent *event) {
 		return;
 	}
 
-	if (controller_.navigation_mode() != NavigationMode::None) {
-		controller_.handle_mouse_move(viewport_point_from(event->position() * devicePixelRatioF()), pixel_size());
+	if (controller_.handle_mouse_move(viewport_point_from(event->position() * devicePixelRatioF()), pixel_size())) {
 		event->accept();
 		return;
 	}
@@ -184,8 +192,10 @@ void ViewportWidget::mouseReleaseEvent(QMouseEvent *event) {
 		return;
 	}
 
-	if (controller_.navigation_mode() != NavigationMode::None) {
-		controller_.handle_mouse_release(mouse_button_from(event->button()));
+	if (controller_.handle_mouse_release(
+				mouse_button_from(event->button()),
+				viewport_point_from(event->position() * devicePixelRatioF()),
+				pixel_size())) {
 		event->accept();
 		return;
 	}
@@ -213,12 +223,18 @@ void ViewportWidget::wheelEvent(QWheelEvent *event) {
 }
 
 void ViewportWidget::keyPressEvent(QKeyEvent *event) {
-	controller_.handle_key(key_from(event->key()), true, event->isAutoRepeat());
+	if (controller_.handle_key(key_from(event->key()), true, event->isAutoRepeat())) {
+		event->accept();
+		return;
+	}
 	QWidget::keyPressEvent(event);
 }
 
 void ViewportWidget::keyReleaseEvent(QKeyEvent *event) {
-	controller_.handle_key(key_from(event->key()), false, event->isAutoRepeat());
+	if (controller_.handle_key(key_from(event->key()), false, event->isAutoRepeat())) {
+		event->accept();
+		return;
+	}
 	QWidget::keyReleaseEvent(event);
 }
 
@@ -307,6 +323,8 @@ ViewportKey ViewportWidget::key_from(int key) const noexcept {
 			return ViewportKey::S;
 		case Qt::Key_D:
 			return ViewportKey::D;
+		case Qt::Key_Escape:
+			return ViewportKey::Escape;
 		default:
 			return ViewportKey::Other;
 	}
