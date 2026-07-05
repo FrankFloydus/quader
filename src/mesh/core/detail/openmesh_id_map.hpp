@@ -10,21 +10,21 @@ namespace quader::mesh::detail {
 
 template <class Handle>
 struct OpenMeshIdSlot {
-    quader::foundation::IdGeneration generation = 1;
-    bool alive = false;
-    Handle handle;
+	quader::foundation::IdGeneration generation = 1;
+	bool alive = false;
+	Handle handle{ -1 };
 };
 
 template <class Handle>
 struct OpenMeshReverseMap {
-    std::vector<quader::foundation::IdIndex> handle_to_slot;
+	std::vector<quader::foundation::IdIndex> handle_to_slot;
 };
 
 struct OpenMeshEdgeSlot {
-    quader::foundation::IdGeneration generation = 1;
-    bool alive = false;
-    QuaderOpenMesh::EdgeHandle handle;
-    HalfedgeId representative_halfedge;
+	quader::foundation::IdGeneration generation = 1;
+	bool alive = false;
+	QuaderOpenMesh::EdgeHandle handle{ -1 };
+	HalfedgeId representative_halfedge;
 };
 
 } // namespace quader::mesh::detail

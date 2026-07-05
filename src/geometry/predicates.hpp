@@ -7,15 +7,14 @@
 
 namespace quader::geometry {
 
-[[nodiscard]] inline bool all_points_finite(std::span<const quader::math::Vec3> points) noexcept
-{
-    for (const auto point : points) {
-        if (!quader::math::is_finite(point)) {
-            return false;
-        }
-    }
+[[nodiscard]] inline bool all_points_finite(std::span<const quader::math::Vec3> points) noexcept {
+	for (const auto kPoint : points) {
+		if (!quader::math::is_finite(kPoint)) {
+			return false;
+		}
+	}
 
-    return true;
+	return true;
 }
 
 } // namespace quader::geometry

@@ -9,13 +9,13 @@ namespace quader::io {
 
 class ExportService final {
 public:
-    explicit ExportService(const ImportExportRegistry& registry);
+	explicit ExportService(const ImportExportRegistry &registry);
 
-    [[nodiscard]] quader::foundation::Result<ExportResult, IoError> export_file(
-        const ExportRequest& request) const;
+	[[nodiscard]] quader::foundation::Result<ExportResult, IoError> export_file(
+			const ExportRequest &request) const;
 
 private:
-    const ImportExportRegistry& registry_;
+	const ImportExportRegistry &registry_;
 };
 
 } // namespace quader::io

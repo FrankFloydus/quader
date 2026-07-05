@@ -9,17 +9,17 @@ namespace quader::tools {
 
 class ITool {
 public:
-    virtual ~ITool() = default;
+	virtual ~ITool() = default;
 
-    [[nodiscard]] virtual ToolId id() const noexcept = 0;
+	[[nodiscard]] virtual ToolId id() const noexcept = 0;
 
-    virtual void activate(ToolContext& context);
-    virtual void deactivate(ToolContext& context);
-    virtual void cancel(ToolContext& context);
+	virtual void activate(ToolContext &context);
+	virtual void deactivate(ToolContext &context);
+	virtual void cancel(ToolContext &context);
 
-    [[nodiscard]] virtual bool on_pointer_event(const PointerEvent& event, ToolContext& context);
-    [[nodiscard]] virtual bool on_key_event(const KeyEvent& event, ToolContext& context);
-    [[nodiscard]] virtual ToolPreview preview() const;
+	[[nodiscard]] virtual bool on_pointer_event(const PointerEvent &event, ToolContext &context);
+	[[nodiscard]] virtual bool on_key_event(const KeyEvent &event, ToolContext &context);
+	[[nodiscard]] virtual ToolPreview preview() const;
 };
 
 } // namespace quader::tools

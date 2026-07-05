@@ -10,10 +10,21 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_PREFIX_PATH": "C:/Qt/6.11.1/mingw_64",
         "CMAKE_C_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/gcc.exe",
-        "CMAKE_CXX_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/g++.exe"
+        "CMAKE_CXX_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/g++.exe",
+        "QUADER_ENABLE_BENCHMARKS": "OFF"
       },
       "environment": {
         "PATH": "C:/Qt/Tools/mingw1310_64/bin;C:/Qt/6.11.1/mingw_64/bin;$penv{PATH}"
+      }
+    },
+    {
+      "name": "qt-mingw-debug-sccache",
+      "displayName": "Qt MinGW Debug with sccache",
+      "inherits": "qt-mingw-debug",
+      "binaryDir": "${sourceDir}/build/qt-mingw-debug-sccache",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache"
       }
     },
     {
@@ -25,7 +36,8 @@
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_PREFIX_PATH": "C:/Qt/6.11.1/mingw_64",
         "CMAKE_C_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/gcc.exe",
-        "CMAKE_CXX_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/g++.exe"
+        "CMAKE_CXX_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/g++.exe",
+        "QUADER_ENABLE_BENCHMARKS": "OFF"
       },
       "environment": {
         "PATH": "C:/Qt/Tools/mingw1310_64/bin;C:/Qt/6.11.1/mingw_64/bin;$penv{PATH}"
@@ -35,11 +47,77 @@
   "buildPresets": [
     {
       "name": "qt-mingw-debug",
-      "configurePreset": "qt-mingw-debug"
+      "configurePreset": "qt-mingw-debug",
+      "targets": [
+        "quader_app_runtime"
+      ],
+      "jobs": 20
+    },
+    {
+      "name": "qt-mingw-debug-deploy",
+      "configurePreset": "qt-mingw-debug",
+      "targets": [
+        "deploy"
+      ],
+      "jobs": 20
+    },
+    {
+      "name": "qt-mingw-debug-tests",
+      "configurePreset": "qt-mingw-debug",
+      "targets": [
+        "quader_tests"
+      ],
+      "jobs": 20
+    },
+    {
+      "name": "qt-mingw-debug-full",
+      "configurePreset": "qt-mingw-debug",
+      "jobs": 20
+    },
+    {
+      "name": "qt-mingw-debug-sccache",
+      "configurePreset": "qt-mingw-debug-sccache",
+      "targets": [
+        "quader_app_runtime"
+      ],
+      "jobs": 20
     },
     {
       "name": "qt-mingw-release",
-      "configurePreset": "qt-mingw-release"
+      "configurePreset": "qt-mingw-release",
+      "targets": [
+        "deploy"
+      ],
+      "jobs": 20
+    },
+    {
+      "name": "qt-mingw-release-runtime",
+      "configurePreset": "qt-mingw-release",
+      "targets": [
+        "quader_app_runtime"
+      ],
+      "jobs": 20
+    },
+    {
+      "name": "qt-mingw-release-deploy",
+      "configurePreset": "qt-mingw-release",
+      "targets": [
+        "deploy"
+      ],
+      "jobs": 20
+    },
+    {
+      "name": "qt-mingw-release-tests",
+      "configurePreset": "qt-mingw-release",
+      "targets": [
+        "quader_tests"
+      ],
+      "jobs": 20
+    },
+    {
+      "name": "qt-mingw-release-full",
+      "configurePreset": "qt-mingw-release",
+      "jobs": 20
     }
   ],
   "testPresets": [

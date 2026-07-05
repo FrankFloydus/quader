@@ -9,13 +9,13 @@ namespace quader::io {
 
 class ImportService final {
 public:
-    explicit ImportService(const ImportExportRegistry& registry);
+	explicit ImportService(const ImportExportRegistry &registry);
 
-    [[nodiscard]] quader::foundation::Result<ImportResult, IoError> import_file(
-        const ImportRequest& request) const;
+	[[nodiscard]] quader::foundation::Result<ImportResult, IoError> import_file(
+			const ImportRequest &request) const;
 
 private:
-    const ImportExportRegistry& registry_;
+	const ImportExportRegistry &registry_;
 };
 
 } // namespace quader::io

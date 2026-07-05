@@ -15,20 +15,20 @@
 namespace quader::io::gltf {
 
 struct TextureSlotMapping {
-    std::string slot_name;
-    GltfTextureRef source;
-    crimson::TextureColorSpace expected_color_space = crimson::TextureColorSpace::Linear;
+	std::string slot_name;
+	GltfTextureRef source;
+	crimson::TextureColorSpace expected_color_space = crimson::TextureColorSpace::Linear;
 };
 
 struct GltfMaterialMapping {
-    crimson::MaterialInstance material;
-    std::vector<TextureSlotMapping> texture_slots;
-    ImportedMaterialMetadata metadata;
-    IoDiagnosticList diagnostics;
+	crimson::MaterialInstance material;
+	std::vector<TextureSlotMapping> texture_slots;
+	ImportedMaterialMetadata metadata;
+	IoDiagnosticList diagnostics;
 };
 
 [[nodiscard]] quader::foundation::Result<GltfMaterialMapping, IoError> map_gltf_material_to_crimson(
-    const GltfMaterialSource& source,
-    const crimson::BaseShaderRegistry& registry);
+		const GltfMaterialSource &source,
+		const crimson::BaseShaderRegistry &registry);
 
 } // namespace quader::io::gltf

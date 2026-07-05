@@ -6,18 +6,18 @@
 namespace quader::io {
 
 enum class FragmentValidationCode {
-    EmptyFragment,
-    InvalidMesh,
-    InvalidTransform,
-    InvalidMaterialReference,
+	EmptyFragment,
+	InvalidMesh,
+	InvalidTransform,
+	InvalidMaterialReference,
 };
 
 struct FragmentValidationResult {
-    IoDiagnosticList diagnostics;
+	IoDiagnosticList diagnostics;
 
-    [[nodiscard]] bool ok() const noexcept;
+	[[nodiscard]] bool ok() const noexcept;
 };
 
-[[nodiscard]] FragmentValidationResult validate_document_fragment(const DocumentFragment& fragment);
+[[nodiscard]] FragmentValidationResult validate_document_fragment(const DocumentFragment &fragment);
 
 } // namespace quader::io

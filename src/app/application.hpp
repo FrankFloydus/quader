@@ -16,16 +16,16 @@ struct AppServices;
 
 class Application final {
 public:
-    Application(QApplication& qt_app, ApplicationConfig config = {});
-    ~Application();
+	Application(QApplication &qt_app, ApplicationConfig config = {});
+	~Application();
 
-    int run();
+	int run();
 
 private:
-    QApplication& qt_app_;
-    ApplicationConfig config_;
-    std::unique_ptr<AppServices> services_;
-    std::unique_ptr<quader::ui::MainWindow> main_window_;
+	QApplication &qt_app_;
+	ApplicationConfig config_;
+	std::unique_ptr<AppServices> services_;
+	std::unique_ptr<quader::ui::MainWindow> main_window_;
 };
 
 } // namespace quader::app

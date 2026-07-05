@@ -10,10 +10,10 @@
 namespace crimson::gpu {
 
 [[nodiscard]] bgfx::ShaderHandle load_shader(
-    const ShaderLibrary& library,
-    ShaderProgramId program,
-    ShaderStage stage,
-    ShaderTarget target,
-    std::vector<RendererDiagnostic>& diagnostics);
+		const ShaderLibrary &library,
+		ShaderProgramId program,
+		ShaderStage stage,
+		ShaderTarget target,
+		std::vector<RendererDiagnostic> &diagnostics);
 
 } // namespace crimson::gpu

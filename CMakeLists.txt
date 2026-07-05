@@ -10,6 +10,7 @@ set(QUADER_APP_TARGET quader_app)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -148,6 +149,10 @@ function(quader_discover_gtests target_name)
         DISCOVERY_MODE PRE_TEST
         DISCOVERY_TIMEOUT 30
     )
+
+    if(TARGET quader_tests)
+        add_dependencies(quader_tests ${target_name})
+    endif()
 endfunction()
 
 function(quader_discover_qt_gtests target_name)
@@ -169,6 +174,10 @@ function(quader_discover_qt_gtests target_name)
         DISCOVERY_MODE PRE_TEST
         DISCOVERY_TIMEOUT 30
     )
+
+    if(TARGET quader_tests)
+        add_dependencies(quader_tests ${target_name})
+    endif()
 endfunction()
 add_library(modeling_foundation STATIC
     src/foundation/assert.hpp
@@ -629,7 +638,79 @@ add_custom_target(check_architecture
     VERBATIM
 )
 
+set(QUADER_CLANG_FORMAT_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_clang_format.py")
+set(QUADER_CLANG_TIDY_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_clang_tidy.py")
+set(QUADER_QT_LLVM_BIN_DIR "C:/Qt/Tools/QtCreator/bin/clang/bin")
+set(QUADER_CLANG_TIDY_JOBS "0" CACHE STRING "Parallel clang-tidy jobs. Use 0 for all logical cores.")
+
+find_program(QUADER_QT_CLANG_FORMAT_EXECUTABLE
+    NAMES clang-format
+    HINTS "${QUADER_QT_LLVM_BIN_DIR}"
+    NO_DEFAULT_PATH
+)
+find_program(QUADER_PATH_CLANG_FORMAT_EXECUTABLE
+    NAMES clang-format
+)
+if(QUADER_QT_CLANG_FORMAT_EXECUTABLE)
+    set(QUADER_CLANG_FORMAT_EXECUTABLE "${QUADER_QT_CLANG_FORMAT_EXECUTABLE}" CACHE FILEPATH "Path to clang-format." FORCE)
+elseif(QUADER_PATH_CLANG_FORMAT_EXECUTABLE)
+    set(QUADER_CLANG_FORMAT_EXECUTABLE "${QUADER_PATH_CLANG_FORMAT_EXECUTABLE}" CACHE FILEPATH "Path to clang-format." FORCE)
+endif()
+
+find_program(QUADER_QT_CLANG_TIDY_EXECUTABLE
+    NAMES clang-tidy
+    HINTS "${QUADER_QT_LLVM_BIN_DIR}"
+    NO_DEFAULT_PATH
+)
+find_program(QUADER_PATH_CLANG_TIDY_EXECUTABLE
+    NAMES clang-tidy
+)
+if(QUADER_QT_CLANG_TIDY_EXECUTABLE)
+    set(QUADER_CLANG_TIDY_EXECUTABLE "${QUADER_QT_CLANG_TIDY_EXECUTABLE}" CACHE FILEPATH "Path to clang-tidy." FORCE)
+elseif(QUADER_PATH_CLANG_TIDY_EXECUTABLE)
+    set(QUADER_CLANG_TIDY_EXECUTABLE "${QUADER_PATH_CLANG_TIDY_EXECUTABLE}" CACHE FILEPATH "Path to clang-tidy." FORCE)
+endif()
+
+set(QUADER_CLANG_FORMAT_ARGS)
+if(QUADER_CLANG_FORMAT_EXECUTABLE)
+    list(APPEND QUADER_CLANG_FORMAT_ARGS --clang-format "${QUADER_CLANG_FORMAT_EXECUTABLE}")
+endif()
+
+set(QUADER_CLANG_TIDY_ARGS)
+if(QUADER_CLANG_TIDY_EXECUTABLE)
+    list(APPEND QUADER_CLANG_TIDY_ARGS --clang-tidy "${QUADER_CLANG_TIDY_EXECUTABLE}")
+endif()
+list(APPEND QUADER_CLANG_TIDY_ARGS --jobs "${QUADER_CLANG_TIDY_JOBS}")
+
+add_custom_target(check_format
+    COMMAND "${Python3_EXECUTABLE}" "${QUADER_CLANG_FORMAT_SCRIPT}"
+        --root "${CMAKE_CURRENT_SOURCE_DIR}"
+        ${QUADER_CLANG_FORMAT_ARGS}
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    COMMENT "Checking clang-format style"
+    VERBATIM
+)
+
+add_custom_target(check_clang_tidy
+    COMMAND "${Python3_EXECUTABLE}" "${QUADER_CLANG_TIDY_SCRIPT}"
+        --root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
+        ${QUADER_CLANG_TIDY_ARGS}
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    COMMENT "Checking clang-tidy diagnostics"
+    VERBATIM
+)
+
+add_custom_target(check_static_analysis)
+add_dependencies(check_static_analysis
+    check_architecture
+    check_format
+    check_clang_tidy
+)
+
 if(BUILD_TESTING)
+    add_custom_target(quader_tests)
+
     add_executable(foundation_tests
         tests/unit/foundation/foundation_tests.cpp
     )
@@ -1070,22 +1151,43 @@ if(BUILD_TESTING)
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_architecture.py"
             --root "${CMAKE_CURRENT_SOURCE_DIR}"
     )
+
+    add_test(
+        NAME clang_format
+        COMMAND "${Python3_EXECUTABLE}" "${QUADER_CLANG_FORMAT_SCRIPT}"
+            --root "${CMAKE_CURRENT_SOURCE_DIR}"
+            ${QUADER_CLANG_FORMAT_ARGS}
+    )
+
+    add_test(
+        NAME clang_tidy
+        COMMAND "${Python3_EXECUTABLE}" "${QUADER_CLANG_TIDY_SCRIPT}"
+            --root "${CMAKE_CURRENT_SOURCE_DIR}"
+            --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
+            ${QUADER_CLANG_TIDY_ARGS}
+    )
 endif()
 
+add_executable(quader_renderer_benchmarks EXCLUDE_FROM_ALL
+    benchmarks/benchmark_main.cpp
+    benchmarks/benchmark_main.hpp
+    benchmarks/crimson_packet_pipeline_bench.cpp
+    benchmarks/crimson_upload_bench.cpp
+)
+
+target_link_libraries(quader_renderer_benchmarks
+    PRIVATE
+        crimson
+)
+
+quader_apply_compile_definitions(quader_renderer_benchmarks)
+
+add_custom_target(quader_benchmarks)
+add_dependencies(quader_benchmarks quader_renderer_benchmarks)
+
 if(QUADER_ENABLE_BENCHMARKS)
-    add_executable(quader_renderer_benchmarks
-        benchmarks/benchmark_main.cpp
-        benchmarks/benchmark_main.hpp
-        benchmarks/crimson_packet_pipeline_bench.cpp
-        benchmarks/crimson_upload_bench.cpp
-    )
-
-    target_link_libraries(quader_renderer_benchmarks
-        PRIVATE
-            crimson
-    )
-
-    quader_apply_compile_definitions(quader_renderer_benchmarks)
+    add_custom_target(quader_benchmarks_all ALL)
+    add_dependencies(quader_benchmarks_all quader_renderer_benchmarks)
 endif()
 
 if(WIN32)
@@ -1173,6 +1275,9 @@ add_custom_target(copy_runtime_shaders ALL
     DEPENDS
         "${RUNTIME_SHADER_STAMP}"
 )
+
+add_custom_target(quader_app_runtime)
+add_dependencies(quader_app_runtime copy_runtime_shaders)
 
 if(BUILD_TESTING)
     add_test(

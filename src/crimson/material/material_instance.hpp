@@ -10,17 +10,17 @@
 namespace crimson {
 
 struct MaterialRenderOverrides {
-    bool double_sided = false;
+	bool double_sided = false;
 
-    friend bool operator==(const MaterialRenderOverrides&, const MaterialRenderOverrides&) = default;
+	friend bool operator==(const MaterialRenderOverrides &, const MaterialRenderOverrides &) = default;
 };
 
 struct MaterialInstance {
-    std::string debug_name;
-    BaseShaderId base_shader_id = BaseShaderId::OpaquePbr;
-    std::vector<MaterialParameter> parameters;
-    std::vector<MaterialTextureBinding> textures;
-    MaterialRenderOverrides overrides;
+	std::string debug_name;
+	BaseShaderId base_shader_id = BaseShaderId::OpaquePbr;
+	std::vector<MaterialParameter> parameters;
+	std::vector<MaterialTextureBinding> textures;
+	MaterialRenderOverrides overrides;
 };
 
 } // namespace crimson

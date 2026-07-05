@@ -8,20 +8,20 @@
 namespace quader::ui {
 
 class ActionStateUpdater final : public QObject {
-    Q_OBJECT
+	Q_OBJECT
 
 public:
-    ActionStateUpdater(ActionRegistry& actions,
-                       IEditorStateProvider& state_provider,
-                       QObject* parent = nullptr);
+	ActionStateUpdater(ActionRegistry &actions,
+			IEditorStateProvider &state_provider,
+			QObject *parent = nullptr);
 
 public Q_SLOTS:
-    void refresh();
-    void refresh_from_snapshot(const quader::ui::EditorStateSnapshot& snapshot);
+	void refresh();
+	void refresh_from_snapshot(const quader::ui::EditorStateSnapshot &snapshot);
 
 private:
-    ActionRegistry& actions_;
-    IEditorStateProvider& state_provider_;
+	ActionRegistry &actions_;
+	IEditorStateProvider &state_provider_;
 };
 
 } // namespace quader::ui

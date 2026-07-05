@@ -8,15 +8,15 @@ namespace crimson::gpu {
 
 class GpuMeshCache final {
 public:
-    [[nodiscard]] RenderMeshHandle create_prototype_cube(RendererStatus& status);
-    [[nodiscard]] const GpuMeshResource* get(RenderMeshHandle handle) const noexcept;
-    [[nodiscard]] std::size_t live_mesh_count() const noexcept;
-    [[nodiscard]] FrameUploadStats upload_stats() const noexcept;
-    void clear() noexcept;
+	[[nodiscard]] RenderMeshHandle create_prototype_cube(RendererStatus &status);
+	[[nodiscard]] const GpuMeshResource *get(RenderMeshHandle handle) const noexcept;
+	[[nodiscard]] std::size_t live_mesh_count() const noexcept;
+	[[nodiscard]] FrameUploadStats upload_stats() const noexcept;
+	void clear() noexcept;
 
 private:
-    GpuMeshTable meshes_;
-    FrameUploadStats upload_stats_;
+	GpuMeshTable meshes_;
+	FrameUploadStats upload_stats_;
 };
 
 } // namespace crimson::gpu

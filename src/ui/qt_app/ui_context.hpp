@@ -12,14 +12,14 @@ class SettingsService;
 class ViewportDiagnosticsService;
 
 struct UiContext {
-    ActionRegistry& actions;
-    ActionStateUpdater& action_state_updater;
-    IEditorStateProvider& editor_state;
-    SettingsService& settings;
-    NotificationService& notifications;
-    DocumentUiController& documents;
-    ImportUiController& imports;
-    ViewportDiagnosticsService& viewport_diagnostics;
+	ActionRegistry &actions;
+	ActionStateUpdater &action_state_updater;
+	IEditorStateProvider &editor_state;
+	SettingsService &settings;
+	NotificationService &notifications;
+	DocumentUiController &documents;
+	ImportUiController &imports;
+	ViewportDiagnosticsService &viewport_diagnostics;
 };
 
 } // namespace quader::ui

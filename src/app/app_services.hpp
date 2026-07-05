@@ -1,9 +1,9 @@
 #pragma once
 
 #include "ui/actions/action_registry.hpp"
+#include "ui/actions/action_state_updater.hpp"
 #include "ui/actions/editor_action_controller.hpp"
 #include "ui/actions/editor_action_state_provider.hpp"
-#include "ui/actions/action_state_updater.hpp"
 #include "ui/qt_app/ui_context.hpp"
 #include "ui/services/document_ui_controller.hpp"
 #include "ui/services/file_dialog_service.hpp"
@@ -24,26 +24,26 @@
 namespace quader::app {
 
 struct AppServices final {
-    AppServices();
+	AppServices();
 
-    QSettings settings_store;
-    quader::document::Document document;
-    quader::commands::CommandHistory command_history;
-    quader::tools::ToolManager tool_manager;
-    quader::io::ImportExportRegistry io_registry;
-    quader::io::ImportService import_service;
-    quader::io::ExportService export_service;
-    ui::ActionRegistry actions;
-    ui::EditorActionStateProvider editor_state;
-    ui::ActionStateUpdater action_state_updater;
-    ui::SettingsService settings;
-    ui::QtFileDialogService file_dialogs;
-    ui::NotificationService notifications;
-    ui::ViewportDiagnosticsService viewport_diagnostics;
-    ui::DocumentUiController document_ui;
-    ui::ImportUiController import_ui;
-    ui::EditorActionController editor_actions;
-    ui::UiContext ui_context;
+	QSettings settings_store;
+	quader::document::Document document;
+	quader::commands::CommandHistory command_history;
+	quader::tools::ToolManager tool_manager;
+	quader::io::ImportExportRegistry io_registry;
+	quader::io::ImportService import_service;
+	quader::io::ExportService export_service;
+	ui::ActionRegistry actions;
+	ui::EditorActionStateProvider editor_state;
+	ui::ActionStateUpdater action_state_updater;
+	ui::SettingsService settings;
+	ui::QtFileDialogService file_dialogs;
+	ui::NotificationService notifications;
+	ui::ViewportDiagnosticsService viewport_diagnostics;
+	ui::DocumentUiController document_ui;
+	ui::ImportUiController import_ui;
+	ui::EditorActionController editor_actions;
+	ui::UiContext ui_context;
 };
 
 } // namespace quader::app

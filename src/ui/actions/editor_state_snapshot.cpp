@@ -2,9 +2,8 @@
 
 namespace quader::ui {
 
-EditorStateSnapshot NullEditorStateProvider::editor_state_snapshot() const
-{
-    return {};
+EditorStateSnapshot NullEditorStateProvider::editor_state_snapshot() const {
+	return {};
 }
 
 } // namespace quader::ui

@@ -8,13 +8,13 @@
 namespace crimson {
 
 struct ResourceUse {
-    std::string resource_name;
-    RenderResourceAccess access = RenderResourceAccess::Read;
+	std::string resource_name;
+	RenderResourceAccess access = RenderResourceAccess::Read;
 };
 
 struct RenderPass {
-    std::string name;
-    std::vector<ResourceUse> resources;
+	std::string name;
+	std::vector<ResourceUse> resources;
 };
 
 [[nodiscard]] RenderPass make_cpu_pass(std::string name);

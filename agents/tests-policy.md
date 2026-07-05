@@ -8,6 +8,26 @@ Every test must answer: “Would this fail if a real user-visible behavior, data
 
 Write the test if the answer is yes. Do not write the test if it only proves an implementation detail, a cosmetic detail, or a mock interaction that users do not care about.
 
+### Validation scope lock
+
+Agents must not tune tests, validation scripts, clang-format, clang-tidy,
+sanitizer settings, architecture checks, or other quality gates merely so the
+current code passes. Current code is evidence for migration impact, not
+permission to lower the requested standard.
+
+If the requested validation rule would require broad source changes, large
+formatting churn, many clang-tidy fixes, new suppressions, or a staged rollout,
+the agent must stop and report the decision point through the normal
+Workaround/Deviation path. The report must say exactly which requested rule,
+strictness, or acceptance criterion would change and what the alternatives are.
+
+Allowed without escalation: documenting existing failures, adding a non-mutating
+check that reports those failures, or proposing a staged adoption plan.
+Forbidden without escalation: weakening the rule, narrowing the checked file set
+below the requested scope, adding broad suppressions, changing style to match
+current code instead of the requested policy, or marking validation complete
+when the requested gate is not actually enforced.
+
 ### What agents MUST test
 
 Prefer small, deterministic tests for pure logic and editor model behavior:

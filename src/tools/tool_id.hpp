@@ -3,10 +3,10 @@
 namespace quader::tools {
 
 enum class ToolId {
-    Select,
-    Move,
-    Rotate,
-    Scale,
+	Select,
+	Move,
+	Rotate,
+	Scale,
 };
 
 } // namespace quader::tools

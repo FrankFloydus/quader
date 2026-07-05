@@ -8,8 +8,8 @@
 namespace crimson {
 
 struct FrameRenderResult {
-    FrameStats stats;
-    std::vector<PickingResult> completed_picking_results;
+	FrameStats stats;
+	std::vector<PickingResult> completed_picking_results;
 };
 
 } // namespace crimson

@@ -18,35 +18,35 @@
 namespace crimson::gpu {
 
 struct GpuPickingFrameResult {
-    std::vector<PickingResult> completed_results;
-    std::uint32_t scheduled_readbacks = 0;
+	std::vector<PickingResult> completed_results;
+	std::uint32_t scheduled_readbacks = 0;
 };
 
 class GpuPicking final {
 public:
-    GpuPicking();
-    ~GpuPicking();
+	GpuPicking();
+	~GpuPicking();
 
-    GpuPicking(const GpuPicking&) = delete;
-    GpuPicking& operator=(const GpuPicking&) = delete;
+	GpuPicking(const GpuPicking &) = delete;
+	GpuPicking &operator=(const GpuPicking &) = delete;
 
-    [[nodiscard]] bool initialize(PickingIdTargetFormat target_format, RendererStatus& status);
-    void shutdown() noexcept;
+	[[nodiscard]] bool initialize(PickingIdTargetFormat target_format, RendererStatus &status);
+	void shutdown() noexcept;
 
-    [[nodiscard]] bool ready() const noexcept;
+	[[nodiscard]] bool ready() const noexcept;
 
-    [[nodiscard]] GpuPickingFrameResult submit_frame_requests(
-        const FrameSnapshot& snapshot,
-        const GpuMeshCache& mesh_cache,
-        const GpuProgramCache& program_cache,
-        RenderMeshHandle fallback_mesh,
-        RenderProgramHandle picking_program,
-        std::uint32_t completed_bgfx_frame);
+	[[nodiscard]] GpuPickingFrameResult submit_frame_requests(
+			const FrameSnapshot &snapshot,
+			const GpuMeshCache &mesh_cache,
+			const GpuProgramCache &program_cache,
+			RenderMeshHandle fallback_mesh,
+			RenderProgramHandle picking_program,
+			std::uint32_t completed_bgfx_frame);
 
 private:
-    struct Impl;
+	struct Impl;
 
-    std::unique_ptr<Impl> impl_;
+	std::unique_ptr<Impl> impl_;
 };
 
 } // namespace crimson::gpu

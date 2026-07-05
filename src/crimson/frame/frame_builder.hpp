@@ -10,8 +10,8 @@ namespace crimson {
 
 class FrameBuilder final {
 public:
-    [[nodiscard]] quader::foundation::Result<FrameSnapshot, RendererDiagnostic> build_prototype_snapshot(
-        const PrototypeViewportFrame& frame) const;
+	[[nodiscard]] quader::foundation::Result<FrameSnapshot, RendererDiagnostic> build_prototype_snapshot(
+			const PrototypeViewportFrame &frame) const;
 };
 
 } // namespace crimson

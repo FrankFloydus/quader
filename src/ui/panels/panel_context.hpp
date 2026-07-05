@@ -5,7 +5,7 @@
 namespace quader::ui {
 
 struct PanelContext {
-    UiContext& ui;
+	UiContext &ui;
 };
 
 } // namespace quader::ui

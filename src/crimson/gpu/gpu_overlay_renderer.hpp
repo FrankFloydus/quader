@@ -14,26 +14,26 @@ namespace crimson::gpu {
 
 class GpuOverlayRenderer final {
 public:
-    GpuOverlayRenderer();
-    ~GpuOverlayRenderer();
+	GpuOverlayRenderer();
+	~GpuOverlayRenderer();
 
-    GpuOverlayRenderer(const GpuOverlayRenderer&) = delete;
-    GpuOverlayRenderer& operator=(const GpuOverlayRenderer&) = delete;
+	GpuOverlayRenderer(const GpuOverlayRenderer &) = delete;
+	GpuOverlayRenderer &operator=(const GpuOverlayRenderer &) = delete;
 
-    [[nodiscard]] bool initialize(RendererStatus& status);
-    void shutdown() noexcept;
+	[[nodiscard]] bool initialize(RendererStatus &status);
+	void shutdown() noexcept;
 
-    [[nodiscard]] bool ready() const noexcept;
-    [[nodiscard]] std::uint32_t submit_grid(
-        bgfx::ViewId view_id,
-        const RenderView& view,
-        const PreparedGridOverlayCommand& grid,
-        bgfx::ProgramHandle program) const noexcept;
+	[[nodiscard]] bool ready() const noexcept;
+	[[nodiscard]] std::uint32_t submit_grid(
+			bgfx::ViewId view_id,
+			const RenderView &view,
+			const PreparedGridOverlayCommand &grid,
+			bgfx::ProgramHandle program) const noexcept;
 
 private:
-    struct Impl;
+	struct Impl;
 
-    std::unique_ptr<Impl> impl_;
+	std::unique_ptr<Impl> impl_;
 };
 
 } // namespace crimson::gpu

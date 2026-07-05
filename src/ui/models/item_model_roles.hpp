@@ -10,28 +10,28 @@
 namespace quader::ui {
 
 struct UiNodeId {
-  std::uint64_t value = 0U;
+	std::uint64_t value = 0U;
 
-  [[nodiscard]] bool is_valid() const noexcept { return value != 0U; }
+	[[nodiscard]] bool is_valid() const noexcept { return value != 0U; }
 
-  friend bool operator==(UiNodeId, UiNodeId) = default;
+	friend bool operator==(UiNodeId, UiNodeId) = default;
 };
 
 enum class DocumentItemKind : std::uint8_t {
-  MeshObject,
+	MeshObject,
 };
 
 enum class DocumentItemColumn : int {
-  Name = 0,
-  Kind = 1,
+	Name = 0,
+	Kind = 1,
 };
 
-namespace DocumentItemRoles {
-constexpr int UiNodeIdRole = Qt::UserRole + 1;
-constexpr int ObjectIdRole = Qt::UserRole + 2;
-constexpr int KindRole = Qt::UserRole + 3;
-constexpr int SelectedRole = Qt::UserRole + 4;
-} // namespace DocumentItemRoles
+namespace document_item_roles {
+constexpr int kUiNodeIdRole = Qt::UserRole + 1;
+constexpr int kObjectIdRole = Qt::UserRole + 2;
+constexpr int kKindRole = Qt::UserRole + 3;
+constexpr int kSelectedRole = Qt::UserRole + 4;
+} //namespace document_item_roles
 
 void register_ui_model_metatypes();
 

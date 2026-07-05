@@ -5,15 +5,14 @@
 
 namespace quader::ui {
 
-bool FusionStylePolicy::apply(QApplication&) const
-{
-    auto* fusion_style = QStyleFactory::create(QStringLiteral("Fusion"));
-    if (fusion_style == nullptr) {
-        return false;
-    }
+bool FusionStylePolicy::apply(QApplication &) const {
+	auto *fusion_style = QStyleFactory::create(QStringLiteral("Fusion"));
+	if (fusion_style == nullptr) {
+		return false;
+	}
 
-    QApplication::setStyle(fusion_style);
-    return true;
+	QApplication::setStyle(fusion_style);
+	return true;
 }
 
 } // namespace quader::ui

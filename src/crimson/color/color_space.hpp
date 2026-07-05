@@ -5,33 +5,33 @@
 namespace crimson {
 
 struct ColorSrgb {
-    float r = 0.0F;
-    float g = 0.0F;
-    float b = 0.0F;
-    float a = 1.0F;
+	float r = 0.0F;
+	float g = 0.0F;
+	float b = 0.0F;
+	float a = 1.0F;
 };
 
 struct ColorLinear {
-    float r = 0.0F;
-    float g = 0.0F;
-    float b = 0.0F;
-    float a = 1.0F;
+	float r = 0.0F;
+	float g = 0.0F;
+	float b = 0.0F;
+	float a = 1.0F;
 };
 
 enum class TextureDataRole : std::uint8_t {
-    BaseColor,
-    Emissive,
-    MetallicRoughness,
-    Normal,
-    Occlusion,
-    PickingId,
-    Depth,
-    ShadowLike,
+	BaseColor,
+	Emissive,
+	MetallicRoughness,
+	Normal,
+	Occlusion,
+	PickingId,
+	Depth,
+	ShadowLike,
 };
 
 enum class TextureColorEncoding : std::uint8_t {
-    LinearData,
-    Srgb,
+	LinearData,
+	Srgb,
 };
 
 [[nodiscard]] ColorLinear srgb_to_linear(ColorSrgb color) noexcept;

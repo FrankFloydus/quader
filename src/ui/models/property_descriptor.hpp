@@ -17,56 +17,56 @@ class Document;
 namespace quader::ui {
 
 enum class PropertyValueKind : std::uint8_t {
-  String,
-  Float,
-  Int,
-  Vector3,
-  ReadOnlyText,
+	String,
+	Float,
+	Int,
+	Vector3,
+	ReadOnlyText,
 };
 
 enum class PropertyField : std::uint8_t {
-  ObjectName,
-  ObjectKind,
-  VertexCount,
-  EdgeCount,
-  FaceCount,
-  TranslationX,
-  TranslationY,
-  TranslationZ,
-  RotationX,
-  RotationY,
-  RotationZ,
-  ScaleX,
-  ScaleY,
-  ScaleZ,
-  SelectionSummary,
+	ObjectName,
+	ObjectKind,
+	VertexCount,
+	EdgeCount,
+	FaceCount,
+	TranslationX,
+	TranslationY,
+	TranslationZ,
+	RotationX,
+	RotationY,
+	RotationZ,
+	ScaleX,
+	ScaleY,
+	ScaleZ,
+	SelectionSummary,
 };
 
 struct PropertyPath {
-  quader::document::ObjectId object;
-  PropertyField field = PropertyField::SelectionSummary;
+	quader::document::ObjectId object;
+	PropertyField field = PropertyField::SelectionSummary;
 
-  friend bool operator==(const PropertyPath &, const PropertyPath &) = default;
+	friend bool operator==(const PropertyPath &, const PropertyPath &) = default;
 };
 
 struct PropertyDescriptor {
-  PropertyPath path;
-  QString label;
-  PropertyValueKind kind = PropertyValueKind::ReadOnlyText;
-  QVariant value;
-  QVariant minimum;
-  QVariant maximum;
-  int decimals = 3;
-  bool editable = false;
-  QString tooltip;
+	PropertyPath path;
+	QString label;
+	PropertyValueKind kind = PropertyValueKind::ReadOnlyText;
+	QVariant value;
+	QVariant minimum;
+	QVariant maximum;
+	int decimals = 3;
+	bool editable = false;
+	QString tooltip;
 };
 
-namespace PropertyItemRoles {
-constexpr int PropertyPathRole = Qt::UserRole + 1;
-constexpr int ValueKindRole = Qt::UserRole + 2;
-constexpr int EditableRole = Qt::UserRole + 3;
-constexpr int DescriptorRole = Qt::UserRole + 4;
-} // namespace PropertyItemRoles
+namespace property_item_roles {
+constexpr int kPropertyPathRole = Qt::UserRole + 1;
+constexpr int kValueKindRole = Qt::UserRole + 2;
+constexpr int kEditableRole = Qt::UserRole + 3;
+constexpr int kDescriptorRole = Qt::UserRole + 4;
+} //namespace property_item_roles
 
 std::vector<PropertyDescriptor>
 build_property_descriptors(const quader::document::Document &document);

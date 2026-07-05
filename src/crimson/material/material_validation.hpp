@@ -8,7 +8,7 @@
 namespace crimson {
 
 [[nodiscard]] quader::foundation::Result<void, RendererDiagnostic> validate_material_instance(
-    const BaseShaderRegistry& registry,
-    const MaterialInstance& instance);
+		const BaseShaderRegistry &registry,
+		const MaterialInstance &instance);
 
 } // namespace crimson

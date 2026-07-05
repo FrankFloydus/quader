@@ -5,10 +5,10 @@
 namespace quader::foundation {
 
 enum class LogLevel {
-    debug,
-    info,
-    warning,
-    error,
+	Debug,
+	Info,
+	Warning,
+	Error,
 };
 
 using LogSink = void (*)(LogLevel level, std::string_view message);
@@ -24,10 +24,10 @@ void log_message(LogLevel level, std::string_view message);
 } // namespace quader::foundation
 
 #define QUADER_LOG_DEBUG(message) \
-    ::quader::foundation::log_message(::quader::foundation::LogLevel::debug, (message))
+	::quader::foundation::log_message(::quader::foundation::LogLevel::Debug, (message))
 #define QUADER_LOG_INFO(message) \
-    ::quader::foundation::log_message(::quader::foundation::LogLevel::info, (message))
+	::quader::foundation::log_message(::quader::foundation::LogLevel::Info, (message))
 #define QUADER_LOG_WARNING(message) \
-    ::quader::foundation::log_message(::quader::foundation::LogLevel::warning, (message))
+	::quader::foundation::log_message(::quader::foundation::LogLevel::Warning, (message))
 #define QUADER_LOG_ERROR(message) \
-    ::quader::foundation::log_message(::quader::foundation::LogLevel::error, (message))
+	::quader::foundation::log_message(::quader::foundation::LogLevel::Error, (message))

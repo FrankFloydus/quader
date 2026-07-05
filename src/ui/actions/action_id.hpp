@@ -6,35 +6,35 @@
 namespace quader::ui {
 
 enum class ActionId : std::uint16_t {
-    NewScene,
-    OpenScene,
-    SaveScene,
-    SaveSceneAs,
-    Exit,
+	NewScene,
+	OpenScene,
+	SaveScene,
+	SaveSceneAs,
+	Exit,
 
-    Undo,
-    Redo,
-    DuplicateSelection,
-    DeleteSelection,
+	Undo,
+	Redo,
+	DuplicateSelection,
+	DeleteSelection,
 
-    SelectTool,
-    MoveTool,
-    RotateTool,
-    ScaleTool,
+	SelectTool,
+	MoveTool,
+	RotateTool,
+	ScaleTool,
 
-    CreateCube,
-    CreateLight,
-    CreateCamera,
+	CreateCube,
+	CreateLight,
+	CreateCamera,
 
-    ViewPerspective,
-    ViewShaded,
-    ToggleQuadViewports,
-    FocusViewport,
+	ViewPerspective,
+	ViewShaded,
+	ToggleQuadViewports,
+	FocusViewport,
 
-    ShowScenePanel,
-    ShowPropertiesPanel,
-    ShowDiagnosticsPanel,
-    ResetWorkspaceLayout,
+	ShowScenePanel,
+	ShowPropertiesPanel,
+	ShowDiagnosticsPanel,
+	ResetWorkspaceLayout,
 };
 
 [[nodiscard]] std::string_view action_id_name(ActionId id) noexcept;

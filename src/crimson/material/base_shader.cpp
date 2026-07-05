@@ -2,84 +2,78 @@
 
 namespace crimson {
 
-const MaterialParameterDesc* find_parameter_desc(
-    const BaseShaderDefinition& definition,
-    std::string_view name) noexcept
-{
-    for (const MaterialParameterDesc& parameter : definition.parameters) {
-        if (parameter.name == name) {
-            return &parameter;
-        }
-    }
+const MaterialParameterDesc *find_parameter_desc(
+		const BaseShaderDefinition &definition,
+		std::string_view name) noexcept {
+	for (const MaterialParameterDesc &parameter : definition.parameters) {
+		if (parameter.name == name) {
+			return &parameter;
+		}
+	}
 
-    return nullptr;
+	return nullptr;
 }
 
-const MaterialTextureSlotDesc* find_texture_slot_desc(
-    const BaseShaderDefinition& definition,
-    std::string_view name) noexcept
-{
-    for (const MaterialTextureSlotDesc& slot : definition.texture_slots) {
-        if (slot.name == name) {
-            return &slot;
-        }
-    }
+const MaterialTextureSlotDesc *find_texture_slot_desc(
+		const BaseShaderDefinition &definition,
+		std::string_view name) noexcept {
+	for (const MaterialTextureSlotDesc &slot : definition.texture_slots) {
+		if (slot.name == name) {
+			return &slot;
+		}
+	}
 
-    return nullptr;
+	return nullptr;
 }
 
-const char* depth_mode_name(DepthMode mode) noexcept
-{
-    switch (mode) {
-    case DepthMode::Disabled:
-        return "Disabled";
-    case DepthMode::TestWrite:
-        return "TestWrite";
-    case DepthMode::TestReadOnly:
-        return "TestReadOnly";
-    case DepthMode::OverlayCommand:
-        return "OverlayCommand";
-    }
+const char *depth_mode_name(DepthMode mode) noexcept {
+	switch (mode) {
+		case DepthMode::Disabled:
+			return "Disabled";
+		case DepthMode::TestWrite:
+			return "TestWrite";
+		case DepthMode::TestReadOnly:
+			return "TestReadOnly";
+		case DepthMode::OverlayCommand:
+			return "OverlayCommand";
+	}
 
-    return "Unknown";
+	return "Unknown";
 }
 
-const char* blend_mode_name(BlendMode mode) noexcept
-{
-    switch (mode) {
-    case BlendMode::Off:
-        return "Off";
-    case BlendMode::AlphaBlend:
-        return "AlphaBlend";
-    }
+const char *blend_mode_name(BlendMode mode) noexcept {
+	switch (mode) {
+		case BlendMode::Off:
+			return "Off";
+		case BlendMode::AlphaBlend:
+			return "AlphaBlend";
+	}
 
-    return "Unknown";
+	return "Unknown";
 }
 
-const char* cull_mode_name(CullMode mode) noexcept
-{
-    switch (mode) {
-    case CullMode::Back:
-        return "Back";
-    case CullMode::None:
-        return "None";
-    }
+const char *cull_mode_name(CullMode mode) noexcept {
+	switch (mode) {
+		case CullMode::Back:
+			return "Back";
+		case CullMode::None:
+			return "None";
+	}
 
-    return "Unknown";
+	return "Unknown";
 }
 
-const char* shadow_mode_name(ShadowMode mode) noexcept
-{
-    switch (mode) {
-    case ShadowMode::None:
-        return "None";
-    case ShadowMode::CastAndReceive:
-        return "CastAndReceive";
-    case ShadowMode::AlphaTestedCastAndReceive:
-        return "AlphaTestedCastAndReceive";
-    }
+const char *shadow_mode_name(ShadowMode mode) noexcept {
+	switch (mode) {
+		case ShadowMode::None:
+			return "None";
+		case ShadowMode::CastAndReceive:
+			return "CastAndReceive";
+		case ShadowMode::AlphaTestedCastAndReceive:
+			return "AlphaTestedCastAndReceive";
+	}
 
-    return "Unknown";
+	return "Unknown";
 }
 
 } // namespace crimson

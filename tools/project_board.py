@@ -20,10 +20,11 @@ SECTIONS = ("Backlog", "In Progress", "In Review", "Bugs")
 PRIORITIES = {"critical", "high", "medium", "low"}
 TYPES = {"enhancement", "documentation", "bug", "epic"}
 PM_STATUSES = {"coordinating", "waiting-on-agents", "waiting-on-authority", "ready-for-review"}
-AUTHORITY_OWNERS = {"software", "ui", "renderer", "multi"}
+AUTHORITY_OWNERS = {"software", "core", "build-workflow", "ui", "renderer", "performance", "docs", "multi"}
 AUTHORITY_STATUSES = {"pending", "approved", "changes-requested"}
 ASSIGNMENT_STATUSES = {"planned", "running", "reported", "blocked", "integrated"}
-ASSIGNMENT_AUTHORITIES = {"none", "software", "ui", "renderer"}
+ASSIGNMENT_AUTHORITIES = {"none", "software", "core", "build-workflow", "ui", "renderer", "performance", "docs"}
+ACTIVE_STATUSES = {"running", "integrating", "reviewing", "blocked"}
 FRESHNESS_STATUSES = {"needs-refresh", "fresh", "stale", "superseded"}
 ARCHIVE_STATUSES = {"completed", "fixed"}
 MUTATING_COMMANDS = {
@@ -34,6 +35,8 @@ MUTATING_COMMANDS = {
     "assign",
     "assignment-status",
     "coordination-note",
+    "set-active",
+    "clear-active",
     "edit-brief",
     "set-freshness",
     "move",
@@ -43,11 +46,11 @@ MUTATING_COMMANDS = {
     "complete",
     "reopen-archive",
 }
-PM_AUTH_REQUIRED_MESSAGE = (
-    "board mutation requires an exact PM-issued command, except for the narrow "
-    "quader-performance-dev performance audit/fix override; use --pm-authorized only "
-    "when quader-project-manager returned this exact command or quader-performance-dev "
-    "is acting inside that documented override"
+AUTH_REQUIRED_MESSAGE = (
+    "board mutation requires an exact software-architect-issued command, except for "
+    "the narrow quader-performance-dev performance audit/fix override; use "
+    "--architect-authorized only when the software architect returned this exact "
+    "command or quader-performance-dev is acting inside that documented override"
 )
 ENTRY_RE = re.compile(
     r"^#(?P<id>\d+)\s+"
@@ -65,7 +68,7 @@ PM_RE = re.compile(
 )
 AUTHORITY_RE = re.compile(
     r"^  Authority: "
-    r"\[owner:(?P<owner>[a-z]+)\]"
+    r"\[owner:(?P<owner>[a-z-]+)\]"
     r"\[status:(?P<status>[a-z-]+)\]"
     r"\[agent:(?P<agent>[A-Za-z0-9_.:-]+|-|[A-Za-z0-9_.:-]*-[A-Za-z0-9_.:-]*)\] "
     r"(?P<note>.*)$"
@@ -76,10 +79,17 @@ ASSIGNMENT_RE = re.compile(
     r"\[role:(?P<role>[A-Za-z0-9_.:-]+|-|[A-Za-z0-9_.:-]*-[A-Za-z0-9_.:-]*)\]"
     r"\[agent:(?P<agent>[A-Za-z0-9_.:-]+|-|[A-Za-z0-9_.:-]*-[A-Za-z0-9_.:-]*)\]"
     r"\[status:(?P<status>[a-z-]+)\]"
-    r"\[authority:(?P<authority>[a-z]+)\] "
+    r"\[authority:(?P<authority>[a-z-]+)\] "
     r"(?P<brief>.*)$"
 )
 COORDINATION_RE = re.compile(r"^  Coordination: (?P<note>.*)$")
+ACTIVE_RE = re.compile(
+    r"^  Active: "
+    r"\[lead:(?P<lead>[A-Za-z0-9_.:-]+|-|[A-Za-z0-9_.:-]*-[A-Za-z0-9_.:-]*)\]"
+    r"\[status:(?P<status>[a-z-]+)\]"
+    r"\[workers:(?P<workers>\d+)\] "
+    r"(?P<note>.*)$"
+)
 FRESHNESS_RE = re.compile(
     r"^  Freshness: "
     r"\[status:(?P<status>[a-z-]+)\]"
@@ -375,6 +385,18 @@ def validate_metadata_line(task_id: int, line: str) -> None:
             raise SystemExit(f"invalid coordination metadata for #{task_id}: {line}")
         return
 
+    if line.startswith("  Active: "):
+        match = ACTIVE_RE.match(line)
+        if not match:
+            raise SystemExit(f"invalid active metadata for #{task_id}: {line}")
+        status = match.group("status")
+        workers = int(match.group("workers"))
+        if status not in ACTIVE_STATUSES:
+            raise SystemExit(f"invalid active status for #{task_id}: {status}")
+        if workers < 0 or workers > 6:
+            raise SystemExit(f"invalid active worker count for #{task_id}: {workers}")
+        return
+
     if line.startswith("  Freshness: "):
         match = FRESHNESS_RE.match(line)
         if not match:
@@ -537,7 +559,7 @@ def archive_entry_lines(entry: Entry, resolution: str | None) -> list[str]:
     status = "fixed" if is_bug else "completed"
     lines = [
         entry.lines[0],
-        f"  Archived: [at:{archived_at}][dev-version:{dev_version}][from:{entry.section}][status:{status}] PM-authorized archive.",
+        f"  Archived: [at:{archived_at}][dev-version:{dev_version}][from:{entry.section}][status:{status}] Architect-authorized archive.",
     ]
     if resolution and resolution.strip():
         lines.append(f"  Resolution: {resolution.strip()}")
@@ -694,6 +716,18 @@ def upsert_line(lines: list[str], task_id: int, prefix: str, new_line: str) -> N
     replace_entry(lines, entry, entry_lines)
 
 
+def remove_line(lines: list[str], task_id: int, prefix: str) -> bool:
+    entries = parse_entries(lines)
+    entry = find_entry(entries, task_id)
+    entry_lines = entry.lines[:]
+    offset = find_line_index(entry, prefix)
+    if offset is None:
+        return False
+    del entry_lines[offset]
+    replace_entry(lines, entry, entry_lines)
+    return True
+
+
 def edit_brief(lines: list[str], task_id: int, brief: str) -> None:
     if "\n" in brief or "\r" in brief:
         raise SystemExit("brief must be a single line")
@@ -723,6 +757,19 @@ def set_freshness(lines: list[str], task_id: int, status: str, checked: str, not
         task_id,
         "  Freshness: ",
         f"  Freshness: [status:{status}][checked:{checked_value}] {note}",
+    )
+
+
+def set_active(lines: list[str], task_id: int, lead: str, status: str, workers: int, note: str) -> None:
+    if "\n" in note or "\r" in note:
+        raise SystemExit("active note must be a single line")
+    if workers < 0 or workers > 6:
+        raise SystemExit("active workers must be between 0 and 6")
+    upsert_line(
+        lines,
+        task_id,
+        "  Active: ",
+        f"  Active: [lead:{lead}][status:{status}][workers:{workers}] {note}",
     )
 
 
@@ -820,13 +867,22 @@ def list_tags() -> None:
         print(f"- area:{area}")
 
 
-def add_pm_authorized(command: argparse.ArgumentParser) -> None:
+def add_authorization(command: argparse.ArgumentParser) -> None:
     command.add_argument(
-        "--pm-authorized",
+        "--architect-authorized",
+        dest="authorized",
         action="store_true",
         help=(
             "Required for board mutations. Use only when this exact command was returned by "
-            "quader-project-manager."
+            "quader-software-architect, or inside the documented performance-dev override."
+        ),
+    )
+    command.add_argument(
+        "--pm-authorized",
+        dest="authorized",
+        action="store_true",
+        help=(
+            "Deprecated compatibility alias for --architect-authorized. Do not use for new v2 flows."
         ),
     )
 
@@ -838,7 +894,7 @@ def main(argv: list[str]) -> int:
     sub.add_parser("validate")
 
     add = sub.add_parser("add")
-    add_pm_authorized(add)
+    add_authorization(add)
     add.add_argument("--title", required=True)
     add.add_argument("--summary", required=True)
     add.add_argument("--brief", required=True)
@@ -850,7 +906,7 @@ def main(argv: list[str]) -> int:
     add.add_argument("--plans")
 
     add_bug = sub.add_parser("add-bug")
-    add_pm_authorized(add_bug)
+    add_authorization(add_bug)
     add_bug.add_argument("--title", required=True)
     add_bug.add_argument("--summary", required=True)
     add_bug.add_argument("--brief", required=True)
@@ -860,7 +916,7 @@ def main(argv: list[str]) -> int:
     add_bug.add_argument("--plans")
 
     pm_start = sub.add_parser("pm-start")
-    add_pm_authorized(pm_start)
+    add_authorization(pm_start)
     pm_start.add_argument("--id", type=int, required=True)
     pm_start.add_argument("--run", required=True)
     pm_start.add_argument("--manager", required=True)
@@ -868,7 +924,7 @@ def main(argv: list[str]) -> int:
     pm_start.add_argument("--note", required=True)
 
     authority = sub.add_parser("set-authority")
-    add_pm_authorized(authority)
+    add_authorization(authority)
     authority.add_argument("--id", type=int, required=True)
     authority.add_argument("--owner", choices=sorted(AUTHORITY_OWNERS), required=True)
     authority.add_argument("--status", choices=sorted(AUTHORITY_STATUSES), required=True)
@@ -876,7 +932,7 @@ def main(argv: list[str]) -> int:
     authority.add_argument("--note", required=True)
 
     assign = sub.add_parser("assign")
-    add_pm_authorized(assign)
+    add_authorization(assign)
     assign.add_argument("--id", type=int, required=True)
     assign.add_argument("--key", required=True)
     assign.add_argument("--role", required=True)
@@ -886,7 +942,7 @@ def main(argv: list[str]) -> int:
     assign.add_argument("--brief", required=True)
 
     assignment_status = sub.add_parser("assignment-status")
-    add_pm_authorized(assignment_status)
+    add_authorization(assignment_status)
     assignment_status.add_argument("--id", type=int, required=True)
     assignment_status.add_argument("--key", required=True)
     assignment_status.add_argument("--status", choices=sorted(ASSIGNMENT_STATUSES), required=True)
@@ -894,41 +950,53 @@ def main(argv: list[str]) -> int:
     assignment_status.add_argument("--note", required=True)
 
     coordination = sub.add_parser("coordination-note")
-    add_pm_authorized(coordination)
+    add_authorization(coordination)
     coordination.add_argument("--id", type=int, required=True)
     coordination.add_argument("--note", required=True)
 
+    active = sub.add_parser("set-active")
+    add_authorization(active)
+    active.add_argument("--id", type=int, required=True)
+    active.add_argument("--lead", required=True)
+    active.add_argument("--status", choices=sorted(ACTIVE_STATUSES), required=True)
+    active.add_argument("--workers", type=int, required=True)
+    active.add_argument("--note", required=True)
+
+    clear_active = sub.add_parser("clear-active")
+    add_authorization(clear_active)
+    clear_active.add_argument("--id", type=int, required=True)
+
     edit_brief_cmd = sub.add_parser("edit-brief")
-    add_pm_authorized(edit_brief_cmd)
+    add_authorization(edit_brief_cmd)
     edit_brief_cmd.add_argument("--id", type=int, required=True)
     edit_brief_cmd.add_argument("--brief", required=True)
 
     freshness = sub.add_parser("set-freshness")
-    add_pm_authorized(freshness)
+    add_authorization(freshness)
     freshness.add_argument("--id", type=int, required=True)
     freshness.add_argument("--status", choices=sorted(FRESHNESS_STATUSES), required=True)
     freshness.add_argument("--note", required=True)
     freshness.add_argument("--checked", default="now")
 
     move = sub.add_parser("move")
-    add_pm_authorized(move)
+    add_authorization(move)
     move.add_argument("--id", type=int, required=True)
     move.add_argument("--to", choices=SECTIONS, required=True)
 
     start = sub.add_parser("start")
-    add_pm_authorized(start)
+    add_authorization(start)
     start.add_argument("--id", type=int, required=True)
 
     review = sub.add_parser("review")
-    add_pm_authorized(review)
+    add_authorization(review)
     review.add_argument("--id", type=int, required=True)
 
     remove = sub.add_parser("remove")
-    add_pm_authorized(remove)
+    add_authorization(remove)
     remove.add_argument("--id", type=int, required=True)
 
     complete = sub.add_parser("complete")
-    add_pm_authorized(complete)
+    add_authorization(complete)
     complete.add_argument("--id", type=int, required=True)
     complete.add_argument("--resolution")
 
@@ -939,7 +1007,7 @@ def main(argv: list[str]) -> int:
     archive_search.add_argument("--full", action="store_true")
 
     reopen_archive = sub.add_parser("reopen-archive")
-    add_pm_authorized(reopen_archive)
+    add_authorization(reopen_archive)
     reopen_archive.add_argument("--id", type=int, required=True)
     reopen_archive.add_argument("--to", choices=SECTIONS)
     reopen_archive.add_argument("--reason", required=True)
@@ -952,8 +1020,8 @@ def main(argv: list[str]) -> int:
 
     args = parser.parse_args(argv)
 
-    if args.command in MUTATING_COMMANDS and not getattr(args, "pm_authorized", False):
-        raise SystemExit(PM_AUTH_REQUIRED_MESSAGE)
+    if args.command in MUTATING_COMMANDS and not getattr(args, "authorized", False):
+        raise SystemExit(AUTH_REQUIRED_MESSAGE)
 
     if args.command == "validate":
         board_ids = validate_board(verbose=False)
@@ -1071,6 +1139,23 @@ def main(argv: list[str]) -> int:
         upsert_line(lines, args.id, "  Coordination: ", f"  Coordination: {args.note}")
         write_board(lines)
         print(f"updated coordination note for #{args.id}")
+        return 0
+
+    if args.command == "set-active":
+        set_active(lines, args.id, args.lead, args.status, args.workers, args.note)
+        write_board(lines)
+        validate_board(verbose=False)
+        print(f"updated active metadata for #{args.id}")
+        return 0
+
+    if args.command == "clear-active":
+        removed = remove_line(lines, args.id, "  Active: ")
+        write_board(lines)
+        validate_board(verbose=False)
+        if removed:
+            print(f"cleared active metadata for #{args.id}")
+        else:
+            print(f"no active metadata for #{args.id}")
         return 0
 
     if args.command == "edit-brief":

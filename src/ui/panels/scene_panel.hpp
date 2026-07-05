@@ -12,19 +12,19 @@ class DocumentItemModel;
 class DocumentSelectionAdapter;
 
 class ScenePanel final : public QWidget {
-    Q_OBJECT
+	Q_OBJECT
 
 public:
-    explicit ScenePanel(PanelContext context, QWidget* parent = nullptr);
+	explicit ScenePanel(PanelContext context, QWidget *parent = nullptr);
 
-    [[nodiscard]] DocumentItemModel& model() noexcept;
-    [[nodiscard]] QTreeView& tree_view() noexcept;
+	[[nodiscard]] DocumentItemModel &model() noexcept;
+	[[nodiscard]] QTreeView &tree_view() noexcept;
 
 private:
-    PanelContext context_;
-    DocumentItemModel* model_ = nullptr;
-    QTreeView* tree_view_ = nullptr;
-    DocumentSelectionAdapter* selection_adapter_ = nullptr;
+	PanelContext context_;
+	DocumentItemModel *model_ = nullptr;
+	QTreeView *tree_view_ = nullptr;
+	DocumentSelectionAdapter *selection_adapter_ = nullptr;
 };
 
 } // namespace quader::ui

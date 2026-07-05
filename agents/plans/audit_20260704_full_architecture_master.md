@@ -5,13 +5,15 @@ Frozen baseline timestamp: `2026-07-04 18:44:19 +02:00`
 Repo root: `C:\Users\Drako\Desktop\_quader-qt-base`
 Status: actionable consolidated audit
 
-This master audit consolidates:
+This master audit consolidates archived source reports:
 
-- `agents/plans/audit_20260704_full_architecture_software.md`
-- `agents/plans/audit_20260704_full_architecture_ui.md`
-- `agents/plans/audit_20260704_full_architecture_renderer.md`
+- `agents/archive/audit_20260704_full_architecture_software.md`
+- `agents/archive/audit_20260704_full_architecture_ui.md`
+- `agents/archive/audit_20260704_full_architecture_renderer.md`
 
-The individual reports are source material only. This master audit is the implementation authority for this frozen audit run.
+The individual reports are archived provenance only. This master audit is
+self-contained and remains the implementation authority for this frozen audit
+run while active board entries still reference it.
 
 ## Baseline And Staleness
 
