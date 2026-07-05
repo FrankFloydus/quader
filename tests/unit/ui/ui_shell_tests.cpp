@@ -54,7 +54,7 @@
 
 namespace {
 
-constexpr std::array<quader::ui::ActionId, 25> kStandardActions = {
+constexpr std::array<quader::ui::ActionId, 33> kStandardActions = {
 	quader::ui::ActionId::NewScene,
 	quader::ui::ActionId::OpenScene,
 	quader::ui::ActionId::SaveScene,
@@ -62,6 +62,9 @@ constexpr std::array<quader::ui::ActionId, 25> kStandardActions = {
 	quader::ui::ActionId::Exit,
 	quader::ui::ActionId::Undo,
 	quader::ui::ActionId::Redo,
+	quader::ui::ActionId::SelectAll,
+	quader::ui::ActionId::ClearSelection,
+	quader::ui::ActionId::InvertSelection,
 	quader::ui::ActionId::DuplicateSelection,
 	quader::ui::ActionId::DeleteSelection,
 	quader::ui::ActionId::SelectTool,
@@ -69,6 +72,11 @@ constexpr std::array<quader::ui::ActionId, 25> kStandardActions = {
 	quader::ui::ActionId::RotateTool,
 	quader::ui::ActionId::ScaleTool,
 	quader::ui::ActionId::BoxTool,
+	quader::ui::ActionId::SelectObjectMode,
+	quader::ui::ActionId::SelectVertexMode,
+	quader::ui::ActionId::SelectEdgeMode,
+	quader::ui::ActionId::SelectFaceMode,
+	quader::ui::ActionId::FlipMeshNormals,
 	quader::ui::ActionId::CreateCube,
 	quader::ui::ActionId::CreateLight,
 	quader::ui::ActionId::CreateCamera,
@@ -146,12 +154,20 @@ TEST(UiShell, ActionStateUpdaterDisablesUnavailableDocumentToolAndCreateActions)
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SaveSceneAs).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::Undo).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::Redo).isEnabled());
+	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SelectAll).isEnabled());
+	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::ClearSelection).isEnabled());
+	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::InvertSelection).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::DuplicateSelection).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::DeleteSelection).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SelectTool).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::MoveTool).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::RotateTool).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::ScaleTool).isEnabled());
+	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SelectObjectMode).isEnabled());
+	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SelectVertexMode).isEnabled());
+	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SelectEdgeMode).isEnabled());
+	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SelectFaceMode).isEnabled());
+	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::FlipMeshNormals).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::CreateCube).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::CreateLight).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::CreateCamera).isEnabled());
@@ -177,8 +193,12 @@ TEST(UiShell, ActionStateUpdaterUsesEditorSnapshot) {
 	snapshot.has_active_document = true;
 	snapshot.document_dirty = true;
 	snapshot.has_selection = true;
+	snapshot.can_select_all = true;
+	snapshot.can_clear_selection = true;
+	snapshot.can_invert_selection = true;
 	snapshot.can_duplicate_selection = true;
 	snapshot.can_delete_selection = true;
+	snapshot.can_flip_mesh_normals = true;
 	snapshot.can_undo = true;
 	snapshot.undo_text = QStringLiteral("Undo Move Selection");
 	snapshot.can_redo = true;
@@ -186,6 +206,7 @@ TEST(UiShell, ActionStateUpdaterUsesEditorSnapshot) {
 	snapshot.tools_available = true;
 	snapshot.creation_available = true;
 	snapshot.active_tool = quader::ui::ActionId::MoveTool;
+	snapshot.active_selection_mode = quader::ui::ActionId::SelectFaceMode;
 	snapshot.viewport_available = true;
 	snapshot.viewport_state_known = true;
 	snapshot.quad_viewports_enabled = true;
@@ -196,10 +217,16 @@ TEST(UiShell, ActionStateUpdaterUsesEditorSnapshot) {
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::SaveScene).isEnabled());
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::Undo).isEnabled());
 	EXPECT_EQ(fixture.actions.action(quader::ui::ActionId::Undo).text(), QStringLiteral("Undo Move Selection"));
+	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::SelectAll).isEnabled());
+	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::ClearSelection).isEnabled());
+	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::InvertSelection).isEnabled());
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::DuplicateSelection).isEnabled());
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::DeleteSelection).isEnabled());
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::MoveTool).isChecked());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SelectTool).isChecked());
+	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::SelectFaceMode).isChecked());
+	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SelectObjectMode).isChecked());
+	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::FlipMeshNormals).isEnabled());
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::CreateCube).isEnabled());
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::ToggleQuadViewports).isChecked());
 }
@@ -385,6 +412,18 @@ TEST(UiShell, MainWindowConstructsWithServicesWithoutShowingGpuSurface) {
 	QMenu *file_menu = window.menuBar()->actions().at(0)->menu();
 	EXPECT_TRUE(file_menu->actions().contains(&fixture.actions.action(quader::ui::ActionId::NewScene)));
 	EXPECT_TRUE(file_menu->actions().contains(&fixture.actions.action(quader::ui::ActionId::OpenScene)));
+
+	QMenu *edit_menu = window.menuBar()->actions().at(1)->menu();
+	EXPECT_TRUE(edit_menu->actions().contains(&fixture.actions.action(quader::ui::ActionId::SelectAll)));
+	EXPECT_TRUE(edit_menu->actions().contains(&fixture.actions.action(quader::ui::ActionId::ClearSelection)));
+	EXPECT_TRUE(edit_menu->actions().contains(&fixture.actions.action(quader::ui::ActionId::InvertSelection)));
+
+	QMenu *tools_menu = window.menuBar()->actions().at(2)->menu();
+	EXPECT_TRUE(tools_menu->actions().contains(&fixture.actions.action(quader::ui::ActionId::SelectObjectMode)));
+	EXPECT_TRUE(tools_menu->actions().contains(&fixture.actions.action(quader::ui::ActionId::SelectVertexMode)));
+	EXPECT_TRUE(tools_menu->actions().contains(&fixture.actions.action(quader::ui::ActionId::SelectEdgeMode)));
+	EXPECT_TRUE(tools_menu->actions().contains(&fixture.actions.action(quader::ui::ActionId::SelectFaceMode)));
+	EXPECT_TRUE(tools_menu->actions().contains(&fixture.actions.action(quader::ui::ActionId::FlipMeshNormals)));
 
 	const auto kDocks = window.findChildren<QDockWidget *>();
 	bool found_scene = false;

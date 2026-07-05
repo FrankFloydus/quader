@@ -15,6 +15,7 @@
 #include "tools/tool_id.hpp"
 #include "tools/tool_preview.hpp"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -48,6 +49,20 @@ public:
 	/// Return the active tool, or null when no tool is active.
 	[[nodiscard]] const ITool *active_tool() const noexcept;
 
+	/// Return the active selection granularity used by selection actions/tools.
+	[[nodiscard]] SelectionMode selection_mode() const noexcept;
+	/// Return the transient selection hover hit, when the viewport has one.
+	[[nodiscard]] std::optional<SurfaceHit> selection_hover() const;
+	/// Clear the transient selection hover hit.
+	[[nodiscard]] bool clear_selection_hover();
+	/**
+	 * Set the active selection granularity.
+	 *
+	 * @param mode Selection mode to store.
+	 * @return True when the mode changed.
+	 */
+	bool set_selection_mode(SelectionMode mode) noexcept;
+
 	/**
 	 * Activate a registered tool and deactivate the previous active tool.
 	 *
@@ -59,6 +74,8 @@ public:
 	void clear_active_tool();
 	/// Cancel the active tool interaction without changing the active tool.
 	[[nodiscard]] bool cancel_active_tool();
+	/// Set a callback invoked after the active tool changes internally or through actions.
+	void set_after_active_tool_changed(std::function<void()> callback);
 
 	/// Dispatch a pointer event to the active tool.
 	[[nodiscard]] bool dispatch_pointer_event(const PointerEvent &event);
@@ -73,9 +90,17 @@ public:
 	[[nodiscard]] const ToolContext &context() const noexcept;
 
 private:
+	[[nodiscard]] bool handle_select_pointer_event(const PointerEvent &event);
+	[[nodiscard]] bool set_selection_hover(SurfaceHit hit);
+	void apply_tool_completion_request(ToolId handled_tool);
+	void notify_active_tool_changed();
+
 	ToolContext context_;
 	std::map<ToolId, std::unique_ptr<ITool>> tools_;
 	ITool *active_tool_ = nullptr;
+	SelectionMode selection_mode_ = SelectionMode::Object;
+	std::optional<SurfaceHit> selection_hover_;
+	std::function<void()> after_active_tool_changed_;
 };
 
 } // namespace quader::tools

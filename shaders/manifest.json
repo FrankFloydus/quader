@@ -86,6 +86,19 @@
       }
     },
     {
+      "id": "UnlitSurface",
+      "stages": {
+        "vertex": {
+          "source": "pbr/opaque_pbr.vs.sc",
+          "output": "unlit_surface.vs.bin"
+        },
+        "fragment": {
+          "source": "pbr/unlit_surface.fs.sc",
+          "output": "unlit_surface.fs.bin"
+        }
+      }
+    },
+    {
       "id": "OverlayUnlit",
       "stages": {
         "vertex": {

@@ -109,6 +109,12 @@ quader::foundation::Result<FrameSnapshot, RendererDiagnostic> FrameBuilder::buil
 	std::vector<LineOverlaySegment> line_overlay_payloads(
 			frame.line_overlay_payloads.begin(),
 			frame.line_overlay_payloads.end());
+	std::vector<TriangleOverlayPrimitive> triangle_overlay_payloads(
+			frame.triangle_overlay_payloads.begin(),
+			frame.triangle_overlay_payloads.end());
+	std::vector<PointOverlayPrimitive> point_overlay_payloads(
+			frame.point_overlay_payloads.begin(),
+			frame.point_overlay_payloads.end());
 
 	std::vector<RenderLight> lights;
 	lights.push_back(RenderLight{});
@@ -130,6 +136,8 @@ quader::foundation::Result<FrameSnapshot, RendererDiagnostic> FrameBuilder::buil
 			std::move(overlays),
 			std::move(grid_overlay_payloads),
 			std::move(line_overlay_payloads),
+			std::move(triangle_overlay_payloads),
+			std::move(point_overlay_payloads),
 			std::move(picking_requests),
 			viewport_settings,
 			DebugViewMode::FinalColor,

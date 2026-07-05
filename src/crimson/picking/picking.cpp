@@ -41,6 +41,31 @@ bool picking_readback_requested(std::span<const PickingRequest> requests) noexce
 	return !requests.empty();
 }
 
+bool picking_element_kind_is_component(PickingElementKind kind) noexcept {
+	return kind == PickingElementKind::Face || kind == PickingElementKind::Edge || kind == PickingElementKind::Vertex;
+}
+
+bool picking_payload_requires_external_resolution(PickingPayload payload) noexcept {
+	return payload.object_id != 0 && picking_element_kind_is_component(payload.element_kind);
+}
+
+std::optional<PickingPayload> make_component_picking_payload(
+		RenderObjectId object_id,
+		PickingElementKind kind,
+		std::uint32_t element_index,
+		std::uint32_t submesh_index) noexcept {
+	if (object_id == 0 || !picking_element_kind_is_component(kind)) {
+		return std::nullopt;
+	}
+
+	return PickingPayload{
+		.object_id = object_id,
+		.submesh_index = submesh_index,
+		.element_kind = kind,
+		.element_index = element_index,
+	};
+}
+
 PickingIdAllocator::PickingIdAllocator(PickingRequestId request_id) : request_id_(request_id) {
 }
 

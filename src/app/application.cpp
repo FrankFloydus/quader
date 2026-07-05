@@ -65,6 +65,9 @@ AppServices::AppServices() : tool_manager(quader::tools::ToolContext{ document, 
 	tool_manager.context().set_after_command_applied([this]() {
 		document_ui.refresh_from_document();
 	});
+	tool_manager.set_after_active_tool_changed([this]() {
+		action_state_updater.refresh();
+	});
 	register_shell_tools(tool_manager);
 	action_state_updater.refresh();
 }

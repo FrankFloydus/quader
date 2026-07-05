@@ -27,6 +27,12 @@ std::string_view action_id_name(ActionId id) noexcept {
 			return "Undo";
 		case ActionId::Redo:
 			return "Redo";
+		case ActionId::SelectAll:
+			return "SelectAll";
+		case ActionId::ClearSelection:
+			return "ClearSelection";
+		case ActionId::InvertSelection:
+			return "InvertSelection";
 		case ActionId::DuplicateSelection:
 			return "DuplicateSelection";
 		case ActionId::DeleteSelection:
@@ -41,6 +47,16 @@ std::string_view action_id_name(ActionId id) noexcept {
 			return "ScaleTool";
 		case ActionId::BoxTool:
 			return "BoxTool";
+		case ActionId::SelectObjectMode:
+			return "SelectObjectMode";
+		case ActionId::SelectVertexMode:
+			return "SelectVertexMode";
+		case ActionId::SelectEdgeMode:
+			return "SelectEdgeMode";
+		case ActionId::SelectFaceMode:
+			return "SelectFaceMode";
+		case ActionId::FlipMeshNormals:
+			return "FlipMeshNormals";
 		case ActionId::CreateCube:
 			return "CreateCube";
 		case ActionId::CreateLight:

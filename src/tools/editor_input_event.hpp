@@ -9,11 +9,14 @@
  */
 #pragma once
 
+#include "document/object_id.hpp"
 #include "math/vec2.hpp"
 #include "math/vec3.hpp"
+#include "mesh/core/mesh_ids.hpp"
 
 #include <cstdint>
 #include <optional>
+#include <variant>
 
 namespace quader::tools {
 
@@ -55,8 +58,37 @@ enum class SurfaceHitKind {
 	Grid,
 	/// Whole object hit.
 	Object,
+	/// Mesh vertex hit.
+	Vertex,
+	/// Mesh edge hit.
+	Edge,
 	/// Mesh face hit.
 	Face,
+};
+
+/// Active selection granularity used by the selection tool and UI actions.
+enum class SelectionMode {
+	/// Select whole document objects.
+	Object,
+	/// Select mesh vertices on the active edit target.
+	Vertex,
+	/// Select mesh edges on the active edit target.
+	Edge,
+	/// Select mesh faces on the active edit target.
+	Face,
+};
+
+/// Typed component payload carried by surface hits.
+using SurfaceHitComponent = std::variant<std::monostate, quader::mesh::VertexId, quader::mesh::EdgeId, quader::mesh::FaceId>;
+
+/// Keyboard modifier state translated from the viewport host.
+struct KeyboardModifiers {
+	/// Shift is pressed.
+	bool shift = false;
+	/// Control or Command-equivalent additive modifier is pressed.
+	bool control = false;
+	/// Alt is pressed.
+	bool alt = false;
 };
 
 /// Document-side surface hit used as a placement seed or hover candidate.
@@ -65,10 +97,14 @@ struct SurfaceHit {
 	quader::math::Vec3 position;
 	/// Hit normal in world coordinates.
 	quader::math::Vec3 normal{ 0.0F, 1.0F, 0.0F };
-	/// Stable object identifier when an object was hit.
+	/// Legacy encoded object identifier fallback when an object was hit.
 	std::uint64_t object_id = 0;
-	/// Component index when the hit refers to a sub-object element.
+	/// Legacy component index fallback when the hit refers to a sub-object element.
 	std::uint32_t component_index = 0;
+	/// Typed document object id when the hit comes from document topology.
+	quader::document::ObjectId document_object_id = quader::document::ObjectId::invalid();
+	/// Typed mesh component id when the hit refers to mesh topology.
+	SurfaceHitComponent component;
 	/// Hit classification.
 	SurfaceHitKind kind = SurfaceHitKind::Grid;
 };
@@ -83,6 +119,8 @@ struct PointerEvent {
 	bool pressed = false;
 	/// Pointer phase.
 	PointerPhase phase = PointerPhase::Hover;
+	/// Keyboard modifiers active when the pointer event was produced.
+	KeyboardModifiers modifiers;
 	/// True when camera navigation owns the pointer.
 	bool navigation_active = false;
 	/// True when tools should snap placement to the active grid.

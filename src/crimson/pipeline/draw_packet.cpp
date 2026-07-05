@@ -12,6 +12,8 @@
 #include "crimson/pipeline/draw_packet_sort.hpp"
 #include "crimson/pipeline/frustum_culler.hpp"
 
+#include <variant>
+
 namespace crimson {
 namespace {
 
@@ -25,9 +27,8 @@ namespace {
 [[nodiscard]] const BaseShaderDefinition *definition_for_object(
 		const BaseShaderRegistry &registry,
 		const MaterialSystem &materials,
-		const RenderObject &object,
-		RenderMaterialHandle resolved_material) noexcept {
-	if (const MaterialInstance *material = materials.get(resolved_material)) {
+		const RenderObject &object) noexcept {
+	if (const MaterialInstance *material = materials.get(object.material)) {
 		if (const BaseShaderDefinition *definition = registry.find(material->base_shader_id)) {
 			return definition;
 		}
@@ -35,9 +36,26 @@ namespace {
 	return registry.find(object.base_shader);
 }
 
+[[nodiscard]] bool material_double_sided(const MaterialInstance *material) noexcept {
+	if (material == nullptr) {
+		return false;
+	}
+
+	for (const MaterialParameter &parameter : material->parameters) {
+		if (parameter.name == "double_sided") {
+			if (const auto *value = std::get_if<bool>(&parameter.value)) {
+				return *value;
+			}
+			return material->overrides.double_sided;
+		}
+	}
+	return material->overrides.double_sided;
+}
+
 [[nodiscard]] DrawPacket packet_from_object(
 		const RenderObject &object,
 		const BaseShaderDefinition &definition,
+		const MaterialInstance *material_instance,
 		RenderMaterialHandle material,
 		RenderMeshHandle unit_box_mesh,
 		const RenderCamera &camera) {
@@ -59,7 +77,7 @@ namespace {
 		.world_bounds = object.world_bounds,
 		.submesh_index = object.submesh_index,
 		.camera_distance_sq = object_camera_distance_sq(object, camera),
-		.double_sided = object.pickable && definition.cull_mode == CullMode::None,
+		.double_sided = definition.cull_mode == CullMode::None || material_double_sided(material_instance),
 	};
 }
 
@@ -100,7 +118,7 @@ DrawPacketBuildResult build_draw_packets(
 		}
 
 		const RenderMaterialHandle kMaterial = material_or_fallback(materials, object.material, fallback_material);
-		const BaseShaderDefinition *definition = definition_for_object(registry, materials, object, kMaterial);
+		const BaseShaderDefinition *definition = definition_for_object(registry, materials, object);
 		if (definition == nullptr) {
 			continue;
 		}
@@ -111,7 +129,12 @@ DrawPacketBuildResult build_draw_packets(
 			continue;
 		}
 
-		DrawPacket packet = packet_from_object(object, *definition, kMaterial, unit_box_mesh, camera);
+		DrawPacket packet = packet_from_object(object,
+				*definition,
+				materials.get(kMaterial),
+				kMaterial,
+				unit_box_mesh,
+				camera);
 		switch (packet.queue) {
 			case RenderQueue::Opaque:
 				result.opaque.push_back(packet);

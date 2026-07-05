@@ -12,10 +12,14 @@
 #include "geometry/normals.hpp"
 #include "geometry/predicates.hpp"
 #include "mesh/core/detail/openmesh_storage.hpp"
+#include "mesh/core/mesh_traversal.hpp"
 #include "mesh/core/mesh_validation.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <map>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -134,6 +138,110 @@ template <class Handle>
 		}
 	}
 	return false;
+}
+
+struct FaceLoopSnapshot final {
+	FaceId face;
+	std::vector<VertexId> vertices;
+};
+
+struct EdgeVertexKey final {
+	VertexId a;
+	VertexId b;
+
+	friend auto operator<=>(const EdgeVertexKey &, const EdgeVertexKey &) = default;
+};
+
+struct DirectedHalfedgeKey final {
+	VertexId origin;
+	VertexId target;
+
+	friend auto operator<=>(const DirectedHalfedgeKey &, const DirectedHalfedgeKey &) = default;
+};
+
+[[nodiscard]] EdgeVertexKey make_edge_vertex_key(VertexId first, VertexId second) noexcept {
+	if (second < first) {
+		return EdgeVertexKey{ second, first };
+	}
+	return EdgeVertexKey{ first, second };
+}
+
+[[nodiscard]] MeshError backend_mapping_error(std::string message) {
+	return make_mesh_error(MeshErrorCode::BackendMappingCorrupt, std::move(message));
+}
+
+[[nodiscard]] quader::foundation::Result<std::map<DirectedHalfedgeKey, HalfedgeId>, MeshError>
+build_directed_halfedge_map(const Polyhedron &mesh) {
+	std::map<DirectedHalfedgeKey, HalfedgeId> result;
+	for (const HalfedgeId kHalfedge : mesh.halfedge_ids()) {
+		auto origin = mesh.halfedge_origin(kHalfedge);
+		if (!origin) {
+			return quader::foundation::Result<std::map<DirectedHalfedgeKey, HalfedgeId>, MeshError>::failure(
+					std::move(origin).error());
+		}
+		auto target = mesh.halfedge_target(kHalfedge);
+		if (!target) {
+			return quader::foundation::Result<std::map<DirectedHalfedgeKey, HalfedgeId>, MeshError>::failure(
+					std::move(target).error());
+		}
+
+		result.emplace(DirectedHalfedgeKey{ origin.value(), target.value() }, kHalfedge);
+	}
+
+	return quader::foundation::Result<std::map<DirectedHalfedgeKey, HalfedgeId>, MeshError>::success(
+			std::move(result));
+}
+
+[[nodiscard]] quader::foundation::Result<std::map<EdgeVertexKey, EdgeId>, MeshError> build_edge_map(
+		const Polyhedron &mesh) {
+	std::map<EdgeVertexKey, EdgeId> result;
+	for (const EdgeId kEdge : mesh.edge_ids()) {
+		auto halfedges = mesh.edge_halfedges(kEdge);
+		if (!halfedges) {
+			return quader::foundation::Result<std::map<EdgeVertexKey, EdgeId>, MeshError>::failure(
+					std::move(halfedges).error());
+		}
+		auto origin = mesh.halfedge_origin(halfedges.value()[0]);
+		if (!origin) {
+			return quader::foundation::Result<std::map<EdgeVertexKey, EdgeId>, MeshError>::failure(
+					std::move(origin).error());
+		}
+		auto target = mesh.halfedge_target(halfedges.value()[0]);
+		if (!target) {
+			return quader::foundation::Result<std::map<EdgeVertexKey, EdgeId>, MeshError>::failure(
+					std::move(target).error());
+		}
+
+		result.emplace(make_edge_vertex_key(origin.value(), target.value()), kEdge);
+	}
+
+	return quader::foundation::Result<std::map<EdgeVertexKey, EdgeId>, MeshError>::success(std::move(result));
+}
+
+[[nodiscard]] quader::foundation::Result<std::vector<FaceLoopSnapshot>, MeshError> build_face_loop_snapshots(
+		const Polyhedron &mesh,
+		const std::vector<FaceId> &faces_to_reverse) {
+	std::vector<FaceLoopSnapshot> result;
+	result.reserve(mesh.face_count());
+	for (const FaceId kFace : mesh.face_ids()) {
+		auto vertices = face_vertices(mesh, kFace);
+		if (!vertices) {
+			return quader::foundation::Result<std::vector<FaceLoopSnapshot>, MeshError>::failure(
+					std::move(vertices).error());
+		}
+
+		if (std::binary_search(faces_to_reverse.begin(), faces_to_reverse.end(), kFace)) {
+			std::reverse(vertices.value().begin(), vertices.value().end());
+		}
+		auto vertex_loop = std::move(vertices).value();
+
+		result.push_back(FaceLoopSnapshot{
+				kFace,
+				std::move(vertex_loop),
+		});
+	}
+
+	return quader::foundation::Result<std::vector<FaceLoopSnapshot>, MeshError>::success(std::move(result));
 }
 
 } // namespace
@@ -419,6 +527,198 @@ quader::foundation::Result<void, MeshError> Polyhedron::delete_face(FaceId face)
 		slot.generation = next_generation(slot.generation);
 		slot.handle = invalid_handle<detail::QuaderOpenMesh::HalfedgeHandle>();
 		storage_->free_halfedges.push_back(kHalfedge.index());
+	}
+
+	return quader::foundation::Result<void, MeshError>::success();
+}
+
+quader::foundation::Result<void, MeshError> Polyhedron::reverse_face_winding(FaceId face) {
+	const std::array<FaceId, 1U> kFaces{ face };
+	return reverse_face_windings(kFaces);
+}
+
+quader::foundation::Result<void, MeshError> Polyhedron::reverse_face_windings(
+		std::span<const FaceId> faces) {
+	if (faces.empty()) {
+		return quader::foundation::Result<void, MeshError>::failure(
+				make_mesh_error(MeshErrorCode::InvalidFace, "cannot reverse face winding without live faces"));
+	}
+
+	std::vector<FaceId> faces_to_reverse{ faces.begin(), faces.end() };
+	for (const FaceId kFace : faces_to_reverse) {
+		if (!is_valid(kFace)) {
+			return quader::foundation::Result<void, MeshError>::failure(
+					make_mesh_error(MeshErrorCode::InvalidFace,
+							"cannot reverse the winding of an invalid face id"));
+		}
+	}
+	std::sort(faces_to_reverse.begin(), faces_to_reverse.end());
+	faces_to_reverse.erase(std::unique(faces_to_reverse.begin(), faces_to_reverse.end()),
+			faces_to_reverse.end());
+
+	auto face_loops = build_face_loop_snapshots(*this, faces_to_reverse);
+	if (!face_loops) {
+		return quader::foundation::Result<void, MeshError>::failure(std::move(face_loops).error());
+	}
+
+	auto halfedge_map = build_directed_halfedge_map(*this);
+	if (!halfedge_map) {
+		return quader::foundation::Result<void, MeshError>::failure(std::move(halfedge_map).error());
+	}
+
+	auto edge_map = build_edge_map(*this);
+	if (!edge_map) {
+		return quader::foundation::Result<void, MeshError>::failure(std::move(edge_map).error());
+	}
+
+	detail::OpenMeshStorage rebuilt;
+	rebuilt.vertices = storage_->vertices;
+	rebuilt.halfedges = storage_->halfedges;
+	rebuilt.edges = storage_->edges;
+	rebuilt.faces = storage_->faces;
+	rebuilt.free_vertices = storage_->free_vertices;
+	rebuilt.free_halfedges = storage_->free_halfedges;
+	rebuilt.free_edges = storage_->free_edges;
+	rebuilt.free_faces = storage_->free_faces;
+
+	for (auto &slot : rebuilt.vertices) {
+		slot.handle = invalid_handle<detail::QuaderOpenMesh::VertexHandle>();
+	}
+	for (auto &slot : rebuilt.halfedges) {
+		slot.handle = invalid_handle<detail::QuaderOpenMesh::HalfedgeHandle>();
+	}
+	for (auto &slot : rebuilt.edges) {
+		slot.handle = invalid_handle<detail::QuaderOpenMesh::EdgeHandle>();
+		slot.representative_halfedge = HalfedgeId::invalid();
+	}
+	for (auto &slot : rebuilt.faces) {
+		slot.handle = invalid_handle<detail::QuaderOpenMesh::FaceHandle>();
+	}
+
+	std::map<VertexId, detail::QuaderOpenMesh::VertexHandle> vertex_handles;
+	for (const VertexId kVertex : vertex_ids()) {
+		auto position = vertex_position(kVertex);
+		if (!position) {
+			return quader::foundation::Result<void, MeshError>::failure(std::move(position).error());
+		}
+
+		const auto kHandle = plain_handle<detail::QuaderOpenMesh::VertexHandle>(
+				rebuilt.backend.add_vertex(to_openmesh_point(position.value())));
+		auto &slot = rebuilt.vertices[kVertex.index()];
+		slot.alive = true;
+		slot.generation = kVertex.generation();
+		slot.handle = kHandle;
+		set_reverse(rebuilt.vertex_reverse.handle_to_slot, kHandle, kVertex.index());
+		vertex_handles.emplace(kVertex, kHandle);
+	}
+
+	for (const FaceLoopSnapshot &face_loop : face_loops.value()) {
+		std::vector<detail::QuaderOpenMesh::VertexHandle> handles;
+		handles.reserve(face_loop.vertices.size());
+		for (const VertexId kVertex : face_loop.vertices) {
+			const auto found = vertex_handles.find(kVertex);
+			if (found == vertex_handles.end()) {
+				return quader::foundation::Result<void, MeshError>::failure(
+						backend_mapping_error("face winding rebuild could not resolve a vertex handle"));
+			}
+			handles.push_back(found->second);
+		}
+
+		const auto kFaceHandle =
+				plain_handle<detail::QuaderOpenMesh::FaceHandle>(rebuilt.backend.add_face(handles));
+		if (!kFaceHandle.is_valid()) {
+			return quader::foundation::Result<void, MeshError>::failure(
+					make_mesh_error(MeshErrorCode::BackendRejectedFace,
+							"backend rejected the requested reversed face winding"));
+		}
+
+		auto &slot = rebuilt.faces[face_loop.face.index()];
+		slot.alive = true;
+		slot.generation = face_loop.face.generation();
+		slot.handle = kFaceHandle;
+		set_reverse(rebuilt.face_reverse.handle_to_slot, kFaceHandle, face_loop.face.index());
+	}
+
+	std::set<HalfedgeId> assigned_halfedges;
+	std::set<EdgeId> assigned_edges;
+	for (auto edge_it = rebuilt.backend.edges_begin(); edge_it != rebuilt.backend.edges_end(); ++edge_it) {
+		const auto kEdgeHandle = plain_handle<detail::QuaderOpenMesh::EdgeHandle>(*edge_it);
+		const std::array<detail::QuaderOpenMesh::HalfedgeHandle, 2U> kHalfedgeHandles{
+			plain_handle<detail::QuaderOpenMesh::HalfedgeHandle>(
+					rebuilt.backend.halfedge_handle(kEdgeHandle, 0)),
+			plain_handle<detail::QuaderOpenMesh::HalfedgeHandle>(
+					rebuilt.backend.halfedge_handle(kEdgeHandle, 1)),
+		};
+
+		std::array<HalfedgeId, 2U> halfedge_ids{
+			HalfedgeId::invalid(),
+			HalfedgeId::invalid(),
+		};
+		DirectedHalfedgeKey first_key{};
+		for (std::size_t index = 0; index < kHalfedgeHandles.size(); ++index) {
+			const auto kHalfedgeHandle = kHalfedgeHandles[index];
+			const auto kOriginHandle = rebuilt.backend.from_vertex_handle(kHalfedgeHandle);
+			const auto kTargetHandle = rebuilt.backend.to_vertex_handle(kHalfedgeHandle);
+			const auto kOriginSlot = reverse_slot(rebuilt.vertex_reverse.handle_to_slot, kOriginHandle);
+			const auto kTargetSlot = reverse_slot(rebuilt.vertex_reverse.handle_to_slot, kTargetHandle);
+			if (kOriginSlot == kNoSlot || kTargetSlot == kNoSlot ||
+					kOriginSlot >= rebuilt.vertices.size() || kTargetSlot >= rebuilt.vertices.size()) {
+				return quader::foundation::Result<void, MeshError>::failure(
+						backend_mapping_error("reversed topology contains an unmapped halfedge vertex"));
+			}
+
+			const DirectedHalfedgeKey kKey{
+				VertexId{ kOriginSlot, rebuilt.vertices[kOriginSlot].generation },
+				VertexId{ kTargetSlot, rebuilt.vertices[kTargetSlot].generation },
+			};
+			if (index == 0U) {
+				first_key = kKey;
+			}
+			const auto found_halfedge = halfedge_map.value().find(kKey);
+			if (found_halfedge == halfedge_map.value().end()) {
+				return quader::foundation::Result<void, MeshError>::failure(
+						backend_mapping_error("reversed topology could not preserve a halfedge id"));
+			}
+
+			const HalfedgeId kHalfedge = found_halfedge->second;
+			auto &slot = rebuilt.halfedges[kHalfedge.index()];
+			slot.alive = true;
+			slot.generation = kHalfedge.generation();
+			slot.handle = kHalfedgeHandle;
+			set_reverse(rebuilt.halfedge_reverse.handle_to_slot, kHalfedgeHandle, kHalfedge.index());
+			assigned_halfedges.insert(kHalfedge);
+			halfedge_ids[index] = kHalfedge;
+		}
+
+		const auto found_edge = edge_map.value().find(make_edge_vertex_key(first_key.origin, first_key.target));
+		if (found_edge == edge_map.value().end()) {
+			return quader::foundation::Result<void, MeshError>::failure(
+					backend_mapping_error("reversed topology could not preserve an edge id"));
+		}
+
+		const EdgeId kEdge = found_edge->second;
+		auto &slot = rebuilt.edges[kEdge.index()];
+		slot.alive = true;
+		slot.generation = kEdge.generation();
+		slot.handle = kEdgeHandle;
+		slot.representative_halfedge = halfedge_ids[0].is_valid() ? halfedge_ids[0] : halfedge_ids[1];
+		set_reverse(rebuilt.edge_reverse.handle_to_slot, kEdgeHandle, kEdge.index());
+		assigned_edges.insert(kEdge);
+	}
+
+	if (assigned_halfedges.size() != halfedge_count() || assigned_edges.size() != edge_count()) {
+		return quader::foundation::Result<void, MeshError>::failure(
+				backend_mapping_error("reversed topology did not preserve every live edge and halfedge id"));
+	}
+
+	auto previous_storage = std::move(storage_);
+	storage_ = std::make_unique<detail::OpenMeshStorage>(std::move(rebuilt));
+	const auto kValidation = validate_mesh(*this);
+	if (!kValidation.ok()) {
+		storage_ = std::move(previous_storage);
+		return quader::foundation::Result<void, MeshError>::failure(
+				make_mesh_error(MeshErrorCode::InvalidGeometry,
+						"mesh validation failed after reversing face winding"));
 	}
 
 	return quader::foundation::Result<void, MeshError>::success();

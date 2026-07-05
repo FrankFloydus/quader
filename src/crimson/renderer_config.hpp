@@ -99,12 +99,14 @@ struct RendererConfig {
 	GraphicsBackendPreference backend_preference = GraphicsBackendPreference::Auto;
 	/// Root directory containing compiled shader binaries.
 	std::filesystem::path shader_root;
+	/// Root directory containing renderer runtime assets such as default materials.
+	std::filesystem::path asset_root;
 	/// Whether presentation should synchronize to display refresh.
 	bool vsync = true;
 	/// Whether renderer debug text is enabled when supported.
 	bool enable_debug_text = true;
 	/// Tone mapper used by frame settings when no override is supplied.
-	ToneMapper default_tone_mapper = ToneMapper::AcesFitted;
+	ToneMapper default_tone_mapper = ToneMapper::Linear;
 	/// Display conversion policy for the selected backend.
 	DisplayConversionSettings display_conversion;
 };

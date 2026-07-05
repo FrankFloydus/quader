@@ -415,6 +415,8 @@ add_library(crimson STATIC
     src/crimson/material/base_shader.hpp
     src/crimson/material/base_shader_registry.cpp
     src/crimson/material/base_shader_registry.hpp
+    src/crimson/material/default_material.cpp
+    src/crimson/material/default_material.hpp
     src/crimson/material/material_instance.hpp
     src/crimson/material/material_parameter.cpp
     src/crimson/material/material_parameter.hpp
@@ -495,6 +497,13 @@ add_library(crimson STATIC
 target_include_directories(crimson
     PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    PRIVATE
+        "${bgfx_cmake_SOURCE_DIR}/bimg/3rdparty/lodepng"
+)
+
+target_sources(crimson
+    PRIVATE
+        "${bgfx_cmake_SOURCE_DIR}/bimg/3rdparty/lodepng/lodepng.cpp"
 )
 
 target_link_libraries(crimson
@@ -1236,6 +1245,12 @@ set(SHADER_COMPILE_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/build_tools/compile_shade
 set(SHADER_VALIDATE_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/build_tools/validate_shader_manifest.py")
 set(SHADER_STAMP "${CMAKE_CURRENT_BINARY_DIR}/compiled_shaders.stamp")
 set(RUNTIME_SHADER_STAMP "${CMAKE_CURRENT_BINARY_DIR}/runtime_shaders.stamp")
+set(MODELING_ASSET_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources/modeling_assets")
+set(RUNTIME_MODELING_ASSET_STAMP "${CMAKE_CURRENT_BINARY_DIR}/runtime_modeling_assets.stamp")
+set(MODELING_ASSET_FILES
+    "${MODELING_ASSET_SOURCE_DIR}/materials/default/default_albedo.png"
+    "${MODELING_ASSET_SOURCE_DIR}/materials/default/default_roughness.png"
+)
 set(SHADER_SOURCE_FILES
     "${SHADER_SOURCE_DIR}/common/color_space.sh"
     "${SHADER_SOURCE_DIR}/fs_cube.sc"
@@ -1246,6 +1261,7 @@ set(SHADER_SOURCE_FILES
     "${SHADER_SOURCE_DIR}/pbr/alpha_cutout_pbr.vs.sc"
     "${SHADER_SOURCE_DIR}/pbr/opaque_pbr.fs.sc"
     "${SHADER_SOURCE_DIR}/pbr/opaque_pbr.vs.sc"
+    "${SHADER_SOURCE_DIR}/pbr/unlit_surface.fs.sc"
     "${SHADER_SOURCE_DIR}/picking/picking.fs.sc"
     "${SHADER_SOURCE_DIR}/picking/picking.vs.sc"
     "${SHADER_SOURCE_DIR}/pbr/transparent_pbr.fs.sc"
@@ -1308,8 +1324,28 @@ add_custom_target(copy_runtime_shaders ALL
         "${RUNTIME_SHADER_STAMP}"
 )
 
+add_custom_command(
+    OUTPUT "${RUNTIME_MODELING_ASSET_STAMP}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${QUADER_APP_TARGET}>/resources"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "$<TARGET_FILE_DIR:${QUADER_APP_TARGET}>/resources/modeling_assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${MODELING_ASSET_SOURCE_DIR}"
+        "$<TARGET_FILE_DIR:${QUADER_APP_TARGET}>/resources/modeling_assets"
+    COMMAND ${CMAKE_COMMAND} -E touch "${RUNTIME_MODELING_ASSET_STAMP}"
+    DEPENDS
+        ${QUADER_APP_TARGET}
+        ${MODELING_ASSET_FILES}
+    VERBATIM
+)
+
+add_custom_target(copy_runtime_modeling_assets ALL
+    DEPENDS
+        "${RUNTIME_MODELING_ASSET_STAMP}"
+)
+
 add_custom_target(quader_app_runtime)
 add_dependencies(quader_app_runtime copy_runtime_shaders)
+add_dependencies(quader_app_runtime copy_runtime_modeling_assets)
 
 if(BUILD_TESTING)
     add_test(
@@ -1339,6 +1375,7 @@ if(WIN32)
             DEPENDS
                 ${QUADER_APP_TARGET}
                 copy_runtime_shaders
+                copy_runtime_modeling_assets
             COMMENT "Deploying Qt and MinGW runtime DLLs"
             VERBATIM
         )

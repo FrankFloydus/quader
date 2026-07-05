@@ -10,15 +10,18 @@
 #include "crimson/gpu/gpu_material_cache.hpp"
 #include "crimson/gpu/gpu_pbr_pass.hpp"
 #include "crimson/material/base_shader_registry.hpp"
+#include "crimson/material/default_material.hpp"
 #include "crimson/material/material_system.hpp"
 #include "crimson/material/material_validation.hpp"
 
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cstdint>
 #include <iostream>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 namespace {
 
@@ -58,15 +61,28 @@ void expect_true(bool condition, std::string_view message) {
 	return nullptr;
 }
 
+[[nodiscard]] const crimson::MaterialTextureBinding *find_material_texture(
+		const crimson::MaterialInstance &material,
+		std::string_view name) {
+	for (const crimson::MaterialTextureBinding &texture : material.textures) {
+		if (texture.name == name) {
+			return &texture;
+		}
+	}
+
+	return nullptr;
+}
+
 TEST(MaterialSystem, V1RegistryContainsExpectedBaseShadersAndQueues) {
 	const crimson::BaseShaderRegistry kRegistry = crimson::make_v1_base_shader_registry();
-	expect_true(kRegistry.definitions().size() == 4, "V1 registry contains exactly four base shaders");
+	expect_true(kRegistry.definitions().size() == 5, "V1 registry contains exactly five base shaders");
 
 	const crimson::BaseShaderDefinition *opaque = find_shader(kRegistry, crimson::BaseShaderId::OpaquePbr);
+	const crimson::BaseShaderDefinition *unlit = find_shader(kRegistry, crimson::BaseShaderId::UnlitSurface);
 	const crimson::BaseShaderDefinition *cutout = find_shader(kRegistry, crimson::BaseShaderId::AlphaCutoutPbr);
 	const crimson::BaseShaderDefinition *transparent = find_shader(kRegistry, crimson::BaseShaderId::TransparentPbr);
 	const crimson::BaseShaderDefinition *overlay = find_shader(kRegistry, crimson::BaseShaderId::OverlayUnlit);
-	if (opaque == nullptr || cutout == nullptr || transparent == nullptr || overlay == nullptr) {
+	if (opaque == nullptr || unlit == nullptr || cutout == nullptr || transparent == nullptr || overlay == nullptr) {
 		return;
 	}
 
@@ -75,6 +91,10 @@ TEST(MaterialSystem, V1RegistryContainsExpectedBaseShadersAndQueues) {
 	expect_true(opaque->depth_mode == crimson::DepthMode::TestWrite, "OpaquePbr writes depth");
 	expect_true(opaque->blend_mode == crimson::BlendMode::Off, "OpaquePbr disables blending");
 	expect_true(opaque->shadow_mode == crimson::ShadowMode::CastAndReceive, "OpaquePbr casts and receives shadows");
+
+	expect_true(unlit->domain == crimson::RenderDomain::LitSurface, "UnlitSurface is routed as a lit surface queue material");
+	expect_true(unlit->default_queue == crimson::RenderQueue::Opaque, "UnlitSurface defaults to opaque queue");
+	expect_true(unlit->shadow_mode == crimson::ShadowMode::None, "UnlitSurface has no shadows");
 
 	expect_true(cutout->default_queue == crimson::RenderQueue::AlphaCutout, "AlphaCutoutPbr uses cutout queue");
 	expect_true(cutout->blend_mode == crimson::BlendMode::Off, "AlphaCutoutPbr disables blending");
@@ -102,10 +122,11 @@ TEST(MaterialSystem, V1RegistryContainsExpectedBaseShadersAndQueues) {
 TEST(MaterialSystem, SchemasExposeOnlyDeclaredMaterialFields) {
 	const crimson::BaseShaderRegistry kRegistry = crimson::make_v1_base_shader_registry();
 	const crimson::BaseShaderDefinition *opaque = find_shader(kRegistry, crimson::BaseShaderId::OpaquePbr);
+	const crimson::BaseShaderDefinition *unlit = find_shader(kRegistry, crimson::BaseShaderId::UnlitSurface);
 	const crimson::BaseShaderDefinition *cutout = find_shader(kRegistry, crimson::BaseShaderId::AlphaCutoutPbr);
 	const crimson::BaseShaderDefinition *transparent = find_shader(kRegistry, crimson::BaseShaderId::TransparentPbr);
 	const crimson::BaseShaderDefinition *overlay = find_shader(kRegistry, crimson::BaseShaderId::OverlayUnlit);
-	if (opaque == nullptr || cutout == nullptr || transparent == nullptr || overlay == nullptr) {
+	if (opaque == nullptr || unlit == nullptr || cutout == nullptr || transparent == nullptr || overlay == nullptr) {
 		return;
 	}
 
@@ -116,6 +137,11 @@ TEST(MaterialSystem, SchemasExposeOnlyDeclaredMaterialFields) {
 	expect_true(!has_parameter(*opaque, "alpha_cutoff"), "OpaquePbr does not expose alpha cutoff");
 	expect_true(!has_parameter(*opaque, "transmission"), "OpaquePbr does not expose transmission");
 	expect_true(!has_parameter(*opaque, "ior"), "OpaquePbr does not expose IOR");
+
+	expect_true(has_parameter(*unlit, "base_color"), "UnlitSurface exposes base color");
+	expect_true(has_parameter(*unlit, "emissive_color"), "UnlitSurface exposes emissive color");
+	expect_true(!has_parameter(*unlit, "metallic"), "UnlitSurface does not expose metallic");
+	expect_true(!has_parameter(*unlit, "roughness"), "UnlitSurface does not expose roughness");
 
 	expect_true(has_parameter(*cutout, "alpha_cutoff"), "AlphaCutoutPbr exposes alpha cutoff");
 	expect_true(has_parameter(*cutout, "alpha_source_channel"), "AlphaCutoutPbr exposes alpha source channel");
@@ -139,10 +165,11 @@ TEST(MaterialSystem, SchemasExposeOnlyDeclaredMaterialFields) {
 TEST(MaterialSystem, TextureSlotsHaveDeclaredColorSpaces) {
 	const crimson::BaseShaderRegistry kRegistry = crimson::make_v1_base_shader_registry();
 	const crimson::BaseShaderDefinition *opaque = find_shader(kRegistry, crimson::BaseShaderId::OpaquePbr);
+	const crimson::BaseShaderDefinition *unlit = find_shader(kRegistry, crimson::BaseShaderId::UnlitSurface);
 	const crimson::BaseShaderDefinition *cutout = find_shader(kRegistry, crimson::BaseShaderId::AlphaCutoutPbr);
 	const crimson::BaseShaderDefinition *transparent = find_shader(kRegistry, crimson::BaseShaderId::TransparentPbr);
 	const crimson::BaseShaderDefinition *overlay = find_shader(kRegistry, crimson::BaseShaderId::OverlayUnlit);
-	if (opaque == nullptr || cutout == nullptr || transparent == nullptr || overlay == nullptr) {
+	if (opaque == nullptr || unlit == nullptr || cutout == nullptr || transparent == nullptr || overlay == nullptr) {
 		return;
 	}
 
@@ -161,6 +188,13 @@ TEST(MaterialSystem, TextureSlotsHaveDeclaredColorSpaces) {
 	expect_true(
 			has_texture_slot(*opaque, "occlusion", crimson::TextureColorSpace::Linear),
 			"OpaquePbr occlusion texture is linear");
+
+	expect_true(
+			has_texture_slot(*unlit, "base_color", crimson::TextureColorSpace::Srgb),
+			"UnlitSurface base color texture is sRGB");
+	expect_true(
+			crimson::find_texture_slot_desc(*unlit, "metallic_roughness") == nullptr,
+			"UnlitSurface has no PBR data-map texture slots");
 
 	expect_true(
 			has_texture_slot(*cutout, "base_color", crimson::TextureColorSpace::Srgb),
@@ -229,6 +263,85 @@ TEST(MaterialSystem, MaterialDefaultsAreDeterministicAndNormalized) {
 	expect_true(
 			metallic != nullptr && std::get<float>(metallic->value) == 0.0F,
 			"stored material fills missing metallic default");
+}
+
+TEST(MaterialSystem, DefaultQuaderMaterialBindsReferenceAlbedoTexture) {
+	crimson::MaterialSystem materials;
+	const crimson::BaseShaderDefinition *opaque = find_shader(materials.registry(), crimson::BaseShaderId::OpaquePbr);
+	const crimson::BaseShaderDefinition *unlit = find_shader(materials.registry(), crimson::BaseShaderId::UnlitSurface);
+	if (opaque == nullptr || unlit == nullptr) {
+		return;
+	}
+
+	const crimson::RenderTextureHandle kAlbedoTexture{ 42, 7 };
+	const crimson::MaterialInstance kDefault =
+			crimson::make_default_quader_material_instance(*opaque, kAlbedoTexture);
+	const crimson::MaterialParameter *base_color = find_material_parameter(kDefault, "base_color");
+	const crimson::MaterialParameter *roughness = find_material_parameter(kDefault, "roughness");
+	const crimson::MaterialParameter *metallic = find_material_parameter(kDefault, "metallic");
+	const crimson::MaterialTextureBinding *albedo = find_material_texture(kDefault, "base_color");
+
+	expect_true(kDefault.debug_name == crimson::kDefaultQuaderMaterialName, "default material has the Quader default name");
+	const auto *color = base_color == nullptr ? nullptr : std::get_if<crimson::MaterialColorSrgb>(&base_color->value);
+	expect_true(
+			color != nullptr && color->r == 1.0F && color->g == 1.0F && color->b == 1.0F && color->a == 1.0F,
+			"default material uses white base color factor");
+	expect_true(
+			roughness != nullptr && std::get<float>(roughness->value) == 1.0F,
+			"default material is fully rough");
+	expect_true(
+			metallic != nullptr && std::get<float>(metallic->value) == 0.0F,
+			"default material is non-metallic");
+	expect_true(
+			albedo != nullptr && albedo->texture == kAlbedoTexture,
+			"default material binds the provided base-color texture handle");
+
+	const crimson::MaterialInstance kUnlitDefault =
+			crimson::make_default_quader_material_instance(*unlit, kAlbedoTexture);
+	const crimson::MaterialTextureBinding *unlit_albedo = find_material_texture(kUnlitDefault, "base_color");
+	expect_true(
+			unlit_albedo != nullptr && unlit_albedo->texture == kAlbedoTexture,
+			"unlit default material binds the same base-color texture handle");
+	expect_true(
+			find_material_parameter(kUnlitDefault, "roughness") == nullptr,
+			"unlit default material does not inject PBR roughness");
+	expect_true(
+			find_material_parameter(kUnlitDefault, "metallic") == nullptr,
+			"unlit default material does not inject PBR metallic");
+}
+
+TEST(MaterialSystem, Rgba8MipChainUsesSrgbAwareDownsampling) {
+	const std::vector<unsigned char> kPixels = {
+		0, 0, 0, 255,
+		255, 255, 255, 255,
+		255, 255, 255, 255,
+		0, 0, 0, 255,
+	};
+
+	const std::vector<crimson::gpu::Rgba8MipLevel> kMips =
+			crimson::gpu::make_rgba8_mip_chain(kPixels, 2, 2, crimson::TextureColorSpace::Srgb);
+	ASSERT_EQ(kMips.size(), 2U);
+	EXPECT_EQ(kMips[0].width, 2);
+	EXPECT_EQ(kMips[0].height, 2);
+	EXPECT_EQ(kMips[1].width, 1);
+	EXPECT_EQ(kMips[1].height, 1);
+	ASSERT_EQ(kMips[1].rgba8.size(), 4U);
+	EXPECT_NEAR(static_cast<double>(kMips[1].rgba8[0]), 188.0, 1.0);
+	EXPECT_NEAR(static_cast<double>(kMips[1].rgba8[1]), 188.0, 1.0);
+	EXPECT_NEAR(static_cast<double>(kMips[1].rgba8[2]), 188.0, 1.0);
+	EXPECT_EQ(kMips[1].rgba8[3], 255);
+}
+
+TEST(MaterialSystem, Rgba8MipLevelCountReachesOneByOne) {
+	EXPECT_EQ(crimson::gpu::rgba8_mip_level_count(4, 2), 3);
+	EXPECT_EQ(crimson::gpu::rgba8_mip_level_count(1, 1), 1);
+	EXPECT_EQ(crimson::gpu::rgba8_mip_level_count(0, 4), 0);
+}
+
+TEST(MaterialSystem, MaterialTextureSamplerFlagsUseReferenceAnisotropicRepeatFiltering) {
+	const std::uint64_t flags = crimson::gpu::material_texture_sampler_flags();
+	EXPECT_TRUE(crimson::gpu::material_texture_sampler_uses_anisotropic_repeat_filtering(flags));
+	EXPECT_FALSE(crimson::gpu::material_texture_sampler_uses_anisotropic_repeat_filtering(0U));
 }
 
 TEST(MaterialSystem, ValidationRejectsUnknownAndWrongKind) {

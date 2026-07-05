@@ -25,6 +25,8 @@ FrameSnapshot::FrameSnapshot(
 		std::vector<OverlayCommand> overlays,
 		std::vector<GridOverlayCommand> grid_overlay_payloads,
 		std::vector<LineOverlaySegment> line_overlay_payloads,
+		std::vector<TriangleOverlayPrimitive> triangle_overlay_payloads,
+		std::vector<PointOverlayPrimitive> point_overlay_payloads,
 		std::vector<PickingRequest> picking_requests,
 		ViewportSettings viewport_settings,
 		DebugViewMode debug_view) : frame_index_(frame_index),
@@ -38,6 +40,8 @@ FrameSnapshot::FrameSnapshot(
 									overlays_(std::move(overlays)),
 									grid_overlay_payloads_(std::move(grid_overlay_payloads)),
 									line_overlay_payloads_(std::move(line_overlay_payloads)),
+									triangle_overlay_payloads_(std::move(triangle_overlay_payloads)),
+									point_overlay_payloads_(std::move(point_overlay_payloads)),
 									picking_requests_(std::move(picking_requests)),
 									viewport_settings_(viewport_settings),
 									debug_view_(debug_view) {
@@ -85,6 +89,14 @@ std::span<const GridOverlayCommand> FrameSnapshot::grid_overlay_payloads() const
 
 std::span<const LineOverlaySegment> FrameSnapshot::line_overlay_payloads() const noexcept {
 	return line_overlay_payloads_;
+}
+
+std::span<const TriangleOverlayPrimitive> FrameSnapshot::triangle_overlay_payloads() const noexcept {
+	return triangle_overlay_payloads_;
+}
+
+std::span<const PointOverlayPrimitive> FrameSnapshot::point_overlay_payloads() const noexcept {
+	return point_overlay_payloads_;
 }
 
 std::span<const PickingRequest> FrameSnapshot::picking_requests() const noexcept {

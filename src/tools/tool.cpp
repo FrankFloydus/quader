@@ -39,4 +39,8 @@ ToolPreview ITool::preview() const {
 	return {};
 }
 
+ToolCompletionRequest ITool::consume_completion_request() noexcept {
+	return ToolCompletionRequest::None;
+}
+
 } // namespace quader::tools

@@ -56,6 +56,9 @@ void ActionStateUpdater::refresh_from_snapshot(const EditorStateSnapshot &snapsh
 	set_text(actions_, ActionId::Undo, snapshot.undo_text.isEmpty() ? QStringLiteral("&Undo") : snapshot.undo_text);
 	set_text(actions_, ActionId::Redo, snapshot.redo_text.isEmpty() ? QStringLiteral("&Redo") : snapshot.redo_text);
 
+	set_enabled(actions_, ActionId::SelectAll, snapshot.has_active_document && snapshot.can_select_all);
+	set_enabled(actions_, ActionId::ClearSelection, snapshot.has_active_document && snapshot.can_clear_selection);
+	set_enabled(actions_, ActionId::InvertSelection, snapshot.has_active_document && snapshot.can_invert_selection);
 	set_enabled(actions_, ActionId::DuplicateSelection, snapshot.can_duplicate_selection);
 	set_enabled(actions_, ActionId::DeleteSelection, snapshot.can_delete_selection);
 
@@ -71,6 +74,25 @@ void ActionStateUpdater::refresh_from_snapshot(const EditorStateSnapshot &snapsh
 	set_checked(actions_, ActionId::RotateTool, kToolsEnabled && snapshot.active_tool == ActionId::RotateTool);
 	set_checked(actions_, ActionId::ScaleTool, kToolsEnabled && snapshot.active_tool == ActionId::ScaleTool);
 	set_checked(actions_, ActionId::BoxTool, kToolsEnabled && snapshot.active_tool == ActionId::BoxTool);
+
+	set_enabled(actions_, ActionId::SelectObjectMode, kToolsEnabled);
+	set_enabled(actions_, ActionId::SelectVertexMode, kToolsEnabled);
+	set_enabled(actions_, ActionId::SelectEdgeMode, kToolsEnabled);
+	set_enabled(actions_, ActionId::SelectFaceMode, kToolsEnabled);
+	set_checked(actions_,
+			ActionId::SelectObjectMode,
+			kToolsEnabled && snapshot.active_selection_mode == ActionId::SelectObjectMode);
+	set_checked(actions_,
+			ActionId::SelectVertexMode,
+			kToolsEnabled && snapshot.active_selection_mode == ActionId::SelectVertexMode);
+	set_checked(actions_,
+			ActionId::SelectEdgeMode,
+			kToolsEnabled && snapshot.active_selection_mode == ActionId::SelectEdgeMode);
+	set_checked(actions_,
+			ActionId::SelectFaceMode,
+			kToolsEnabled && snapshot.active_selection_mode == ActionId::SelectFaceMode);
+
+	set_enabled(actions_, ActionId::FlipMeshNormals, snapshot.has_active_document && snapshot.can_flip_mesh_normals);
 
 	const bool kCreationEnabled = snapshot.has_active_document && snapshot.creation_available;
 	set_enabled(actions_, ActionId::CreateCube, kCreationEnabled);

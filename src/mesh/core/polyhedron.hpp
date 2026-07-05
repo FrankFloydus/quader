@@ -113,6 +113,26 @@ public:
 	 * @return Success, or an error when the face is invalid.
 	 */
 	[[nodiscard]] quader::foundation::Result<void, MeshError> delete_face(FaceId face);
+	/**
+	 * Reverse one face winding while preserving stable mesh IDs.
+	 *
+	 * @param face Face whose vertex cycle should be reversed.
+	 * @return Success, or an error when the face is invalid or the backend
+	 * cannot represent the reversed topology.
+	 */
+	[[nodiscard]] quader::foundation::Result<void, MeshError> reverse_face_winding(FaceId face);
+	/**
+	 * Reverse multiple face windings as one topology rebuild.
+	 *
+	 * The operation is all-or-nothing: invalid face ids or backend rejection
+	 * leave the mesh unchanged.
+	 *
+	 * @param faces Faces whose vertex cycles should be reversed.
+	 * @return Success, or an error when no faces are provided, any face is
+	 * invalid, or the backend cannot represent the reversed topology.
+	 */
+	[[nodiscard]] quader::foundation::Result<void, MeshError> reverse_face_windings(
+			std::span<const FaceId> faces);
 
 	/**
 	 * Check whether a vertex id resolves to a live vertex.

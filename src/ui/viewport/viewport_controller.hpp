@@ -65,6 +65,10 @@ public:
 	void set_prototype_animation_enabled(bool enabled);
 	/// Return true when prototype animation is enabled.
 	[[nodiscard]] bool prototype_animation_enabled() const noexcept;
+	/// Set the viewport mesh surface shading mode.
+	void set_shading_mode(ViewportShadingMode mode);
+	/// Return the viewport mesh surface shading mode.
+	[[nodiscard]] ViewportShadingMode shading_mode() const noexcept;
 
 	/// Submit one frame to the render host.
 	void render_frame(double elapsed_seconds, float delta_seconds);
@@ -79,15 +83,34 @@ public:
 	[[nodiscard]] const ViewportCameraController &camera_controller() const noexcept;
 
 	/// Handle a mouse press and dispatch navigation/tool input.
-	[[nodiscard]] bool handle_mouse_press(ViewportMouseButton button, ViewportPoint point, bool shift_modifier, ViewportPixelSize size);
+	[[nodiscard]] bool handle_mouse_press(ViewportMouseButton button,
+			ViewportPoint point,
+			bool shift_modifier,
+			ViewportPixelSize size,
+			bool control_modifier = false,
+			bool alt_modifier = false);
 	/// Handle a mouse move and dispatch navigation/tool input.
-	[[nodiscard]] bool handle_mouse_move(ViewportPoint point, ViewportPixelSize size);
+	[[nodiscard]] bool handle_mouse_move(ViewportPoint point,
+			ViewportPixelSize size,
+			bool left_button_pressed = false,
+			bool shift_modifier = false,
+			bool control_modifier = false,
+			bool alt_modifier = false);
 	/// Handle a mouse release and dispatch navigation/tool input.
-	[[nodiscard]] bool handle_mouse_release(ViewportMouseButton button, ViewportPoint point, ViewportPixelSize size);
+	[[nodiscard]] bool handle_mouse_release(ViewportMouseButton button,
+			ViewportPoint point,
+			ViewportPixelSize size,
+			bool shift_modifier = false,
+			bool control_modifier = false,
+			bool alt_modifier = false);
+	/// Clear transient hover/tool state when the pointer leaves the viewport.
+	void handle_mouse_leave();
 	/// Handle wheel input for zoom/fly speed.
 	void handle_wheel(float wheel_steps, ViewportPoint point, ViewportPixelSize size);
 	/// Handle key input for navigation and tools.
 	[[nodiscard]] bool handle_key(ViewportKey key, bool pressed, bool auto_repeat);
+	/// Return true when fly navigation should consume a Qt action shortcut first.
+	[[nodiscard]] bool overrides_action_shortcut(ViewportKey key) const noexcept;
 
 Q_SIGNALS:
 	/// Emitted after the renderer reports readiness.
@@ -106,12 +129,15 @@ private:
 	[[nodiscard]] ViewportPixelSize pane_size_for_camera(ViewportPixelSize size, int camera_index) const;
 	[[nodiscard]] std::optional<quader::tools::ViewportRay> ray_for_point(ViewportPoint point, ViewportPixelSize size) const;
 	[[nodiscard]] std::optional<quader::tools::SurfaceHit> surface_hit_for_ray(
-			const quader::tools::ViewportRay &ray) const;
+			const quader::tools::ViewportRay &ray,
+			ViewportPoint point,
+			ViewportPixelSize size) const;
 	[[nodiscard]] bool dispatch_tool_pointer(ViewportMouseButton button,
 			ViewportPoint point,
 			ViewportPixelSize size,
 			quader::tools::PointerPhase phase,
-			bool pressed);
+			bool pressed,
+			quader::tools::KeyboardModifiers modifiers = {});
 	void emit_result_error(const ViewportRenderResult &result);
 
 	IViewportRenderHost &render_host_;
@@ -120,6 +146,7 @@ private:
 	ViewportCameraController cameras_;
 	ViewportPixelSize surface_size_;
 	double device_pixel_ratio_ = 1.0;
+	ViewportShadingMode shading_mode_ = ViewportShadingMode::Shaded;
 	bool prototype_animation_enabled_ = true;
 	bool surface_initialized_ = false;
 };

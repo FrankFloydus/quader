@@ -29,6 +29,7 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -169,6 +170,20 @@ quader::tools::ViewportRay x_axis_ray_to(quader::math::Vec3 point_on_x_plane) {
 	};
 }
 
+quader::tools::ViewportRay negative_x_axis_ray_to(quader::math::Vec3 point_on_x_plane) {
+	return quader::tools::ViewportRay{
+		.origin = { 10.0F, point_on_x_plane.y, point_on_x_plane.z },
+		.direction = { -1.0F, 0.0F, 0.0F },
+	};
+}
+
+quader::tools::ViewportRay downward_ray_to(quader::math::Vec3 point_on_y_plane) {
+	return quader::tools::ViewportRay{
+		.origin = point_on_y_plane + quader::math::Vec3{ 0.0F, 10.0F, 0.0F },
+		.direction = { 0.0F, -1.0F, 0.0F },
+	};
+}
+
 class RecordingTool final : public quader::tools::ITool {
 public:
 	explicit RecordingTool(quader::tools::ToolId tool_id,
@@ -247,6 +262,18 @@ private:
 	std::optional<quader::document::ObjectId> command_object_;
 };
 
+class PassiveTool final : public quader::tools::ITool {
+public:
+	[[nodiscard]] quader::tools::ToolId id() const noexcept override {
+		return quader::tools::ToolId::Select;
+	}
+};
+
+[[nodiscard]] std::uint64_t encoded_object_id(quader::document::ObjectId object) noexcept {
+	return (static_cast<std::uint64_t>(object.generation()) << 32U) |
+			static_cast<std::uint64_t>(object.index());
+}
+
 TEST(ToolManager, ToolActivationRegistersAndReusesActiveTool) {
 	quader::document::Document document;
 	quader::commands::CommandHistory history;
@@ -305,6 +332,288 @@ TEST(ToolManager, NoToolIgnoresEventsAndPreservesDocumentState) {
 	EXPECT_EQ(capture_tool_state(document), kBefore);
 	EXPECT_FALSE(history.can_undo());
 	EXPECT_FALSE(history.can_redo());
+}
+
+TEST(ToolManager, SelectFallbackReplacesObjectSelectionThroughCommandHistory) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	fixture.document.clear_dirty();
+	discard_pending_changes(fixture.document);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	int applied_callback_count = 0;
+	manager.context().set_after_command_applied([&applied_callback_count]() {
+		++applied_callback_count;
+	});
+	EXPECT_TRUE(manager.register_tool(std::make_unique<PassiveTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Select));
+
+	auto event = surface_event({ 0.0F, 0.0F, 0.0F },
+			{ 0.0F, 1.0F, 0.0F },
+			{ 10.0F, 12.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true);
+	event.surface_hit->object_id = encoded_object_id(fixture.object);
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(event));
+	ASSERT_EQ(fixture.document.selection().selected_objects().size(), 1U);
+	EXPECT_EQ(fixture.document.selection().selected_objects().front(), fixture.object);
+	EXPECT_TRUE(fixture.document.selection().selected_components().empty());
+	EXPECT_TRUE(history.can_undo());
+	EXPECT_EQ(history.undo_name(), std::string_view("Set Selection"));
+	EXPECT_EQ(applied_callback_count, 1);
+
+	auto result = history.undo(fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	EXPECT_TRUE(fixture.document.selection().empty());
+}
+
+TEST(ToolManager, SelectHoverStoresHitWithoutMutatingSelectionOrHistory) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	fixture.document.clear_dirty();
+	discard_pending_changes(fixture.document);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<PassiveTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Select));
+	EXPECT_TRUE(manager.set_selection_mode(quader::tools::SelectionMode::Face));
+	const auto kBefore = capture_tool_state(fixture.document);
+
+	auto event = surface_event({ 0.0F, 0.0F, 0.0F },
+			{ 0.0F, 1.0F, 0.0F },
+			{ 10.0F, 12.0F },
+			quader::tools::PointerPhase::Hover);
+	event.surface_hit->object_id = encoded_object_id(fixture.object);
+	event.surface_hit->document_object_id = fixture.object;
+	event.surface_hit->component_index = fixture.face.index();
+	event.surface_hit->component = fixture.face;
+	event.surface_hit->kind = quader::tools::SurfaceHitKind::Face;
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(event));
+	ASSERT_TRUE(manager.selection_hover().has_value());
+	EXPECT_EQ(manager.selection_hover()->document_object_id, fixture.object);
+	EXPECT_TRUE(std::holds_alternative<quader::mesh::FaceId>(manager.selection_hover()->component));
+	EXPECT_EQ(std::get<quader::mesh::FaceId>(manager.selection_hover()->component), fixture.face);
+	EXPECT_TRUE(fixture.document.selection().empty());
+	EXPECT_FALSE(history.can_undo());
+	EXPECT_EQ(capture_tool_state(fixture.document), kBefore);
+
+	EXPECT_FALSE(manager.dispatch_pointer_event(event));
+
+	event.surface_hit.reset();
+	EXPECT_TRUE(manager.dispatch_pointer_event(event));
+	EXPECT_FALSE(manager.selection_hover().has_value());
+	EXPECT_TRUE(fixture.document.selection().empty());
+	EXPECT_FALSE(history.can_undo());
+	EXPECT_EQ(capture_tool_state(fixture.document), kBefore);
+}
+
+TEST(ToolManager, SelectEmptyObjectModeClickClearsSelectionThroughHistory) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	quader::document::Selection selection;
+	ASSERT_TRUE(selection.set_objects({ fixture.object }));
+	ASSERT_TRUE(fixture.document.set_selection(selection));
+	fixture.document.clear_dirty();
+	discard_pending_changes(fixture.document);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<PassiveTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Select));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(quader::tools::PointerEvent{
+			.position = { 10.0F, 12.0F },
+			.button = quader::tools::PointerButton::Left,
+			.pressed = true,
+			.phase = quader::tools::PointerPhase::Press,
+	}));
+	EXPECT_TRUE(fixture.document.selection().empty());
+	EXPECT_TRUE(history.can_undo());
+	EXPECT_EQ(history.undo_name(), std::string_view("Set Selection"));
+
+	auto result = history.undo(fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	ASSERT_EQ(fixture.document.selection().selected_objects().size(), 1U);
+	EXPECT_EQ(fixture.document.selection().selected_objects().front(), fixture.object);
+}
+
+TEST(ToolManager, SelectEmptyComponentModeClickClearsTargetsAndPreservesMode) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	quader::document::Selection selection;
+	ASSERT_TRUE(selection.set_component_selection(quader::document::SelectionMode::Edge,
+			{ fixture.object },
+			{ quader::document::ComponentRef{ fixture.object, fixture.edge } }));
+	ASSERT_TRUE(fixture.document.set_selection(selection));
+	fixture.document.clear_dirty();
+	discard_pending_changes(fixture.document);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<PassiveTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Select));
+	EXPECT_TRUE(manager.set_selection_mode(quader::tools::SelectionMode::Edge));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(quader::tools::PointerEvent{
+			.position = { 10.0F, 12.0F },
+			.button = quader::tools::PointerButton::Left,
+			.pressed = true,
+			.phase = quader::tools::PointerPhase::Press,
+	}));
+	EXPECT_EQ(fixture.document.selection().mode(), quader::document::SelectionMode::Edge);
+	EXPECT_TRUE(fixture.document.selection().selected_objects().empty());
+	EXPECT_TRUE(fixture.document.selection().selected_components().empty());
+	EXPECT_TRUE(history.can_undo());
+
+	auto result = history.undo(fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	EXPECT_EQ(fixture.document.selection(), selection);
+}
+
+TEST(ToolManager, SelectFallbackResolvesFaceHitToLiveComponentSelection) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	const auto kFaces = fixture.document.find_mesh_object(fixture.object)->mesh.face_ids();
+	ASSERT_EQ(kFaces.size(), 1U);
+	fixture.document.clear_dirty();
+	discard_pending_changes(fixture.document);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<PassiveTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Select));
+	EXPECT_TRUE(manager.set_selection_mode(quader::tools::SelectionMode::Face));
+
+	auto event = surface_event({ 0.0F, 0.0F, 0.0F },
+			{ 0.0F, 1.0F, 0.0F },
+			{ 10.0F, 12.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true);
+	event.surface_hit->object_id = encoded_object_id(fixture.object);
+	event.surface_hit->document_object_id = fixture.object;
+	event.surface_hit->component_index = kFaces.front().index();
+	event.surface_hit->component = kFaces.front();
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(event));
+	const auto kComponents = fixture.document.selection().selected_components();
+	ASSERT_EQ(kComponents.size(), 1U);
+	EXPECT_EQ(kComponents.front().object, fixture.object);
+	EXPECT_EQ(quader::document::component_kind(kComponents.front()), quader::document::ComponentKind::Face);
+	EXPECT_TRUE(std::holds_alternative<quader::mesh::FaceId>(kComponents.front().component));
+	EXPECT_EQ(std::get<quader::mesh::FaceId>(kComponents.front().component), kFaces.front());
+
+	event.modifiers.shift = true;
+	EXPECT_TRUE(manager.dispatch_pointer_event(event));
+	EXPECT_EQ(fixture.document.selection().mode(), quader::document::SelectionMode::Face);
+	ASSERT_EQ(fixture.document.selection().selected_objects().size(), 1U);
+	EXPECT_EQ(fixture.document.selection().selected_objects().front(), fixture.object);
+	EXPECT_TRUE(fixture.document.selection().selected_components().empty());
+}
+
+TEST(ToolManager, SelectFallbackResolvesEdgeHitToLiveComponentSelection) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	fixture.document.clear_dirty();
+	discard_pending_changes(fixture.document);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<PassiveTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Select));
+	EXPECT_TRUE(manager.set_selection_mode(quader::tools::SelectionMode::Edge));
+
+	auto event = surface_event({ 0.0F, 0.0F, 0.0F },
+			{ 0.0F, 1.0F, 0.0F },
+			{ 10.0F, 12.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true);
+	event.surface_hit->object_id = encoded_object_id(fixture.object);
+	event.surface_hit->document_object_id = fixture.object;
+	event.surface_hit->component_index = fixture.edge.index();
+	event.surface_hit->component = fixture.edge;
+	event.surface_hit->kind = quader::tools::SurfaceHitKind::Edge;
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(event));
+	EXPECT_EQ(fixture.document.selection().mode(), quader::document::SelectionMode::Edge);
+	ASSERT_EQ(fixture.document.selection().selected_objects().size(), 1U);
+	EXPECT_EQ(fixture.document.selection().selected_objects().front(), fixture.object);
+	const auto kComponents = fixture.document.selection().selected_components();
+	ASSERT_EQ(kComponents.size(), 1U);
+	EXPECT_EQ(kComponents.front().object, fixture.object);
+	EXPECT_EQ(quader::document::component_kind(kComponents.front()), quader::document::ComponentKind::Edge);
+	ASSERT_TRUE(std::holds_alternative<quader::mesh::EdgeId>(kComponents.front().component));
+	EXPECT_EQ(std::get<quader::mesh::EdgeId>(kComponents.front().component), fixture.edge);
+}
+
+TEST(ToolManager, SelectFallbackResolvesVertexHitToLiveComponentSelection) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	fixture.document.clear_dirty();
+	discard_pending_changes(fixture.document);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<PassiveTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Select));
+	EXPECT_TRUE(manager.set_selection_mode(quader::tools::SelectionMode::Vertex));
+
+	auto event = surface_event({ 0.0F, 0.0F, 0.0F },
+			{ 0.0F, 1.0F, 0.0F },
+			{ 10.0F, 12.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true);
+	event.surface_hit->object_id = encoded_object_id(fixture.object);
+	event.surface_hit->document_object_id = fixture.object;
+	event.surface_hit->component_index = fixture.vertices.front().index();
+	event.surface_hit->component = fixture.vertices.front();
+	event.surface_hit->kind = quader::tools::SurfaceHitKind::Vertex;
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(event));
+	EXPECT_EQ(fixture.document.selection().mode(), quader::document::SelectionMode::Vertex);
+	ASSERT_EQ(fixture.document.selection().selected_objects().size(), 1U);
+	EXPECT_EQ(fixture.document.selection().selected_objects().front(), fixture.object);
+	const auto kComponents = fixture.document.selection().selected_components();
+	ASSERT_EQ(kComponents.size(), 1U);
+	EXPECT_EQ(kComponents.front().object, fixture.object);
+	EXPECT_EQ(quader::document::component_kind(kComponents.front()), quader::document::ComponentKind::Vertex);
+	ASSERT_TRUE(std::holds_alternative<quader::mesh::VertexId>(kComponents.front().component));
+	EXPECT_EQ(std::get<quader::mesh::VertexId>(kComponents.front().component), fixture.vertices.front());
+}
+
+TEST(ToolManager, SelectFallbackRetainsEditTargetOnComponentModeBodyHit) {
+	for (const quader::tools::SelectionMode kMode : { quader::tools::SelectionMode::Edge, quader::tools::SelectionMode::Vertex }) {
+		auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+		fixture.document.clear_dirty();
+		discard_pending_changes(fixture.document);
+
+		quader::commands::CommandHistory history;
+		quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+		EXPECT_TRUE(manager.register_tool(std::make_unique<PassiveTool>()));
+		EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Select));
+		EXPECT_TRUE(manager.set_selection_mode(kMode));
+
+		auto event = surface_event({ 0.0F, 0.0F, 0.0F },
+				{ 0.0F, 1.0F, 0.0F },
+				{ 10.0F, 12.0F },
+				quader::tools::PointerPhase::Press,
+				quader::tools::PointerButton::Left,
+				true);
+		event.surface_hit->object_id = encoded_object_id(fixture.object);
+		event.surface_hit->document_object_id = fixture.object;
+		event.surface_hit->kind = quader::tools::SurfaceHitKind::Object;
+
+		EXPECT_TRUE(manager.dispatch_pointer_event(event));
+		const quader::document::SelectionMode kExpectedDocumentMode = kMode == quader::tools::SelectionMode::Edge
+				? quader::document::SelectionMode::Edge
+				: quader::document::SelectionMode::Vertex;
+		EXPECT_EQ(fixture.document.selection().mode(), kExpectedDocumentMode);
+		ASSERT_EQ(fixture.document.selection().selected_objects().size(), 1U);
+		EXPECT_EQ(fixture.document.selection().selected_objects().front(), fixture.object);
+		EXPECT_TRUE(fixture.document.selection().selected_components().empty());
+		EXPECT_TRUE(history.can_undo());
+		EXPECT_EQ(history.undo_name(), std::string_view("Set Selection"));
+	}
 }
 
 TEST(ToolManager, EventsForwardToActiveToolAndPreviewIsReported) {
@@ -459,6 +768,7 @@ TEST(BoxTool, HoverShowsSnappedFootprintInSourceView) {
 	quader::document::Document document;
 	quader::commands::CommandHistory history;
 	quader::tools::ToolManager manager{ quader::tools::ToolContext{ document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<PassiveTool>()));
 	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::BoxTool>()));
 	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Box));
 
@@ -492,6 +802,7 @@ TEST(BoxTool, GridFootprintReleaseCommitsDefaultHeightThroughCommandHistory) {
 	quader::document::Document document;
 	quader::commands::CommandHistory history;
 	quader::tools::ToolManager manager{ quader::tools::ToolContext{ document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<PassiveTool>()));
 	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::BoxTool>()));
 	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Box));
 
@@ -500,6 +811,8 @@ TEST(BoxTool, GridFootprintReleaseCommitsDefaultHeightThroughCommandHistory) {
 			quader::tools::PointerPhase::Press,
 			quader::tools::PointerButton::Left,
 			true)));
+	ASSERT_TRUE(manager.active_tool_id().has_value());
+	EXPECT_EQ(*manager.active_tool_id(), quader::tools::ToolId::Box);
 	EXPECT_TRUE(manager.dispatch_pointer_event(grid_event({ 2.2F, 0.0F, 3.2F },
 			{ 40.0F, 100.0F },
 			quader::tools::PointerPhase::Move)));
@@ -518,8 +831,13 @@ TEST(BoxTool, GridFootprintReleaseCommitsDefaultHeightThroughCommandHistory) {
 	ASSERT_EQ(document.object_count(), 1U);
 	EXPECT_TRUE(history.can_undo());
 	EXPECT_TRUE(manager.preview().empty());
+	ASSERT_TRUE(manager.active_tool_id().has_value());
+	EXPECT_EQ(*manager.active_tool_id(), quader::tools::ToolId::Select);
+	EXPECT_EQ(manager.selection_mode(), quader::tools::SelectionMode::Object);
 	const auto kIds = document.object_ids();
 	ASSERT_EQ(kIds.size(), 1U);
+	ASSERT_EQ(document.selection().selected_objects().size(), 1U);
+	EXPECT_EQ(document.selection().selected_objects().front(), kIds.front());
 	const auto *object = document.find_mesh_object(kIds.front());
 	ASSERT_TRUE(object != nullptr);
 	EXPECT_EQ(object->name, std::string("Box"));
@@ -537,6 +855,54 @@ TEST(BoxTool, GridFootprintReleaseCommitsDefaultHeightThroughCommandHistory) {
 	auto result = history.undo(document);
 	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
 	EXPECT_EQ(document.object_count(), 0U);
+}
+
+TEST(BoxTool, CommitSelectsOnlyNewBoxAndUndoRedoRestoresSelection) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	quader::document::Selection selection;
+	ASSERT_TRUE(selection.set_objects({ fixture.object }));
+	ASSERT_TRUE(fixture.document.set_selection(selection));
+	fixture.document.clear_dirty();
+	discard_pending_changes(fixture.document);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<PassiveTool>()));
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::BoxTool>()));
+	EXPECT_TRUE(manager.set_selection_mode(quader::tools::SelectionMode::Face));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Box));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(grid_event({ 0.2F, 0.0F, 0.3F },
+			{ 10.0F, 100.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true)));
+	EXPECT_TRUE(manager.dispatch_pointer_event(grid_event({ 2.2F, 0.0F, 3.2F },
+			{ 40.0F, 100.0F },
+			quader::tools::PointerPhase::Release,
+			quader::tools::PointerButton::Left,
+			false)));
+
+	const auto kIds = fixture.document.object_ids();
+	ASSERT_EQ(kIds.size(), 2U);
+	ASSERT_EQ(fixture.document.selection().selected_objects().size(), 1U);
+	const quader::document::ObjectId kCreated = fixture.document.selection().selected_objects().front();
+	EXPECT_NE(kCreated, fixture.object);
+	ASSERT_TRUE(manager.active_tool_id().has_value());
+	EXPECT_EQ(*manager.active_tool_id(), quader::tools::ToolId::Select);
+	EXPECT_EQ(manager.selection_mode(), quader::tools::SelectionMode::Object);
+
+	auto result = history.undo(fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	EXPECT_TRUE(fixture.document.find_mesh_object(kCreated) == nullptr);
+	ASSERT_EQ(fixture.document.selection().selected_objects().size(), 1U);
+	EXPECT_EQ(fixture.document.selection().selected_objects().front(), fixture.object);
+
+	result = history.redo(fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	EXPECT_TRUE(fixture.document.find_mesh_object(kCreated) != nullptr);
+	ASSERT_EQ(fixture.document.selection().selected_objects().size(), 1U);
+	EXPECT_EQ(fixture.document.selection().selected_objects().front(), kCreated);
 }
 
 TEST(BoxTool, GridFootprintDragDirectionsCommitOutwardNormals) {
@@ -584,6 +950,7 @@ TEST(BoxTool, SecondClickWhileDraggingCommitsFootprint) {
 	quader::document::Document document;
 	quader::commands::CommandHistory history;
 	quader::tools::ToolManager manager{ quader::tools::ToolContext{ document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<PassiveTool>()));
 	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::BoxTool>()));
 	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Box));
 
@@ -604,6 +971,8 @@ TEST(BoxTool, SecondClickWhileDraggingCommitsFootprint) {
 	EXPECT_EQ(document.object_count(), 1U);
 	EXPECT_TRUE(history.can_undo());
 	EXPECT_TRUE(manager.preview().empty());
+	ASSERT_TRUE(manager.active_tool_id().has_value());
+	EXPECT_EQ(*manager.active_tool_id(), quader::tools::ToolId::Select);
 }
 
 TEST(BoxTool, SurfaceHitSeedsVerticalConstructionPlane) {
@@ -652,6 +1021,96 @@ TEST(BoxTool, SurfaceHitSeedsVerticalConstructionPlane) {
 	}
 	EXPECT_TRUE(quader::math::nearly_equal(min_x, 4.0F));
 	EXPECT_TRUE(quader::math::nearly_equal(max_x, 5.0F));
+}
+
+TEST(BoxTool, TopSurfaceHitUsesAuthoredNormalForFlipFaces) {
+	quader::document::Document document;
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::BoxTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Box));
+
+	const quader::math::Vec3 kNormal{ 0.0F, -1.0F, 0.0F };
+	EXPECT_TRUE(manager.dispatch_pointer_event(surface_event({ 0.2F, 1.0F, 0.2F },
+			kNormal,
+			{ 10.0F, 90.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true,
+			downward_ray_to({ 0.2F, 1.0F, 0.2F }))));
+	EXPECT_TRUE(manager.dispatch_pointer_event(surface_event({ 2.2F, 1.0F, 3.2F },
+			kNormal,
+			{ 40.0F, 90.0F },
+			quader::tools::PointerPhase::Move,
+			quader::tools::PointerButton::None,
+			false,
+			downward_ray_to({ 2.2F, 1.0F, 3.2F }))));
+	EXPECT_TRUE(manager.dispatch_pointer_event(surface_event({ 2.2F, 1.0F, 3.2F },
+			kNormal,
+			{ 40.0F, 90.0F },
+			quader::tools::PointerPhase::Release,
+			quader::tools::PointerButton::Left,
+			false,
+			downward_ray_to({ 2.2F, 1.0F, 3.2F }))));
+
+	ASSERT_EQ(document.object_count(), 1U);
+	const auto kIds = document.object_ids();
+	const auto *object = document.find_mesh_object(kIds.front());
+	ASSERT_TRUE(object != nullptr);
+	float min_y = std::numeric_limits<float>::infinity();
+	float max_y = -std::numeric_limits<float>::infinity();
+	for (const auto kVertex : object->mesh.vertex_ids()) {
+		const auto kPosition = object->mesh.vertex_position(kVertex).value();
+		min_y = std::min(min_y, kPosition.y);
+		max_y = std::max(max_y, kPosition.y);
+	}
+	EXPECT_TRUE(quader::math::nearly_equal(min_y, 0.0F));
+	EXPECT_TRUE(quader::math::nearly_equal(max_y, 1.0F));
+}
+
+TEST(BoxTool, VerticalSurfaceHitUsesAuthoredNormalForFlipFaces) {
+	quader::document::Document document;
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::BoxTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Box));
+
+	const quader::math::Vec3 kNormal{ -1.0F, 0.0F, 0.0F };
+	EXPECT_TRUE(manager.dispatch_pointer_event(surface_event({ 1.0F, 0.2F, 0.2F },
+			kNormal,
+			{ 10.0F, 90.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true,
+			negative_x_axis_ray_to({ 1.0F, 0.2F, 0.2F }))));
+	EXPECT_TRUE(manager.dispatch_pointer_event(surface_event({ 1.0F, 2.2F, 3.2F },
+			kNormal,
+			{ 40.0F, 90.0F },
+			quader::tools::PointerPhase::Move,
+			quader::tools::PointerButton::None,
+			false,
+			negative_x_axis_ray_to({ 1.0F, 2.2F, 3.2F }))));
+	EXPECT_TRUE(manager.dispatch_pointer_event(surface_event({ 1.0F, 2.2F, 3.2F },
+			kNormal,
+			{ 40.0F, 90.0F },
+			quader::tools::PointerPhase::Release,
+			quader::tools::PointerButton::Left,
+			false,
+			negative_x_axis_ray_to({ 1.0F, 2.2F, 3.2F }))));
+
+	ASSERT_EQ(document.object_count(), 1U);
+	const auto kIds = document.object_ids();
+	const auto *object = document.find_mesh_object(kIds.front());
+	ASSERT_TRUE(object != nullptr);
+	float min_x = std::numeric_limits<float>::infinity();
+	float max_x = -std::numeric_limits<float>::infinity();
+	for (const auto kVertex : object->mesh.vertex_ids()) {
+		const auto kPosition = object->mesh.vertex_position(kVertex).value();
+		min_x = std::min(min_x, kPosition.x);
+		max_x = std::max(max_x, kPosition.x);
+	}
+	EXPECT_TRUE(quader::math::nearly_equal(min_x, 0.0F));
+	EXPECT_TRUE(quader::math::nearly_equal(max_x, 1.0F));
 }
 
 TEST(BoxTool, ActiveVerticalSurfaceDragIgnoresLaterSurfaceHits) {
@@ -712,6 +1171,8 @@ TEST(BoxTool, EscapeCancelClearsPreviewWithoutMutatingDocument) {
 	EXPECT_FALSE(manager.preview().empty());
 	EXPECT_TRUE(manager.dispatch_key_event(quader::tools::KeyEvent{ 27, true, false }));
 	EXPECT_TRUE(manager.preview().empty());
+	ASSERT_TRUE(manager.active_tool_id().has_value());
+	EXPECT_EQ(*manager.active_tool_id(), quader::tools::ToolId::Box);
 	EXPECT_EQ(document.object_count(), 0U);
 	EXPECT_FALSE(history.can_undo());
 }

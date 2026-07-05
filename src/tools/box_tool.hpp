@@ -86,6 +86,8 @@ public:
 	[[nodiscard]] bool on_key_event(const KeyEvent &event, ToolContext &context) override;
 	/// Return the current footprint overlay preview.
 	[[nodiscard]] ToolPreview preview() const override;
+	/// Return and clear a one-shot completion request after successful commit.
+	[[nodiscard]] ToolCompletionRequest consume_completion_request() noexcept override;
 
 	/// Return the current state for tests and narrow diagnostics.
 	[[nodiscard]] const BoxToolState &state() const noexcept;
@@ -102,6 +104,7 @@ private:
 
 	BoxToolState state_;
 	ToolPreview preview_;
+	ToolCompletionRequest completion_request_ = ToolCompletionRequest::None;
 };
 
 /**

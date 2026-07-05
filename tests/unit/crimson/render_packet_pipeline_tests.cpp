@@ -142,6 +142,55 @@ TEST(RenderPacketPipeline, OpaqueSortIsDeterministicAndStateFriendly) {
 	expect_true(kPackets.packets.sorted_packet_count == 3, "sorted packet count is reported");
 }
 
+TEST(RenderPacketPipeline, DefaultOpaquePacketsAreSingleSided) {
+	crimson::MaterialSystem materials;
+	const crimson::RenderMaterialHandle kOpaque = materials.create_default_material(crimson::BaseShaderId::OpaquePbr).value();
+	const std::array<crimson::RenderObject, 1> kObjects = {
+		object(1, kOpaque, crimson::BaseShaderId::OpaquePbr, crimson::RenderQueue::Opaque, bounds(0.0F, 0.0F, -5.0F)),
+	};
+
+	const crimson::DrawPacketBuildResult kPackets = crimson::build_draw_packets(
+			kObjects,
+			materials.registry(),
+			materials,
+			camera(),
+			crimson::RenderMeshHandle{ 9, 1 },
+			kOpaque,
+			1.0F);
+
+	ASSERT_EQ(kPackets.opaque.size(), 1U);
+	expect_true(!kPackets.opaque.front().double_sided, "default opaque material keeps back-face culling enabled");
+}
+
+TEST(RenderPacketPipeline, DoubleSidedMaterialDisablesBackfaceCulling) {
+	crimson::MaterialSystem materials;
+	crimson::MaterialInstance instance = crimson::make_default_material_instance(
+			*materials.registry().find(crimson::BaseShaderId::OpaquePbr));
+	instance.debug_name = "Double-sided test material";
+	for (crimson::MaterialParameter &parameter : instance.parameters) {
+		if (parameter.name == "double_sided") {
+			parameter.value = true;
+		}
+	}
+	instance.overrides.double_sided = true;
+	const crimson::RenderMaterialHandle kDoubleSided = materials.create_material(instance).value();
+	const std::array<crimson::RenderObject, 1> kObjects = {
+		object(1, kDoubleSided, crimson::BaseShaderId::OpaquePbr, crimson::RenderQueue::Opaque, bounds(0.0F, 0.0F, -5.0F)),
+	};
+
+	const crimson::DrawPacketBuildResult kPackets = crimson::build_draw_packets(
+			kObjects,
+			materials.registry(),
+			materials,
+			camera(),
+			crimson::RenderMeshHandle{ 9, 1 },
+			kDoubleSided,
+			1.0F);
+
+	ASSERT_EQ(kPackets.opaque.size(), 1U);
+	expect_true(kPackets.opaque.front().double_sided, "double-sided material disables back-face culling");
+}
+
 TEST(RenderPacketPipeline, TransparentSortIsBackToFrontWithStableTies) {
 	crimson::MaterialSystem materials;
 	const crimson::RenderMaterialHandle kTransparent =

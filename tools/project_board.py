@@ -20,10 +20,10 @@ SECTIONS = ("Backlog", "In Progress", "In Review", "Bugs")
 PRIORITIES = {"critical", "high", "medium", "low"}
 TYPES = {"enhancement", "documentation", "bug", "epic"}
 PM_STATUSES = {"coordinating", "waiting-on-agents", "waiting-on-authority", "ready-for-review"}
-AUTHORITY_OWNERS = {"software", "core", "build-workflow", "ui", "renderer", "performance", "docs", "multi"}
+AUTHORITY_OWNERS = {"software", "workflow", "core", "build-workflow", "ui", "renderer", "performance", "docs", "multi"}
 AUTHORITY_STATUSES = {"pending", "approved", "changes-requested"}
 ASSIGNMENT_STATUSES = {"planned", "running", "reported", "blocked", "integrated"}
-ASSIGNMENT_AUTHORITIES = {"none", "software", "core", "build-workflow", "ui", "renderer", "performance", "docs"}
+ASSIGNMENT_AUTHORITIES = {"none", "software", "workflow", "core", "build-workflow", "ui", "renderer", "performance", "docs"}
 ACTIVE_STATUSES = {"running", "integrating", "reviewing", "blocked"}
 FRESHNESS_STATUSES = {"needs-refresh", "fresh", "stale", "superseded"}
 ARCHIVE_STATUSES = {"completed", "fixed"}
@@ -48,10 +48,9 @@ MUTATING_COMMANDS = {
     "reopen-archive",
 }
 AUTH_REQUIRED_MESSAGE = (
-    "board mutation requires an exact software-architect-issued command, except for "
-    "the narrow quader-performance-dev performance audit/fix override; use "
-    "--architect-authorized only when the software architect returned this exact "
-    "command or quader-performance-dev is acting inside that documented override"
+    "board mutation requires the Quader workflow authority; use "
+    "--workflow-authorized for new workflow-plugin commands. "
+    "--architect-authorized and --pm-authorized are legacy compatibility aliases."
 )
 ENTRY_RE = re.compile(
     r"^#(?P<id>\d+)\s+"
@@ -593,7 +592,7 @@ def archive_entry_lines(entry: Entry, resolution: str | None) -> list[str]:
     status = "fixed" if is_bug else "completed"
     lines = [
         entry.lines[0],
-        f"  Archived: [at:{archived_at}][dev-version:{dev_version}][from:{entry.section}][status:{status}] Architect-authorized archive.",
+        f"  Archived: [at:{archived_at}][dev-version:{dev_version}][from:{entry.section}][status:{status}] Workflow-authorized archive.",
     ]
     if resolution and resolution.strip():
         lines.append(f"  Resolution: {resolution.strip()}")
@@ -935,12 +934,20 @@ def list_tags() -> None:
 
 def add_authorization(command: argparse.ArgumentParser) -> None:
     command.add_argument(
+        "--workflow-authorized",
+        dest="authorized",
+        action="store_true",
+        help=(
+            "Required for new board mutations. Use when this command is issued by "
+            "the $quader-workflow plugin."
+        ),
+    )
+    command.add_argument(
         "--architect-authorized",
         dest="authorized",
         action="store_true",
         help=(
-            "Required for board mutations. Use only when this exact command was returned by "
-            "quader-software-architect, or inside the documented performance-dev override."
+            "Legacy compatibility alias for --workflow-authorized."
         ),
     )
     command.add_argument(
@@ -948,7 +955,7 @@ def add_authorization(command: argparse.ArgumentParser) -> None:
         dest="authorized",
         action="store_true",
         help=(
-            "Deprecated compatibility alias for --architect-authorized. Do not use for new v2 flows."
+            "Deprecated compatibility alias for --workflow-authorized."
         ),
     )
 

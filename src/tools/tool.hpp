@@ -16,6 +16,14 @@
 
 namespace quader::tools {
 
+/// Optional post-event tool lifecycle request consumed by ToolManager.
+enum class ToolCompletionRequest {
+	/// Keep the active tool unchanged.
+	None,
+	/// Return to Select after the current tool successfully completes.
+	ReturnToSelect,
+};
+
 /// Base interface for toolkit-neutral editor tools.
 class ITool {
 public:
@@ -38,6 +46,8 @@ public:
 	[[nodiscard]] virtual bool on_key_event(const KeyEvent &event, ToolContext &context);
 	/// Return the current preview payload.
 	[[nodiscard]] virtual ToolPreview preview() const;
+	/// Return and clear any post-event lifecycle request.
+	[[nodiscard]] virtual ToolCompletionRequest consume_completion_request() noexcept;
 };
 
 } // namespace quader::tools

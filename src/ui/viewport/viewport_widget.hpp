@@ -47,6 +47,8 @@ public:
 	[[nodiscard]] ViewportPixelSize pixel_size() const;
 
 protected:
+	/// Give fly-navigation movement keys precedence over viewport QAction shortcuts.
+	bool event(QEvent *event) override;
 	/// Initialize the native render surface on first show.
 	void showEvent(QShowEvent *event) override;
 	/// Resize the native render surface.

@@ -50,13 +50,13 @@ quader::foundation::Result<RenderMeshUploadRecord, RendererDiagnostic> validate_
 		return quader::foundation::Result<RenderMeshUploadRecord, RendererDiagnostic>::failure(
 				upload_diagnostic("Prepared render mesh uploads require a valid public render mesh handle.", desc.handle));
 	}
-	if (desc.position_normal_interleaved.empty()) {
+	if (desc.position_normal_uv_interleaved.empty()) {
 		return quader::foundation::Result<RenderMeshUploadRecord, RendererDiagnostic>::failure(
 				upload_diagnostic("Prepared render mesh uploads require vertex data.", desc.handle));
 	}
-	if (desc.position_normal_interleaved.size() % 6 != 0) {
+	if (desc.position_normal_uv_interleaved.size() % 8 != 0) {
 		return quader::foundation::Result<RenderMeshUploadRecord, RendererDiagnostic>::failure(
-				upload_diagnostic("Position/normal upload data must be interleaved as 6 floats per vertex.", desc.handle));
+				upload_diagnostic("Position/normal/UV0 upload data must be interleaved as 8 floats per vertex.", desc.handle));
 	}
 	if (desc.indices.empty()) {
 		return quader::foundation::Result<RenderMeshUploadRecord, RendererDiagnostic>::failure(
@@ -66,6 +66,14 @@ quader::foundation::Result<RenderMeshUploadRecord, RendererDiagnostic> validate_
 		return quader::foundation::Result<RenderMeshUploadRecord, RendererDiagnostic>::failure(
 				upload_diagnostic("Prepared render mesh uploads require position attributes.", desc.handle));
 	}
+	if ((desc.attributes & VertexAttributeNormal) == 0) {
+		return quader::foundation::Result<RenderMeshUploadRecord, RendererDiagnostic>::failure(
+				upload_diagnostic("Prepared render mesh uploads require normal attributes.", desc.handle));
+	}
+	if ((desc.attributes & VertexAttributeUv0) == 0) {
+		return quader::foundation::Result<RenderMeshUploadRecord, RendererDiagnostic>::failure(
+				upload_diagnostic("Prepared render mesh uploads require UV0 attributes.", desc.handle));
+	}
 	if (!valid_bounds(desc.bounds)) {
 		return quader::foundation::Result<RenderMeshUploadRecord, RendererDiagnostic>::failure(
 				upload_diagnostic("Prepared render mesh uploads require finite non-empty bounds.", desc.handle));
@@ -74,7 +82,7 @@ quader::foundation::Result<RenderMeshUploadRecord, RendererDiagnostic> validate_
 	return quader::foundation::Result<RenderMeshUploadRecord, RendererDiagnostic>::success(RenderMeshUploadRecord{
 			.handle = desc.handle,
 			.uploaded_revision = desc.revision,
-			.vertex_bytes = byte_size(desc.position_normal_interleaved),
+			.vertex_bytes = byte_size(desc.position_normal_uv_interleaved),
 			.index_bytes = byte_size(desc.indices),
 	});
 }

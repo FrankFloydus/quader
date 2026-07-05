@@ -199,16 +199,22 @@ TEST(Document, SelectionRejectsInvalidObjectAndComponentIdsAndAcceptsValidCompon
 	EXPECT_EQ(kInvalidComponent.error().code, quader::document::DocumentErrorCode::InvalidVertex);
 	EXPECT_TRUE(fixture.document.selection().empty());
 
+	quader::document::Selection mixed_component_selection;
+	EXPECT_FALSE(mixed_component_selection.set_components({
+			quader::document::ComponentRef{ fixture.object, fixture.face },
+			quader::document::ComponentRef{ fixture.object, fixture.vertices[0] },
+	}));
+
 	quader::document::Selection component_selection;
 	EXPECT_TRUE(component_selection.set_components({
 			quader::document::ComponentRef{ fixture.object, fixture.face },
-			quader::document::ComponentRef{ fixture.object, fixture.vertices[0] },
-			quader::document::ComponentRef{ fixture.object, fixture.edge },
-			quader::document::ComponentRef{ fixture.object, fixture.edge },
+			quader::document::ComponentRef{ fixture.object, fixture.face },
 	}));
 	EXPECT_TRUE(fixture.document.set_selection(component_selection));
-	EXPECT_TRUE(fixture.document.selection().selected_objects().empty());
-	EXPECT_EQ(fixture.document.selection().selected_components().size(), 3U);
+	EXPECT_EQ(fixture.document.selection().mode(), quader::document::SelectionMode::Face);
+	ASSERT_EQ(fixture.document.selection().selected_objects().size(), 1U);
+	EXPECT_EQ(fixture.document.selection().selected_objects().front(), fixture.object);
+	EXPECT_EQ(fixture.document.selection().selected_components().size(), 1U);
 	EXPECT_TRUE(fixture.document.has_dirty_flag(quader::document::DocumentDirtyFlag::Selection));
 
 	const auto kChanges = fixture.document.take_pending_changes();

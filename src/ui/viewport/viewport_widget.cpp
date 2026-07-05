@@ -158,7 +158,9 @@ void ViewportWidget::mousePressEvent(QMouseEvent *event) {
 			mouse_button_from(event->button()),
 			viewport_point_from(event->position() * devicePixelRatioF()),
 			event->modifiers().testFlag(Qt::ShiftModifier),
-			pixel_size());
+			pixel_size(),
+			event->modifiers().testFlag(Qt::ControlModifier),
+			event->modifiers().testFlag(Qt::AltModifier));
 
 	if (kHandled || event->button() == Qt::MiddleButton || event->button() == Qt::RightButton) {
 		event->accept();
@@ -175,7 +177,12 @@ void ViewportWidget::mouseMoveEvent(QMouseEvent *event) {
 		return;
 	}
 
-	if (controller_.handle_mouse_move(viewport_point_from(event->position() * devicePixelRatioF()), pixel_size())) {
+	if (controller_.handle_mouse_move(viewport_point_from(event->position() * devicePixelRatioF()),
+				pixel_size(),
+				event->buttons().testFlag(Qt::LeftButton),
+				event->modifiers().testFlag(Qt::ShiftModifier),
+				event->modifiers().testFlag(Qt::ControlModifier),
+				event->modifiers().testFlag(Qt::AltModifier))) {
 		event->accept();
 		return;
 	}
@@ -195,7 +202,10 @@ void ViewportWidget::mouseReleaseEvent(QMouseEvent *event) {
 	if (controller_.handle_mouse_release(
 				mouse_button_from(event->button()),
 				viewport_point_from(event->position() * devicePixelRatioF()),
-				pixel_size())) {
+				pixel_size(),
+				event->modifiers().testFlag(Qt::ShiftModifier),
+				event->modifiers().testFlag(Qt::ControlModifier),
+				event->modifiers().testFlag(Qt::AltModifier))) {
 		event->accept();
 		return;
 	}
@@ -207,6 +217,7 @@ void ViewportWidget::leaveEvent(QEvent *event) {
 	if (active_split_handle_ == ViewportSplitHandle::None) {
 		unsetCursor();
 	}
+	controller_.handle_mouse_leave();
 
 	QWidget::leaveEvent(event);
 }
@@ -220,6 +231,18 @@ void ViewportWidget::wheelEvent(QWheelEvent *event) {
 	}
 
 	QWidget::wheelEvent(event);
+}
+
+bool ViewportWidget::event(QEvent *event) {
+	if (event->type() == QEvent::ShortcutOverride) {
+		auto *key_event = static_cast<QKeyEvent *>(event);
+		if (controller_.overrides_action_shortcut(key_from(key_event->key()))) {
+			event->accept();
+			return true;
+		}
+	}
+
+	return QWidget::event(event);
 }
 
 void ViewportWidget::keyPressEvent(QKeyEvent *event) {

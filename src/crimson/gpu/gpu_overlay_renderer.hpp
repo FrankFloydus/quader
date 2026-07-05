@@ -21,7 +21,7 @@
 
 namespace crimson::gpu {
 
-/// Owns GPU state needed to submit unlit overlay grid and line primitives.
+/// Owns GPU state needed to submit unlit overlay grid, line, triangle, and point primitives.
 class GpuOverlayRenderer final {
 public:
 	/// Construct an empty overlay renderer.
@@ -50,7 +50,19 @@ public:
 	/// Submit one prepared line overlay command.
 	[[nodiscard]] std::uint32_t submit_lines(
 			bgfx::ViewId view_id,
+			const RenderView &view,
 			const PreparedLineOverlayCommand &lines,
+			bgfx::ProgramHandle program) const noexcept;
+	/// Submit one prepared solid-triangle overlay command.
+	[[nodiscard]] std::uint32_t submit_triangles(
+			bgfx::ViewId view_id,
+			const PreparedTriangleOverlayCommand &triangles,
+			bgfx::ProgramHandle program) const noexcept;
+	/// Submit one prepared point overlay command.
+	[[nodiscard]] std::uint32_t submit_points(
+			bgfx::ViewId view_id,
+			const RenderView &view,
+			const PreparedPointOverlayCommand &points,
 			bgfx::ProgramHandle program) const noexcept;
 
 private:

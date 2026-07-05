@@ -24,6 +24,9 @@ enum class ActionId : std::uint16_t {
 
 	Undo, ///< Undo the last command.
 	Redo, ///< Redo the next command.
+	SelectAll, ///< Select every selectable item in the active selection mode.
+	ClearSelection, ///< Clear the current selection.
+	InvertSelection, ///< Invert the current selection against the active selection mode.
 	DuplicateSelection, ///< Duplicate the current selection.
 	DeleteSelection, ///< Delete the current selection.
 
@@ -32,6 +35,13 @@ enum class ActionId : std::uint16_t {
 	RotateTool, ///< Activate the rotate tool.
 	ScaleTool, ///< Activate the scale tool.
 	BoxTool, ///< Activate the box creation tool.
+
+	SelectObjectMode, ///< Switch selection to whole-object mode.
+	SelectVertexMode, ///< Switch selection to vertex component mode.
+	SelectEdgeMode, ///< Switch selection to edge component mode.
+	SelectFaceMode, ///< Switch selection to face component mode.
+
+	FlipMeshNormals, ///< Flip face winding for the current mesh selection.
 
 	CreateCube, ///< Create a cube primitive.
 	CreateLight, ///< Create a light object.

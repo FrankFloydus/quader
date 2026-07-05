@@ -3,6 +3,33 @@
 Completed tasks and fixed bugs are moved here from `project_board.md`.
 Entries are grouped newest-first by archive date and internal dev version.
 
+
+## 2026-07-06
+
+### 0.1.1-dev.13
+
+#27 [priority:critical][type:bug][area:renderer] Fix viewport placement, grid depth, and default texture regressions - Box placement, vertical-plane creation, grid depth/color, and default texture quality regressed together.
+  Archived: [at:2026-07-06T00:00:32+02:00][dev-version:0.1.1-dev.13][from:In Progress][status:fixed] Workflow-authorized archive.
+  Resolution: Confirmed fixed in C:\Users\Drako\Desktop\_quader-qt-base\build\qt-mingw-debug\quader.exe after rework: box creation/winding is correct in real viewport use, the perspective grid/unlit viewport behavior from the earlier fixes is preserved, and the default reference albedo now renders crisp at grazing angles via the corrected BGFX anisotropy reset/sampler path.
+  Created: 2026-07-05T22:31:33+02:00
+  Brief: Regression cluster from the current textured-material viewport path. User-visible symptoms: perspective grid flickers/bleeds based on camera position and depth precision; viewport/material color-space looks wrong; box creation no longer reliably creates new meshes on top of existing meshes; box tool no longer works on vertical planes; copied default albedo texture looks low quality/shimmery, likely from missing mipmap/filter setup. Treat as one task, not separate bugs. Reference source of truth: C:\Users\Drako\Desktop\quader-windows\quader-app. Source refs inspected: src\viewport\viewport_grid_placement_policy.hpp:18-162 for camera-following grid placement; src\render\viewport_grid_renderer.cpp:50-55,170-228 for sRGB-to-linear grid colors and depth-culling setup; src\render\png_texture_loader.cpp:26-105 and src\render\texture_binding_service.cpp:124-143 for sRGB texture upload with generated mipmaps; src\editor\interactions\box_tool.cpp:121-360 for construction-plane projection/snap behavior; src\editor\tools\base\two_stage_box_tool.cpp:94-158 for pointer flow; src\editor\commands\modeling\commit_box_preview_command.cpp:88-108 for commit/select behavior. Current likely files: src\ui\viewport\viewport_controller.cpp surface_hit_for_ray/ray_for_point/dispatch_tool_pointer, src\tools\box_tool.cpp construction_point_from_event and vertical-plane drag handling, src\crimson\overlays\grid_overlay.cpp, shaders\fs_grid.sc, src\crimson\gpu\gpu_overlay_renderer.cpp, src\crimson\gpu\gpu_material_cache.cpp/.hpp, tests\unit\tools\tool_manager_tests.cpp, tests\unit\ui\viewport_tests.cpp, tests\unit\crimson\overlay_tests.cpp, tests\unit\crimson\material_system_tests.cpp. Intended fix: preserve box creation on document surfaces and vertical planes by making viewport surface hits and locked construction-plane ray intersections robust; stabilize perspective grid depth without drawing through meshes; keep viewport colors in the correct sRGB/linear path; upload the default albedo with appropriate mip levels/filtering comparable to the reference app; avoid broad project asset-import UI scope from #18. Verification: focused tool/viewport/crimson tests, shader manifest validation, qt-mingw-debug build, qt-mingw-debug-tests build, deploy, dev-build archive, and board validation; do not run clang-format/clang-tidy/static-analysis or CTest presets that include them without explicit permission.
+  Freshness: [status:fresh][checked:2026-07-05T20:31:41Z] Fresh consolidated regression task created from current screenshots and current/reference code inspection.
+  Final owner: codex
+
+
+
+
+
+
+
+  Authority: [owner:renderer][status:changes-requested][agent:quader-workflow] Review rework: boxes are still visibly inverted in the viewport and the copied default albedo appears too blurred compared to the reference Quader app.
+  Rework: [owner:renderer][agent:quader-workflow][checked:2026-07-05T21:10:36Z] Fix the remaining task #27 regressions in the same task: (1) created boxes must not appear inverted in real viewport use, including committed mesh winding/render extraction/cull orientation, and (2) the default material albedo must render crisp like C:\Users\Drako\Desktop\quader-windows\quader-app instead of mushy/blurry, including UV scale, texture dimensions, mip/filter/sampler choices, and source asset parity.
+
+
+
+
+
+
 ## 2026-07-05
 
 ### 0.1.0-dev.2

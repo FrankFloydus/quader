@@ -1,265 +1,87 @@
-## Testing policy for agents
+# Testing Policy
 
-The goal of tests in this project is to protect real modeling/editor behavior, not to inflate coverage or lock down irrelevant implementation details. This is a C++ desktop modeling/level-editing app inspired by tools like TrenchBroom and Source 2 Hammer, so tests must focus on geometry correctness, document/model state, tools, commands, undo/redo, import/export, selection, picking, snapping, and user-visible workflows.
+Lean first-read for Quader testing. Full detailed examples are preserved in `agents/reference/tests-policy-full.md`; read it for broad test audits, ambiguous test design, or major verification policy work.
 
-### Core testing rule
+## Core Rule
 
-Every test must answer: “Would this fail if a real user-visible behavior, data invariant, or editor workflow broke?”
+Every test must protect real user-visible behavior, data invariants, editor workflows, or critical failure handling. Do not add tests that only freeze implementation details, cosmetics, or mock call order.
 
-Write the test if the answer is yes. Do not write the test if it only proves an implementation detail, a cosmetic detail, or a mock interaction that users do not care about.
+Focus on geometry correctness, document/model state, tools, commands, undo/redo, import/export, selection, picking, snapping, renderer-facing semantics, and user-visible workflows.
 
-### Validation scope lock
+## Validation Lock
 
-Agents must not tune tests, validation scripts, clang-format, clang-tidy,
-sanitizer settings, architecture checks, or other quality gates merely so the
-current code passes. Current code is evidence for migration impact, not
-permission to lower the requested standard.
+Do not weaken tests, validation scripts, clang-format, clang-tidy, sanitizer settings, architecture checks, or quality gates so current code passes. Current code is migration evidence, not permission to lower the requested standard.
 
-If the requested validation rule would require broad source changes, large
-formatting churn, many clang-tidy fixes, new suppressions, or a staged rollout,
-the agent must stop and report the decision point through the normal
-Workaround/Deviation path. The report must say exactly which requested rule,
-strictness, or acceptance criterion would change and what the alternatives are.
+If a requested gate causes broad churn or needs staged adoption, stop and report a `Workaround/Deviation Report` with alternatives. Non-mutating checks and documented existing failures are allowed.
 
-Allowed without escalation: documenting existing failures, adding a non-mutating
-check that reports those failures, or proposing a staged adoption plan.
-Forbidden without escalation: weakening the rule, narrowing the checked file set
-below the requested scope, adding broad suppressions, changing style to match
-current code instead of the requested policy, or marking validation complete
-when the requested gate is not actually enforced.
+## Style/Static-Analysis Permission
 
-### Style/static-analysis run permission
+Do not run clang-format, clang-tidy, `check_format`, `check_clang_tidy`, `check_static_analysis`, related Python tools, raw clang tools, or any CTest/preset command that includes them without immediate explicit user permission in the current turn.
 
-Do not run clang-format, clang-tidy, `check_format`, `check_clang_tidy`,
-`check_static_analysis`, `tools/check_clang_format.py`,
-`tools/check_clang_tidy.py`, raw `clang-format`, raw `clang-tidy`, or any
-CTest/preset command that includes those gates unless the user gives immediate
-explicit permission in the current turn.
+If a broad preset includes those gates, use targeted test binaries or targeted CTest selections instead.
 
-If a full CTest preset includes style/static-analysis tests, use targeted test
-binaries or targeted CTest selections instead. An architect plan or task
-verification checklist that lists style/static-analysis commands is not
-permission to run them unless it explicitly says `run now without asking`.
-
-### What agents MUST test
-
-Prefer small, deterministic tests for pure logic and editor model behavior:
-
-- Geometry and math:
-  - brush/mesh creation
-  - plane/face/winding validity
-  - clipping, extrusion, CSG/boolean operations
-  - transforms, pivots, bounding boxes, grid snapping
-  - ray casting, picking, hit ordering
-  - UV/material projection logic
-  - degenerate and near-degenerate cases: tiny faces, coplanar faces, parallel planes, zero-length edges, invalid input
-
-- Document/model commands:
-  - create/delete/duplicate objects
-  - move/rotate/scale selected objects
-  - group/ungroup, parent/child changes
-  - entity/property edits
-  - selection changes
-  - tool activation state when it affects behavior
-
-- Undo/redo:
-  - for every new command, test: apply -> expected state -> undo -> original state -> redo -> expected state
-  - compare semantic document state, not pointer addresses or object allocation order
-  - prefer normalized serialization/hash/state snapshots for comparing before/after editor document state
-
-- Serialization/import/export:
-  - save -> load -> equivalent document
-  - load legacy/minimal files
-  - preserve unknown or user-authored properties when required
-  - reject malformed files safely with useful errors
-  - use small, readable fixtures instead of huge golden files
-
-- Regression tests:
-  - every bug fix should include a test that would have failed before the fix
-  - name the test after the behavior, not the bug number alone
-
-- Parser and file-format robustness:
-  - test empty, truncated, malformed, extreme, and valid inputs
-  - add fuzz/property tests for map/model/material parsers when practical
-  - fuzz targets must not crash, hang, call exit(), or write outside temporary test directories
-
-- C++ safety:
-  - run relevant tests with AddressSanitizer/UndefinedBehaviorSanitizer where available
-  - use ThreadSanitizer for concurrency/job-system changes
-  - do not hide sanitizer findings unless there is a documented false positive
-
-### What agents MUST NOT test
-
-Do not add useless or brittle tests such as:
-
-- “the button has a 20px border”
-- exact widget pixel positions, margins, fonts, colors, or layout hierarchy unless this is an explicit product requirement
-- private methods directly when the behavior can be tested through public APIs
-- internal call order between collaborators unless the order is the actual required behavior
-- mocks that only verify “function X was called” without checking the resulting editor behavior
-- tests of STL, Qt, OpenGL, ImGui, glm, Eigen, or other third-party library behavior
-- snapshot tests of entire windows/screens unless there is a stable visual-regression system and the visual output is the product requirement
-- tests that only instantiate a class and assert default values that do not encode a meaningful invariant
-- tests that depend on timing, sleeps, local machine speed, network access, current time, random order, or external user files
-- giant golden files where a failure produces an unreadable diff
-
-### Test level selection
+## What To Test
 
 Use the smallest test that gives confidence:
 
-1. Unit tests:
-   - Use for pure geometry, math, serialization helpers, command logic, validators, and format parsers.
-   - Must be fast, deterministic, isolated, and runnable frequently.
+- Unit: pure geometry/math, parsers, validators, command logic, serialization helpers.
+- Integration: document + command stack + serializer, or multiple real systems.
+- GUI/tool: critical editor workflows that cannot be tested below UI; assert semantic results, not layout.
+- Smoke/E2E: very few high-value app workflows.
 
-2. Integration tests:
-   - Use when behavior requires multiple real project systems together, such as document + command stack + serializer.
-   - Use local temporary files only.
-   - Avoid real network, real user config, or machine-specific paths.
+Must-test areas:
 
-3. GUI/tool tests:
-   - Use only for critical editor workflows that cannot be tested below the UI layer.
-   - Simulate user input such as mouse/key/tool events through the app’s public event APIs.
-   - Assert semantic results: selected object IDs, created brushes, transformed positions, enabled actions, document dirty state.
-   - Do not assert cosmetic layout details.
+- geometry/mesh invariants, winding, bounds, invalid/degenerate input;
+- commands and undo/redo: apply -> expected -> undo -> original -> redo -> expected;
+- document state, selection, tool activation when behavior changes;
+- import/export save-load equivalence and malformed input safety;
+- picking, snapping, transform semantics, material/UV projection when touched;
+- bug fixes: regression test that would fail before the fix when practical.
 
-4. End-to-end/smoke tests:
-   - Keep very few.
-   - Good examples: app starts, creates a minimal document, performs a basic edit, saves, reloads, exits cleanly.
-   - These tests may be slower, so they must cover only high-value workflows.
+## What Not To Test
 
-### Quality bar for every test
+Avoid:
 
-Before adding or keeping a test, verify:
+- exact widget pixels, margins, colors, fonts, layout hierarchy unless explicit product scope;
+- private methods when behavior is testable through public APIs;
+- internal call order unless order is required behavior;
+- third-party library behavior;
+- whole-window snapshots without a stable visual regression system;
+- default-value tests with no invariant;
+- sleeps, timing, network, wall-clock, machine-specific paths, random order;
+- giant unreadable golden files.
 
-- It protects real behavior or an important invariant.
-- It would fail for a plausible regression.
-- It is deterministic and does not rely on sleeps, wall-clock timing, network, random seeds, or machine-specific state.
-- It has a clear name describing behavior, for example:
-  - `ClipBrush_WithCoplanarPlane_KeepsValidClosedBrush`
-  - `MoveSelection_UndoRedo_RestoresDocumentState`
-  - `MapParser_TruncatedEntity_ReturnsErrorWithoutCrash`
-- It uses minimal fixtures and minimal data.
-- It has readable assertions with useful failure messages.
-- Floating-point comparisons use tolerances appropriate for the operation.
-- It cleans up temporary files/resources.
-- It does not require a human to inspect output.
+## Quality Bar
 
-### Preferred assertion style
+Each test should:
 
-Assert outcomes, not implementation.
+- fail for a plausible regression;
+- be deterministic and isolated;
+- have a behavior-focused name;
+- use minimal fixtures/data;
+- assert outcomes with useful failure messages;
+- use appropriate floating-point tolerances;
+- clean up temporary files/resources;
+- avoid human inspection.
 
-Good:
+Golden files must be small, intentional, readable, normalized, and justified. Prefer semantic comparisons.
 
-- after clipping a brush, all faces are valid and the expected volume/bounds/topology are produced
-- after dragging a selected vertex with grid snapping enabled, the vertex lands on the expected grid coordinate
-- after undo, normalized document state equals the pre-command state
-- after saving and loading, entities, brushes, materials, and properties are semantically equivalent
-- malformed input returns a structured error and does not mutate the current document
+Random/fuzz/property tests must be reproducible; print seeds on failure.
 
-Bad:
+Performance tests should avoid tight timing thresholds. Use benchmarks or broad regression guards, not fragile pass/fail frame-time assertions.
 
-- assert that `ClipTool::buildTemporaryPreviewMesh()` was called
-- assert that a private vector has size 3 because of the current implementation
-- assert that a toolbar button is exactly 24px wide
-- assert exact serialized whitespace unless the file format requires it
-- assert the exact order of unordered containers
+## Existing Tests
 
-### Geometry-specific testing rules
+Do not delete or weaken a failing test just because it fails. First determine whether behavior intentionally changed or a regression exists. If behavior changed, update the test to express the new behavior. If brittle, rewrite around meaningful outcomes.
 
-For geometry code, test invariants in addition to examples:
+## Agent Workflow
 
-- closed brush remains closed after valid operations
-- face windings are consistently oriented
-- no NaN/Inf coordinates are produced
-- no zero-area faces remain unless explicitly allowed
-- bounds are correct after transforms
-- snapping is stable and idempotent
-- applying identity transform changes nothing
-- transform followed by inverse transform approximately restores original geometry
-- serialization round-trip preserves geometry within tolerance
+When changing code:
 
-Use property-style tests where useful:
-
-- generate valid simple brushes and random transforms
-- apply operation
-- assert invariants always hold
-- record and minimize failing seeds/cases when the framework supports it
-
-### Undo/redo command testing template
-
-For any new editor command:
-
-1. Build a minimal document fixture.
-2. Capture normalized document state.
-3. Execute the command.
-4. Assert the expected semantic change.
-5. Undo.
-6. Assert normalized state equals the original state.
-7. Redo.
-8. Assert the expected semantic change again.
-9. If command merging/coalescing exists, test merge and non-merge cases.
-
-### Serialization/golden-file rules
-
-Golden files are allowed only when they are small, intentional, and readable.
-
-Prefer semantic comparisons over raw text comparison. If raw text comparison is necessary:
-
-- normalize line endings
-- normalize path separators where appropriate
-- avoid timestamps/random IDs unless explicitly part of the test
-- keep fixtures minimal
-- include a clear reason why a golden file is better than object-level assertions
-
-### Test data and fixtures
-
-- Put test fixtures under a dedicated test data directory.
-- Keep fixtures tiny and named by behavior.
-- Do not use real user projects as fixtures unless reduced to the minimum repro.
-- Do not rely on files outside the repository except temporary files created by the test.
-- Temporary files must be written under the test framework’s temp directory and cleaned up.
-
-### Randomness and fuzzing
-
-- Normal unit tests must be deterministic.
-- If randomness is used, fix the seed and print the seed on failure.
-- Fuzz/property tests may generate broad inputs, but failing cases must be reproducible.
-- Add fuzz tests for parsers, importers, geometry construction, and operations that consume complex user-authored data.
-
-### Performance tests
-
-Do not add fragile performance tests with tight timing thresholds.
-
-Allowed:
-
-- microbenchmarks that are not part of the normal pass/fail suite
-- broad regression guards with generous thresholds for known expensive operations
-- tests that assert algorithmic sanity, such as “does not hang on this previously pathological input”
-
-Not allowed:
-
-- tests that fail because a CI machine is temporarily slow
-- exact frame-time assertions
-- benchmarks mixed into normal correctness tests
-
-### When modifying existing tests
-
-- Do not delete or weaken a test just because it fails.
-- First determine whether the behavior changed intentionally or a regression was introduced.
-- If behavior changed intentionally, update the test to express the new behavior and explain why.
-- If the test is brittle, rewrite it to assert the meaningful outcome instead of removing it.
-- Keep tests readable; test code is production code.
-
-### Agent workflow
-
-When implementing a change:
-
-1. Identify the user-visible behavior or invariant affected by the change.
+1. Identify affected behavior/invariant.
 2. Choose the smallest useful test level.
-3. Add or update tests before or alongside the implementation.
-4. Run the relevant local test target.
-5. For geometry/parser/memory-sensitive changes, run sanitizer or fuzz/property tests when available.
+3. Add/update tests before or alongside implementation when practical.
+4. Run relevant local tests.
+5. For geometry/parser/memory-sensitive changes, run sanitizer/property/fuzz checks when available and appropriate.
 6. Report exactly what was tested.
-7. If no meaningful automated test is practical, state why and provide a concrete manual verification step.
-
-A change is not better because it has more tests. It is better when the tests catch real regressions with minimal brittleness.
+7. If automated testing is not practical, state why and give concrete manual verification.

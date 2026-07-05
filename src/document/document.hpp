@@ -43,7 +43,7 @@ public:
 			std::string name,
 			quader::mesh::Polyhedron mesh,
 			Transform transform = {},
-			PbrMaterial material = default_box_material());
+			PbrMaterial material = default_mesh_material());
 	/**
 	 * Restore a previously extracted mesh object.
 	 *
@@ -108,6 +108,21 @@ public:
 	 */
 	[[nodiscard]] quader::foundation::Result<void, DocumentError> validate_component_ref(
 			const ComponentRef &component) const;
+	/**
+	 * Validate that a selection resolves against the current document.
+	 *
+	 * @param selection Selection payload to validate.
+	 * @return Success, or the first unresolved object/component error.
+	 */
+	[[nodiscard]] quader::foundation::Result<void, DocumentError> validate_selection_liveness(
+			const Selection &selection) const;
+	/**
+	 * Validate that the stored document selection is still live.
+	 *
+	 * @return Success, or the first unresolved object/component error.
+	 */
+	[[nodiscard]] quader::foundation::Result<void, DocumentError>
+	validate_current_selection_liveness() const;
 
 	/// Return the current document selection.
 	[[nodiscard]] const Selection &selection() const noexcept;

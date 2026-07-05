@@ -9,9 +9,10 @@
  */
 #include "ui/actions/editor_action_controller.hpp"
 
-#include "commands/command_result.hpp"
 #include "commands/document_commands.hpp"
+#include "commands/selection_commands.hpp"
 #include "document/document.hpp"
+#include "document/selection.hpp"
 #include "tools/tool_id.hpp"
 #include "tools/tool_manager.hpp"
 #include "ui/actions/action_registry.hpp"
@@ -42,6 +43,54 @@ namespace {
 		default:
 			return std::nullopt;
 	}
+}
+
+[[nodiscard]] std::optional<quader::tools::SelectionMode> selection_mode_for_action(
+		ActionId id) noexcept {
+	switch (id) {
+		case ActionId::SelectObjectMode:
+			return quader::tools::SelectionMode::Object;
+		case ActionId::SelectVertexMode:
+			return quader::tools::SelectionMode::Vertex;
+		case ActionId::SelectEdgeMode:
+			return quader::tools::SelectionMode::Edge;
+		case ActionId::SelectFaceMode:
+			return quader::tools::SelectionMode::Face;
+		default:
+			return std::nullopt;
+	}
+}
+
+[[nodiscard]] quader::document::SelectionMode document_selection_mode_for(
+		quader::tools::SelectionMode mode) noexcept {
+	switch (mode) {
+		case quader::tools::SelectionMode::Object:
+			return quader::document::SelectionMode::Object;
+		case quader::tools::SelectionMode::Vertex:
+			return quader::document::SelectionMode::Vertex;
+		case quader::tools::SelectionMode::Edge:
+			return quader::document::SelectionMode::Edge;
+		case quader::tools::SelectionMode::Face:
+			return quader::document::SelectionMode::Face;
+	}
+
+	return quader::document::SelectionMode::Object;
+}
+
+[[nodiscard]] quader::tools::SelectionMode tool_selection_mode_for(
+		quader::document::SelectionMode mode) noexcept {
+	switch (mode) {
+		case quader::document::SelectionMode::Object:
+			return quader::tools::SelectionMode::Object;
+		case quader::document::SelectionMode::Vertex:
+			return quader::tools::SelectionMode::Vertex;
+		case quader::document::SelectionMode::Edge:
+			return quader::tools::SelectionMode::Edge;
+		case quader::document::SelectionMode::Face:
+			return quader::tools::SelectionMode::Face;
+	}
+
+	return quader::tools::SelectionMode::Object;
 }
 
 } // namespace
@@ -77,8 +126,20 @@ void EditorActionController::handle_action_triggered(ActionId id) {
 		case ActionId::Redo:
 			redo();
 			break;
+		case ActionId::SelectAll:
+			select_all();
+			break;
+		case ActionId::ClearSelection:
+			clear_selection();
+			break;
+		case ActionId::InvertSelection:
+			invert_selection();
+			break;
 		case ActionId::DeleteSelection:
 			delete_selection();
+			break;
+		case ActionId::FlipMeshNormals:
+			flip_mesh_normals();
 			break;
 		default:
 			break;
@@ -87,6 +148,12 @@ void EditorActionController::handle_action_triggered(ActionId id) {
 
 void EditorActionController::handle_action_toggled(ActionId id, bool checked) {
 	if (!checked) {
+		refresh_actions();
+		return;
+	}
+
+	if (const auto kMode = selection_mode_for_action(id)) {
+		set_selection_mode(*kMode);
 		return;
 	}
 
@@ -112,7 +179,11 @@ void EditorActionController::undo() {
 		return;
 	}
 
-	(void)document_ui_.undo();
+	const auto kResult = document_ui_.undo();
+	if (kResult.is_applied()) {
+		sync_selection_mode_from_document();
+	}
+	refresh_actions();
 }
 
 void EditorActionController::redo() {
@@ -120,7 +191,23 @@ void EditorActionController::redo() {
 		return;
 	}
 
-	(void)document_ui_.redo();
+	const auto kResult = document_ui_.redo();
+	if (kResult.is_applied()) {
+		sync_selection_mode_from_document();
+	}
+	refresh_actions();
+}
+
+void EditorActionController::select_all() {
+	(void)document_ui_.execute_command(std::make_unique<quader::commands::SelectAllCommand>());
+}
+
+void EditorActionController::clear_selection() {
+	(void)document_ui_.execute_command(std::make_unique<quader::commands::ClearSelectionCommand>());
+}
+
+void EditorActionController::invert_selection() {
+	(void)document_ui_.execute_command(std::make_unique<quader::commands::InvertSelectionCommand>());
 }
 
 void EditorActionController::delete_selection() {
@@ -139,6 +226,32 @@ void EditorActionController::delete_selection() {
 
 	(void)document_ui_.execute_command(
 			std::make_unique<quader::commands::DeleteObjectCommand>(kSelectedObjects.front()));
+}
+
+void EditorActionController::flip_mesh_normals() {
+	(void)document_ui_.execute_command(
+			std::make_unique<quader::commands::FlipMeshNormalsCommand>());
+}
+
+void EditorActionController::set_selection_mode(quader::tools::SelectionMode mode) {
+	(void)tool_manager_.set_selection_mode(mode);
+	if (tool_manager_.has_tool(quader::tools::ToolId::Select)) {
+		(void)tool_manager_.set_active_tool(quader::tools::ToolId::Select);
+	}
+
+	const auto kDocumentMode = document_selection_mode_for(mode);
+	if (document_ui_.document().selection().mode() != kDocumentMode) {
+		(void)document_ui_.execute_command(
+				std::make_unique<quader::commands::SetSelectionModeCommand>(kDocumentMode));
+		sync_selection_mode_from_document();
+	}
+
+	refresh_actions();
+}
+
+void EditorActionController::sync_selection_mode_from_document() {
+	(void)tool_manager_.set_selection_mode(
+			tool_selection_mode_for(document_ui_.document().selection().mode()));
 }
 
 void EditorActionController::refresh_actions() {

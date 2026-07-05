@@ -23,10 +23,11 @@
 namespace quader::commands {
 
 /**
- * Undoable command that creates a validated mesh object.
+ * Undoable command that creates a validated mesh object and selects it.
  *
  * The command owns the input mesh until first execution, then stores the
- * created object snapshot on undo so redo can restore the same object id.
+ * created object snapshot and prior selection on undo so redo can restore the
+ * same object id as the only selected object.
  */
 class CreateMeshObjectCommand final : public ICommand {
 public:
@@ -41,7 +42,7 @@ public:
 	CreateMeshObjectCommand(std::string name,
 			quader::mesh::Polyhedron mesh,
 			quader::document::Transform transform = {},
-			quader::document::PbrMaterial material = quader::document::default_box_material());
+			quader::document::PbrMaterial material = quader::document::default_mesh_material());
 
 	/// Return the command display name.
 	[[nodiscard]] std::string_view name() const noexcept override;
@@ -60,6 +61,7 @@ private:
 	quader::document::PbrMaterial material_;
 	std::optional<quader::document::ObjectId> object_id_;
 	std::optional<quader::document::MeshObject> created_object_;
+	std::optional<quader::document::Selection> previous_selection_;
 };
 
 /// Undoable command that removes one object and restores prior selection on undo.

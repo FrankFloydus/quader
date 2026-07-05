@@ -20,6 +20,7 @@
 #include "crimson/gpu/gpu_program_cache.hpp"
 #include "crimson/gpu/gpu_view_policy.hpp"
 #include "crimson/gpu/shader_library_runtime.hpp"
+#include "crimson/material/default_material.hpp"
 #include "crimson/material/material_system.hpp"
 #include "crimson/overlays/overlay_system.hpp"
 #include "crimson/pipeline/instancing_batcher.hpp"
@@ -192,7 +193,11 @@ struct PostProcessResources {
 }
 
 [[nodiscard]] std::uint32_t reset_flags_for_config(const RendererConfig &config) noexcept {
-	return config.vsync ? BGFX_RESET_VSYNC : BGFX_RESET_NONE;
+	std::uint32_t flags = BGFX_RESET_MAXANISOTROPY;
+	if (config.vsync) {
+		flags |= BGFX_RESET_VSYNC;
+	}
+	return flags;
 }
 
 void push_diagnostic(RendererStatus &status, RendererDiagnostic diagnostic) {
@@ -368,6 +373,14 @@ void push_material_error(RendererStatus &status, RendererDiagnostic diagnostic) 
 	return 0;
 }
 
+[[nodiscard]] bool grid_uses_scene_underlay_pass(
+		const PreparedGridOverlayCommand &grid,
+		const RenderView &view) noexcept {
+	return grid.command.depth_mode == OverlayDepthMode::AlwaysOnTop &&
+			grid.grid.depth_mode == OverlayDepthMode::AlwaysOnTop &&
+			view.camera.projection != CameraProjection::Orthographic;
+}
+
 enum class PbrSubmitMode {
 	DepthOnly,
 	Lit,
@@ -393,11 +406,12 @@ enum class ViewClearMode {
 }
 
 [[nodiscard]] std::uint64_t state_for_packet(const PbrDrawPacket &packet, PbrSubmitMode mode) noexcept {
+	const std::uint64_t kCullState = packet.double_sided ? 0 : BGFX_STATE_CULL_CCW;
 	if (mode == PbrSubmitMode::DepthOnly) {
-		return BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA;
+		return BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA | kCullState;
 	}
 
-	std::uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_MSAA;
+	std::uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_MSAA | kCullState;
 	if (packet.queue == RenderQueue::Opaque || packet.queue == RenderQueue::AlphaCutout) {
 		state |= BGFX_STATE_WRITE_Z;
 	}
@@ -534,6 +548,7 @@ std::uint32_t submit_pbr_packets(
 		bgfx::setTransform(packet.world_from_object.data());
 		bgfx::setUniform(resources.pbr_model_uniform, packet.world_from_object.data());
 		material_cache.bind_pbr_material(material_cache.material_block(materials, packet.material, *definition));
+		material_cache.bind_pbr_textures(materials, packet.material, *definition);
 		bgfx::setVertexBuffer(0, mesh->vertex_buffer.get());
 		bgfx::setIndexBuffer(mesh->index_buffer.get());
 		bgfx::setState(state_for_packet(packet, mode));
@@ -564,8 +579,29 @@ std::uint32_t submit_grid_overlay_bucket(
 			if (grid.grid.view_index != view.view_index) {
 				continue;
 			}
+			if (grid_uses_scene_underlay_pass(grid, view)) {
+				continue;
+			}
 			draw_calls += overlay_renderer.submit_grid(kViewId, view, grid, kProgram);
 		}
+	}
+	return draw_calls;
+}
+
+std::uint32_t submit_grid_scene_underlay_bucket(
+		const OverlayDrawBucket &bucket,
+		const RenderView &view,
+		bgfx::ViewId view_id,
+		const GpuOverlayRenderer &overlay_renderer,
+		const GpuProgramCache &program_cache,
+		RenderProgramHandle overlay_program) {
+	std::uint32_t draw_calls = 0;
+	const bgfx::ProgramHandle kProgram = program_cache.program(overlay_program);
+	for (const PreparedGridOverlayCommand &grid : bucket.grid_commands) {
+		if (grid.grid.view_index != view.view_index || !grid_uses_scene_underlay_pass(grid, view)) {
+			continue;
+		}
+		draw_calls += overlay_renderer.submit_grid(view_id, view, grid, kProgram);
 	}
 	return draw_calls;
 }
@@ -591,7 +627,61 @@ std::uint32_t submit_line_overlay_bucket(
 			if (lines.command.view_index != view.view_index) {
 				continue;
 			}
-			draw_calls += overlay_renderer.submit_lines(kViewId, lines, kProgram);
+			draw_calls += overlay_renderer.submit_lines(kViewId, view, lines, kProgram);
+		}
+	}
+	return draw_calls;
+}
+
+std::uint32_t submit_triangle_overlay_bucket(
+		const OverlayDrawBucket &bucket,
+		OverlayDepthMode depth_mode,
+		std::span<const RenderView> views,
+		const GpuOverlayRenderer &overlay_renderer,
+		const GpuProgramCache &program_cache,
+		RenderProgramHandle line_program,
+		bgfx::FrameBufferHandle framebuffer) {
+	std::uint32_t draw_calls = 0;
+	const bgfx::ProgramHandle kProgram = program_cache.program(line_program);
+	const std::uint32_t kQueueOffset = overlay_queue_offset(depth_mode);
+	for (std::size_t view_index = 0; view_index < views.size(); ++view_index) {
+		const RenderView &view = views[view_index];
+		const bgfx::ViewId kViewId = overlay_view_id(view_index, kQueueOffset);
+		const std::string kViewName = std::string(render_queue_name(render_queue_for_overlay_depth_mode(depth_mode))) + ":" + view.debug_name;
+		configure_scene_view(kViewId, view, kViewName, ViewClearMode::None, framebuffer);
+
+		for (const PreparedTriangleOverlayCommand &triangles : bucket.triangle_commands) {
+			if (triangles.command.view_index != view.view_index) {
+				continue;
+			}
+			draw_calls += overlay_renderer.submit_triangles(kViewId, triangles, kProgram);
+		}
+	}
+	return draw_calls;
+}
+
+std::uint32_t submit_point_overlay_bucket(
+		const OverlayDrawBucket &bucket,
+		OverlayDepthMode depth_mode,
+		std::span<const RenderView> views,
+		const GpuOverlayRenderer &overlay_renderer,
+		const GpuProgramCache &program_cache,
+		RenderProgramHandle line_program,
+		bgfx::FrameBufferHandle framebuffer) {
+	std::uint32_t draw_calls = 0;
+	const bgfx::ProgramHandle kProgram = program_cache.program(line_program);
+	const std::uint32_t kQueueOffset = overlay_queue_offset(depth_mode);
+	for (std::size_t view_index = 0; view_index < views.size(); ++view_index) {
+		const RenderView &view = views[view_index];
+		const bgfx::ViewId kViewId = overlay_view_id(view_index, kQueueOffset);
+		const std::string kViewName = std::string(render_queue_name(render_queue_for_overlay_depth_mode(depth_mode))) + ":" + view.debug_name;
+		configure_scene_view(kViewId, view, kViewName, ViewClearMode::None, framebuffer);
+
+		for (const PreparedPointOverlayCommand &points : bucket.point_commands) {
+			if (points.command.view_index != view.view_index) {
+				continue;
+			}
+			draw_calls += overlay_renderer.submit_points(kViewId, view, points, kProgram);
 		}
 	}
 	return draw_calls;
@@ -833,7 +923,23 @@ bool GpuDevice::initialize(const RendererConfig &config, const NativeSurfaceDesc
 	}
 
 	impl_->material_system = MaterialSystem{};
-	auto default_material = impl_->material_system.create_default_material(BaseShaderId::OpaquePbr);
+	const BaseShaderDefinition *default_definition = impl_->material_system.registry().find(BaseShaderId::OpaquePbr);
+	if (default_definition == nullptr) {
+		push_diagnostic(status_, RendererDiagnostic{
+									 .severity = RendererDiagnosticSeverity::Fatal,
+									 .code = RendererDiagnosticCode::MaterialSchemaInvalid,
+									 .message = "Crimson cannot create the default Quader material because OpaquePbr is missing.",
+									 .subsystem = "gpu.material",
+									 .resource_name = "DefaultQuaderMaterial",
+							 });
+		bgfx::shutdown();
+		status_.initialized = false;
+		selected_backend_ = std::nullopt;
+		return false;
+	}
+
+	auto default_material = impl_->material_system.create_material(
+			make_default_quader_material_instance(*default_definition, {}));
 	if (!default_material) {
 		push_material_error(status_, std::move(default_material).error());
 		bgfx::shutdown();
@@ -842,39 +948,6 @@ bool GpuDevice::initialize(const RendererConfig &config, const NativeSurfaceDesc
 		return false;
 	}
 	impl_->default_opaque_material = default_material.value();
-	auto default_color = impl_->material_system.set_parameter(
-			impl_->default_opaque_material,
-			"base_color",
-			MaterialColorSrgb{ 0.5F, 0.5F, 0.5F, 1.0F });
-	if (!default_color) {
-		push_material_error(status_, std::move(default_color).error());
-		bgfx::shutdown();
-		status_.initialized = false;
-		selected_backend_ = std::nullopt;
-		return false;
-	}
-	auto default_roughness = impl_->material_system.set_parameter(
-			impl_->default_opaque_material,
-			"roughness",
-			1.0F);
-	if (!default_roughness) {
-		push_material_error(status_, std::move(default_roughness).error());
-		bgfx::shutdown();
-		status_.initialized = false;
-		selected_backend_ = std::nullopt;
-		return false;
-	}
-	auto default_metallic = impl_->material_system.set_parameter(
-			impl_->default_opaque_material,
-			"metallic",
-			0.0F);
-	if (!default_metallic) {
-		push_material_error(status_, std::move(default_metallic).error());
-		bgfx::shutdown();
-		status_.initialized = false;
-		selected_backend_ = std::nullopt;
-		return false;
-	}
 
 	impl_->unit_box_mesh = impl_->mesh_cache.create_unit_box(status_);
 	ShaderLibrary shader_library(config.shader_root);
@@ -882,6 +955,7 @@ bool GpuDevice::initialize(const RendererConfig &config, const NativeSurfaceDesc
 	(void)impl_->program_cache.load_program(shader_library, ShaderProgramId::OpaquePbr, kShaderTarget, status_);
 	(void)impl_->program_cache.load_program(shader_library, ShaderProgramId::AlphaCutoutPbr, kShaderTarget, status_);
 	(void)impl_->program_cache.load_program(shader_library, ShaderProgramId::TransparentPbr, kShaderTarget, status_);
+	(void)impl_->program_cache.load_program(shader_library, ShaderProgramId::UnlitSurface, kShaderTarget, status_);
 	impl_->overlay_program = impl_->program_cache.load_program(
 			shader_library,
 			ShaderProgramId::OverlayUnlit,
@@ -907,7 +981,21 @@ bool GpuDevice::initialize(const RendererConfig &config, const NativeSurfaceDesc
 			ShaderProgramId::Present,
 			kShaderTarget,
 			status_);
-	if (!impl_->material_cache.initialize(status_) || has_error_diagnostic(status_)) {
+	if (!impl_->material_cache.initialize(config, status_) || has_error_diagnostic(status_)) {
+		impl_->material_cache.shutdown();
+		impl_->program_cache.clear();
+		impl_->mesh_cache.clear();
+		bgfx::shutdown();
+		status_.initialized = false;
+		selected_backend_ = std::nullopt;
+		return false;
+	}
+	auto default_albedo_bound = impl_->material_system.bind_texture(
+			impl_->default_opaque_material,
+			"base_color",
+			impl_->material_cache.default_albedo_texture_handle());
+	if (!default_albedo_bound) {
+		push_material_error(status_, std::move(default_albedo_bound).error());
 		impl_->material_cache.shutdown();
 		impl_->program_cache.clear();
 		impl_->mesh_cache.clear();
@@ -1118,6 +1206,22 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 	FramePacketStats packet_stats;
 	FrameInstancingStats instancing_stats;
 	FrameUploadStats upload_stats;
+	const bool kDrawOverlayCommands = snapshot.viewport_settings().draw_overlays &&
+			snapshot.viewport_settings().draw_grid_overlay &&
+			impl_->overlay_renderer.ready();
+	std::optional<OverlayDrawLists> overlay_draw_lists;
+	if (kDrawOverlayCommands) {
+		overlay_draw_lists = OverlaySystem{}.prepare(
+				snapshot.overlays(),
+				snapshot.grid_overlay_payloads(),
+				snapshot.line_overlay_payloads(),
+				snapshot.triangle_overlay_payloads(),
+				snapshot.point_overlay_payloads());
+		const std::uint32_t kOverlayPacketCount = size_to_u32(overlay_draw_lists->command_count());
+		queue_stats.draw_packet_count += kOverlayPacketCount;
+		packet_stats.draw_packet_count += kOverlayPacketCount;
+		packet_stats.overlay_packet_count += kOverlayPacketCount;
+	}
 	for (const RenderMeshUpload &upload : snapshot.mesh_uploads()) {
 		if (!impl_->mesh_cache.upload_mesh(upload.desc(), status_)) {
 			RendererDiagnostic diagnostic{
@@ -1164,27 +1268,44 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 			const std::vector<InstanceBatch> kBatches = build_instance_batches(kLitPackets);
 			accumulate_instancing_stats(instancing_stats, make_instancing_stats(kBatches));
 
-			const bgfx::ViewId kOpaqueViewId = scene_view_id(index, 0);
+			const bgfx::ViewId kGridUnderlayViewId = scene_view_id(index, 0);
+			configure_scene_view(
+					kGridUnderlayViewId,
+					view,
+					"GridSceneUnderlayPass:" + view.debug_name,
+					ViewClearMode::Color,
+					kHdrSceneFramebuffer);
+			const bgfx::ViewId kOpaqueViewId = scene_view_id(index, 1);
 			configure_scene_view(
 					kOpaqueViewId,
 					view,
 					"OpaquePbrPass:" + view.debug_name,
-					ViewClearMode::Color,
+					ViewClearMode::None,
 					kHdrSceneFramebuffer);
-			const bgfx::ViewId kCutoutViewId = scene_view_id(index, 1);
+			const bgfx::ViewId kCutoutViewId = scene_view_id(index, 2);
 			configure_scene_view(
 					kCutoutViewId,
 					view,
 					"AlphaCutoutPbrPass:" + view.debug_name,
 					ViewClearMode::None,
 					kHdrSceneFramebuffer);
-			const bgfx::ViewId kTransparentViewId = scene_view_id(index, 2);
+			const bgfx::ViewId kTransparentViewId = scene_view_id(index, 3);
 			configure_scene_view(
 					kTransparentViewId,
 					view,
 					"TransparentPbrPass:" + view.debug_name,
 					ViewClearMode::None,
 					kHdrSceneFramebuffer);
+
+			if (overlay_draw_lists.has_value()) {
+				queue_stats.overlay_draw_count += submit_grid_scene_underlay_bucket(
+						overlay_draw_lists->always_on_top,
+						view,
+						kGridUnderlayViewId,
+						impl_->overlay_renderer,
+						impl_->program_cache,
+						impl_->overlay_program);
+			}
 
 			if (snapshot.viewport_settings().draw_lit_surfaces) {
 				(void)submit_pbr_packets(
@@ -1248,15 +1369,8 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 				kToneMapParams,
 				impl_->post_resources);
 
-		if (snapshot.viewport_settings().draw_overlays && snapshot.viewport_settings().draw_grid_overlay && impl_->overlay_renderer.ready()) {
-			const OverlayDrawLists kOverlayDrawLists = OverlaySystem{}.prepare(
-					snapshot.overlays(),
-					snapshot.grid_overlay_payloads(),
-					snapshot.line_overlay_payloads());
-			const std::uint32_t kOverlayPacketCount = size_to_u32(kOverlayDrawLists.command_count());
-			queue_stats.draw_packet_count += kOverlayPacketCount;
-			packet_stats.draw_packet_count += kOverlayPacketCount;
-			packet_stats.overlay_packet_count += kOverlayPacketCount;
+		if (overlay_draw_lists.has_value()) {
+			const OverlayDrawLists &kOverlayDrawLists = *overlay_draw_lists;
 			queue_stats.overlay_draw_count += submit_grid_overlay_bucket(
 					kOverlayDrawLists.depth_tested,
 					OverlayDepthMode::DepthTested,
@@ -1281,6 +1395,30 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 					impl_->program_cache,
 					impl_->overlay_program,
 					kToneMappedFramebuffer);
+			queue_stats.overlay_draw_count += submit_triangle_overlay_bucket(
+					kOverlayDrawLists.depth_tested,
+					OverlayDepthMode::DepthTested,
+					snapshot.views(),
+					impl_->overlay_renderer,
+					impl_->program_cache,
+					impl_->overlay_line_program,
+					kToneMappedFramebuffer);
+			queue_stats.overlay_draw_count += submit_triangle_overlay_bucket(
+					kOverlayDrawLists.xray,
+					OverlayDepthMode::XRay,
+					snapshot.views(),
+					impl_->overlay_renderer,
+					impl_->program_cache,
+					impl_->overlay_line_program,
+					kToneMappedFramebuffer);
+			queue_stats.overlay_draw_count += submit_triangle_overlay_bucket(
+					kOverlayDrawLists.always_on_top,
+					OverlayDepthMode::AlwaysOnTop,
+					snapshot.views(),
+					impl_->overlay_renderer,
+					impl_->program_cache,
+					impl_->overlay_line_program,
+					kToneMappedFramebuffer);
 			queue_stats.overlay_draw_count += submit_line_overlay_bucket(
 					kOverlayDrawLists.depth_tested,
 					OverlayDepthMode::DepthTested,
@@ -1298,6 +1436,30 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 					impl_->overlay_line_program,
 					kToneMappedFramebuffer);
 			queue_stats.overlay_draw_count += submit_line_overlay_bucket(
+					kOverlayDrawLists.always_on_top,
+					OverlayDepthMode::AlwaysOnTop,
+					snapshot.views(),
+					impl_->overlay_renderer,
+					impl_->program_cache,
+					impl_->overlay_line_program,
+					kToneMappedFramebuffer);
+			queue_stats.overlay_draw_count += submit_point_overlay_bucket(
+					kOverlayDrawLists.depth_tested,
+					OverlayDepthMode::DepthTested,
+					snapshot.views(),
+					impl_->overlay_renderer,
+					impl_->program_cache,
+					impl_->overlay_line_program,
+					kToneMappedFramebuffer);
+			queue_stats.overlay_draw_count += submit_point_overlay_bucket(
+					kOverlayDrawLists.xray,
+					OverlayDepthMode::XRay,
+					snapshot.views(),
+					impl_->overlay_renderer,
+					impl_->program_cache,
+					impl_->overlay_line_program,
+					kToneMappedFramebuffer);
+			queue_stats.overlay_draw_count += submit_point_overlay_bucket(
 					kOverlayDrawLists.always_on_top,
 					OverlayDepthMode::AlwaysOnTop,
 					snapshot.views(),

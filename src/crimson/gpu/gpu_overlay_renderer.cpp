@@ -12,6 +12,7 @@
 #include "crimson/gpu/gpu_handles.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -28,10 +29,16 @@ struct GridVertex {
 	float z;
 };
 
-struct LineVertex {
+struct OverlayPositionVertex {
 	float x;
 	float y;
 	float z;
+};
+
+struct OverlayCameraBasis {
+	quader::math::Vec3 right{ -1.0F, 0.0F, 0.0F };
+	quader::math::Vec3 up{ 0.0F, 1.0F, 0.0F };
+	quader::math::Vec3 view{ 0.0F, 0.0F, -1.0F };
 };
 
 const GridVertex kGridVertices[] = {
@@ -50,6 +57,13 @@ const std::uint16_t kGridIndices[] = {
 	2,
 };
 
+constexpr float kOverlayEpsilon = 0.000001F;
+constexpr float kPi = 3.14159265358979323846F;
+constexpr std::uint32_t kVerticesPerQuad = 4U;
+constexpr std::uint32_t kIndicesPerQuad = 6U;
+constexpr std::uint32_t kMaxTransientQuads16 =
+		std::numeric_limits<std::uint16_t>::max() / kVerticesPerQuad;
+
 void push_overlay_resource_error(RendererStatus &status, std::string resource_name) {
 	status.diagnostics.push_back(RendererDiagnostic{
 			.severity = RendererDiagnosticSeverity::Error,
@@ -58,6 +72,147 @@ void push_overlay_resource_error(RendererStatus &status, std::string resource_na
 			.subsystem = "gpu.overlay",
 			.resource_name = std::move(resource_name),
 	});
+}
+
+[[nodiscard]] quader::math::Vec3 normalized_or(
+		quader::math::Vec3 value,
+		quader::math::Vec3 fallback) noexcept {
+	const quader::math::Vec3 kNormalized = quader::math::normalized(value);
+	return quader::math::length_squared(kNormalized) <= kOverlayEpsilon * kOverlayEpsilon
+			? fallback
+			: kNormalized;
+}
+
+[[nodiscard]] float degrees_to_radians(float degrees) noexcept {
+	return degrees * (kPi / 180.0F);
+}
+
+[[nodiscard]] OverlayCameraBasis camera_basis(const RenderCamera &camera) noexcept {
+	const quader::math::Vec3 kFallbackForward =
+			normalized_or(camera.forward, { 0.0F, 0.0F, -1.0F });
+	const quader::math::Vec3 kView = normalized_or(camera.target - camera.eye, kFallbackForward);
+	const quader::math::Vec3 kRight = normalized_or(
+			quader::math::cross(camera.up, kView),
+			{ -1.0F, 0.0F, 0.0F });
+	return OverlayCameraBasis{
+		.right = kRight,
+		.up = normalized_or(quader::math::cross(kView, kRight), { 0.0F, 1.0F, 0.0F }),
+		.view = kView,
+	};
+}
+
+[[nodiscard]] float world_units_per_pixel(
+		const RenderView &view,
+		const OverlayCameraBasis &basis,
+		quader::math::Vec3 world_position) noexcept {
+	const float kViewportHeightPx = std::max(1.0F, static_cast<float>(view.rect.height));
+	if (view.camera.projection == CameraProjection::Orthographic) {
+		return std::max(0.01F, view.camera.orthographic_height_m) / kViewportHeightPx;
+	}
+
+	const float kForwardDistance = quader::math::dot(world_position - view.camera.eye, basis.view);
+	const float kDistance = std::max(std::max(0.001F, view.camera.near_plane_m), kForwardDistance);
+	const float kFovRadians = degrees_to_radians(std::clamp(view.camera.vertical_fov_degrees, 1.0F, 179.0F));
+	return (2.0F * std::tan(kFovRadians * 0.5F) * kDistance) / kViewportHeightPx;
+}
+
+[[nodiscard]] bool point_needs_component_depth_bias(
+		OverlaySemanticRole role,
+		OverlaySourceKind source_kind) noexcept {
+	const bool kSelectedOrHoverVertex = role == OverlaySemanticRole::SelectedVertex ||
+			role == OverlaySemanticRole::HoverVertex;
+	const bool kComponentSource = source_kind == OverlaySourceKind::ComponentSelection ||
+			source_kind == OverlaySourceKind::ComponentHover;
+	return kSelectedOrHoverVertex && kComponentSource;
+}
+
+[[nodiscard]] std::uint32_t available_quad_count(
+		std::size_t requested_quad_count,
+		const bgfx::VertexLayout &layout) noexcept {
+	const std::uint32_t kRequested = static_cast<std::uint32_t>(std::min<std::size_t>(
+			requested_quad_count,
+			kMaxTransientQuads16));
+	if (kRequested == 0U) {
+		return 0;
+	}
+
+	const std::uint32_t kRequestedVertices = kRequested * kVerticesPerQuad;
+	const std::uint32_t kRequestedIndices = kRequested * kIndicesPerQuad;
+	const std::uint32_t kAvailableVertices =
+			bgfx::getAvailTransientVertexBuffer(kRequestedVertices, layout);
+	const std::uint32_t kAvailableIndices =
+			bgfx::getAvailTransientIndexBuffer(kRequestedIndices);
+	return std::min({
+			kRequested,
+			kAvailableVertices / kVerticesPerQuad,
+			kAvailableIndices / kIndicesPerQuad,
+	});
+}
+
+void append_position_vertex(
+		OverlayPositionVertex *vertices,
+		std::uint32_t &vertex_index,
+		quader::math::Vec3 position) noexcept {
+	vertices[vertex_index++] = OverlayPositionVertex{ position.x, position.y, position.z };
+}
+
+void append_quad(
+		OverlayPositionVertex *vertices,
+		std::uint16_t *indices,
+		std::uint32_t &vertex_index,
+		std::uint32_t &index_index,
+		quader::math::Vec3 a,
+		quader::math::Vec3 b,
+		quader::math::Vec3 c,
+		quader::math::Vec3 d) noexcept {
+	const auto kBase = static_cast<std::uint16_t>(vertex_index);
+	append_position_vertex(vertices, vertex_index, a);
+	append_position_vertex(vertices, vertex_index, b);
+	append_position_vertex(vertices, vertex_index, c);
+	append_position_vertex(vertices, vertex_index, d);
+
+	indices[index_index++] = kBase;
+	indices[index_index++] = static_cast<std::uint16_t>(kBase + 1U);
+	indices[index_index++] = static_cast<std::uint16_t>(kBase + 2U);
+	indices[index_index++] = kBase;
+	indices[index_index++] = static_cast<std::uint16_t>(kBase + 2U);
+	indices[index_index++] = static_cast<std::uint16_t>(kBase + 3U);
+}
+
+[[nodiscard]] std::uint64_t depth_test_state_for(
+		const PreparedOverlayRenderState &render_state) noexcept {
+	if (!render_state.depth_test_enabled) {
+		return 0;
+	}
+
+	if (render_state.equal_depth_test_enabled) {
+		return BGFX_STATE_DEPTH_TEST_EQUAL;
+	}
+
+	return BGFX_STATE_DEPTH_TEST_LEQUAL;
+}
+
+[[nodiscard]] std::uint64_t state_for_overlay_render_state(
+		const PreparedOverlayRenderState &render_state,
+		std::uint64_t primitive_state = 0) noexcept {
+	std::uint64_t state = primitive_state | BGFX_STATE_MSAA;
+	if (render_state.color_write_enabled) {
+		state |= BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A;
+		if (render_state.pass_kind != PreparedOverlayPassKind::DepthStamp) {
+			state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+		}
+	}
+	if (render_state.depth_write_enabled) {
+		state |= BGFX_STATE_WRITE_Z;
+	}
+	state |= depth_test_state_for(render_state);
+	return state;
+}
+
+[[nodiscard]] std::uint32_t clamped_vertex_count(std::size_t count) noexcept {
+	return static_cast<std::uint32_t>(std::min<std::size_t>(
+			count,
+			std::numeric_limits<std::uint32_t>::max()));
 }
 
 } // namespace
@@ -207,51 +362,193 @@ std::uint32_t GpuOverlayRenderer::submit_grid(
 	bgfx::setUniform(impl_->grid_params2_uniform.get(), kParams2);
 	bgfx::setVertexBuffer(0, impl_->grid_vertex_buffer.get());
 	bgfx::setIndexBuffer(impl_->grid_index_buffer.get());
-	bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_INV_SRC_ALPHA));
+	std::uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_MSAA | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+	if (prepared.command.depth_mode != OverlayDepthMode::AlwaysOnTop) {
+		state |= BGFX_STATE_DEPTH_TEST_LESS;
+	}
+	bgfx::setState(state);
 	bgfx::submit(view_id, program);
 	return 1;
 }
 
 std::uint32_t GpuOverlayRenderer::submit_lines(
 		bgfx::ViewId view_id,
+		const RenderView &view,
 		const PreparedLineOverlayCommand &lines,
 		bgfx::ProgramHandle program) const noexcept {
 	if (!impl_->ready || !bgfx::isValid(program) || lines.segments.empty()) {
 		return 0;
 	}
 
-	const std::uint32_t kVertexCount = static_cast<std::uint32_t>(std::min<std::size_t>(
-			lines.segments.size() * 2U,
-			std::numeric_limits<std::uint32_t>::max()));
-	if (kVertexCount < 2U || bgfx::getAvailTransientVertexBuffer(kVertexCount, impl_->line_vertex_layout) < kVertexCount) {
+	const std::uint32_t kQuadCount = available_quad_count(lines.segments.size(), impl_->line_vertex_layout);
+	if (kQuadCount == 0U) {
+		return 0;
+	}
+
+	const std::uint32_t kVertexCount = kQuadCount * kVerticesPerQuad;
+	const std::uint32_t kIndexCount = kQuadCount * kIndicesPerQuad;
+	bgfx::TransientVertexBuffer vertices{};
+	bgfx::TransientIndexBuffer indices{};
+	bgfx::allocTransientVertexBuffer(&vertices, kVertexCount, impl_->line_vertex_layout);
+	bgfx::allocTransientIndexBuffer(&indices, kIndexCount);
+	auto *data = reinterpret_cast<OverlayPositionVertex *>(vertices.data);
+	auto *index_data = reinterpret_cast<std::uint16_t *>(indices.data);
+	std::uint32_t vertex_index = 0;
+	std::uint32_t index_index = 0;
+	const OverlayCameraBasis kBasis = camera_basis(view.camera);
+	const float kThicknessPx = std::max(1.0F, lines.command.thickness_px);
+	for (const LineOverlaySegment &segment : lines.segments) {
+		if (vertex_index + kVerticesPerQuad > kVertexCount ||
+				index_index + kIndicesPerQuad > kIndexCount) {
+			break;
+		}
+
+		const quader::math::Vec3 kSegment = segment.end - segment.start;
+		if (quader::math::length_squared(kSegment) <= kOverlayEpsilon * kOverlayEpsilon) {
+			continue;
+		}
+
+		const quader::math::Vec3 kDirection = normalized_or(kSegment, kBasis.right);
+		const quader::math::Vec3 kOffsetDirection =
+				normalized_or(quader::math::cross(kBasis.view, kDirection), kBasis.up);
+		const quader::math::Vec3 kMidpoint = (segment.start + segment.end) * 0.5F;
+		const float kHalfWidthWorld =
+				kThicknessPx * world_units_per_pixel(view, kBasis, kMidpoint) * 0.5F;
+		const quader::math::Vec3 kOffset = kOffsetDirection * kHalfWidthWorld;
+		append_quad(data,
+				index_data,
+				vertex_index,
+				index_index,
+				segment.start - kOffset,
+				segment.start + kOffset,
+				segment.end + kOffset,
+				segment.end - kOffset);
+	}
+
+	if (vertex_index == 0U || index_index == 0U) {
+		return 0;
+	}
+
+	float transform[16];
+	bx::mtxIdentity(transform);
+	const std::uint64_t kState = state_for_overlay_render_state(lines.render_state);
+
+	bgfx::setTransform(transform);
+	bgfx::setUniform(impl_->line_color_uniform.get(), lines.color_linear_sdr.data());
+	bgfx::setVertexBuffer(0, &vertices, 0, vertex_index);
+	bgfx::setIndexBuffer(&indices, 0, index_index);
+	bgfx::setState(kState);
+	bgfx::submit(view_id, program);
+	return 1;
+}
+
+std::uint32_t GpuOverlayRenderer::submit_triangles(
+		bgfx::ViewId view_id,
+		const PreparedTriangleOverlayCommand &triangles,
+		bgfx::ProgramHandle program) const noexcept {
+	if (!impl_->ready || !bgfx::isValid(program) || triangles.triangles.empty()) {
+		return 0;
+	}
+
+	const std::uint32_t kVertexCount = clamped_vertex_count(triangles.triangles.size() * 3U);
+	if (kVertexCount < 3U || bgfx::getAvailTransientVertexBuffer(kVertexCount, impl_->line_vertex_layout) < kVertexCount) {
 		return 0;
 	}
 
 	bgfx::TransientVertexBuffer vertices{};
 	bgfx::allocTransientVertexBuffer(&vertices, kVertexCount, impl_->line_vertex_layout);
-	auto *data = reinterpret_cast<LineVertex *>(vertices.data);
+	auto *data = reinterpret_cast<OverlayPositionVertex *>(vertices.data);
 	std::uint32_t vertex_index = 0;
-	for (const LineOverlaySegment &segment : lines.segments) {
-		if (vertex_index + 1U >= kVertexCount) {
+	for (const TriangleOverlayPrimitive &triangle : triangles.triangles) {
+		if (vertex_index + 2U >= kVertexCount) {
 			break;
 		}
-		data[vertex_index++] = LineVertex{ segment.start.x, segment.start.y, segment.start.z };
-		data[vertex_index++] = LineVertex{ segment.end.x, segment.end.y, segment.end.z };
+		data[vertex_index++] = OverlayPositionVertex{ triangle.a.x, triangle.a.y, triangle.a.z };
+		data[vertex_index++] = OverlayPositionVertex{ triangle.b.x, triangle.b.y, triangle.b.z };
+		data[vertex_index++] = OverlayPositionVertex{ triangle.c.x, triangle.c.y, triangle.c.z };
 	}
 
 	float transform[16];
 	bx::mtxIdentity(transform);
-	std::uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_PT_LINES | BGFX_STATE_MSAA | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
-	if (lines.command.depth_mode == OverlayDepthMode::DepthTested) {
-		state |= BGFX_STATE_DEPTH_TEST_LESS;
-	} else if (lines.command.depth_mode == OverlayDepthMode::XRay) {
-		state |= BGFX_STATE_DEPTH_TEST_LEQUAL;
-	}
+	const std::uint64_t kState = state_for_overlay_render_state(triangles.render_state);
 
 	bgfx::setTransform(transform);
-	bgfx::setUniform(impl_->line_color_uniform.get(), lines.color_linear_sdr.data());
+	bgfx::setUniform(impl_->line_color_uniform.get(), triangles.color_linear_sdr.data());
 	bgfx::setVertexBuffer(0, &vertices, 0, vertex_index);
-	bgfx::setState(state);
+	bgfx::setState(kState);
+	bgfx::submit(view_id, program);
+	return 1;
+}
+
+std::uint32_t GpuOverlayRenderer::submit_points(
+		bgfx::ViewId view_id,
+		const RenderView &view,
+		const PreparedPointOverlayCommand &points,
+		bgfx::ProgramHandle program) const noexcept {
+	if (!impl_->ready || !bgfx::isValid(program) || points.points.empty()) {
+		return 0;
+	}
+
+	const std::uint32_t kQuadCount = available_quad_count(points.points.size(), impl_->line_vertex_layout);
+	if (kQuadCount == 0U) {
+		return 0;
+	}
+
+	const std::uint32_t kVertexCount = kQuadCount * kVerticesPerQuad;
+	const std::uint32_t kIndexCount = kQuadCount * kIndicesPerQuad;
+	bgfx::TransientVertexBuffer vertices{};
+	bgfx::TransientIndexBuffer indices{};
+	bgfx::allocTransientVertexBuffer(&vertices, kVertexCount, impl_->line_vertex_layout);
+	bgfx::allocTransientIndexBuffer(&indices, kIndexCount);
+	auto *data = reinterpret_cast<OverlayPositionVertex *>(vertices.data);
+	auto *index_data = reinterpret_cast<std::uint16_t *>(indices.data);
+	std::uint32_t vertex_index = 0;
+	std::uint32_t index_index = 0;
+	const OverlayCameraBasis kBasis = camera_basis(view.camera);
+	for (const PointOverlayPrimitive &point : points.points) {
+		if (vertex_index + kVerticesPerQuad > kVertexCount ||
+				index_index + kIndicesPerQuad > kIndexCount) {
+			break;
+		}
+
+		const float kSizePx = std::max(1.0F, point.size_px > 0.0F ? point.size_px : points.size_px);
+		const OverlaySemanticRole kPointRole = point.semantic_role == OverlaySemanticRole::Generic
+				? points.semantic_role
+				: point.semantic_role;
+		const OverlaySourceKind kPointSource = point.source_kind == OverlaySourceKind::Unknown
+				? points.source_kind
+				: point.source_kind;
+		const float kHalfSizeWorld =
+				kSizePx * world_units_per_pixel(view, kBasis, point.position) * 0.5F;
+		const float kDepthBiasWorld = point_needs_component_depth_bias(kPointRole, kPointSource)
+				? world_units_per_pixel(view, kBasis, point.position) * 1.5F
+				: 0.0F;
+		const quader::math::Vec3 kPosition = point.position - kBasis.view * kDepthBiasWorld;
+		const quader::math::Vec3 kRight = kBasis.right * kHalfSizeWorld;
+		const quader::math::Vec3 kUp = kBasis.up * kHalfSizeWorld;
+		append_quad(data,
+				index_data,
+				vertex_index,
+				index_index,
+				kPosition - kRight - kUp,
+				kPosition + kRight - kUp,
+				kPosition + kRight + kUp,
+				kPosition - kRight + kUp);
+	}
+
+	if (vertex_index == 0U || index_index == 0U) {
+		return 0;
+	}
+
+	float transform[16];
+	bx::mtxIdentity(transform);
+	const std::uint64_t kState = state_for_overlay_render_state(points.render_state);
+
+	bgfx::setTransform(transform);
+	bgfx::setUniform(impl_->line_color_uniform.get(), points.color_linear_sdr.data());
+	bgfx::setVertexBuffer(0, &vertices, 0, vertex_index);
+	bgfx::setIndexBuffer(&indices, 0, index_index);
+	bgfx::setState(kState);
 	bgfx::submit(view_id, program);
 	return 1;
 }

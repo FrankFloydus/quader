@@ -199,6 +199,8 @@ std::string_view shader_file_name(ShaderProgramId program, ShaderStage stage) no
 			return stage == ShaderStage::Vertex ? "alpha_cutout_pbr.vs.bin" : "alpha_cutout_pbr.fs.bin";
 		case ShaderProgramId::TransparentPbr:
 			return stage == ShaderStage::Vertex ? "transparent_pbr.vs.bin" : "transparent_pbr.fs.bin";
+		case ShaderProgramId::UnlitSurface:
+			return stage == ShaderStage::Vertex ? "unlit_surface.vs.bin" : "unlit_surface.fs.bin";
 		case ShaderProgramId::OverlayUnlit:
 			return stage == ShaderStage::Vertex ? "overlay_unlit.vs.bin" : "overlay_unlit.fs.bin";
 		case ShaderProgramId::OverlayLine:

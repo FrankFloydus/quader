@@ -32,6 +32,7 @@ struct ConstructionPoint {
 
 enum class SurfaceHitFallback {
 	Disabled,
+	WhenRayMisses,
 	Enabled,
 };
 
@@ -92,7 +93,7 @@ enum class SurfaceHitFallback {
 		}
 	}
 
-	if (surface_hit_fallback == SurfaceHitFallback::Enabled && event.surface_hit.has_value()) {
+	if (surface_hit_fallback != SurfaceHitFallback::Disabled && event.surface_hit.has_value()) {
 		return ConstructionPoint{
 			.ok = true,
 			.point = project_to_plane(event.surface_hit->position, plane),
@@ -196,16 +197,19 @@ ToolId BoxTool::id() const noexcept {
 
 void BoxTool::activate(ToolContext &context) {
 	(void)context;
+	completion_request_ = ToolCompletionRequest::None;
 	reset();
 }
 
 void BoxTool::deactivate(ToolContext &context) {
 	(void)context;
+	completion_request_ = ToolCompletionRequest::None;
 	reset();
 }
 
 void BoxTool::cancel(ToolContext &context) {
 	(void)context;
+	completion_request_ = ToolCompletionRequest::None;
 	reset();
 }
 
@@ -251,6 +255,12 @@ ToolPreview BoxTool::preview() const {
 	return preview_;
 }
 
+ToolCompletionRequest BoxTool::consume_completion_request() noexcept {
+	const ToolCompletionRequest kRequest = completion_request_;
+	completion_request_ = ToolCompletionRequest::None;
+	return kRequest;
+}
+
 const BoxToolState &BoxTool::state() const noexcept {
 	return state_;
 }
@@ -258,8 +268,9 @@ const BoxToolState &BoxTool::state() const noexcept {
 bool BoxTool::update_hover(const PointerEvent &event) {
 	const quader::math::Vec3 kOrigin = event.surface_hit.has_value() ? event.surface_hit->position
 																	 : quader::math::Vec3{};
-	const quader::math::Vec3 kNormal = event.surface_hit.has_value() ? event.surface_hit->normal
-																	 : quader::math::Vec3{ 0.0F, 1.0F, 0.0F };
+	const quader::math::Vec3 kNormal = event.surface_hit.has_value()
+			? normalized_axis(event.surface_hit->normal)
+			: quader::math::Vec3{ 0.0F, 1.0F, 0.0F };
 	state_.plane = make_box_construction_plane(kOrigin, kNormal);
 	const ConstructionPoint kPoint = construction_point_from_event(
 			state_.plane,
@@ -297,8 +308,9 @@ bool BoxTool::update_hover(const PointerEvent &event) {
 bool BoxTool::begin_footprint(const PointerEvent &event) {
 	const quader::math::Vec3 kOrigin = event.surface_hit.has_value() ? event.surface_hit->position
 																	 : quader::math::Vec3{};
-	const quader::math::Vec3 kNormal = event.surface_hit.has_value() ? event.surface_hit->normal
-																	 : quader::math::Vec3{ 0.0F, 1.0F, 0.0F };
+	const quader::math::Vec3 kNormal = event.surface_hit.has_value()
+			? normalized_axis(event.surface_hit->normal)
+			: quader::math::Vec3{ 0.0F, 1.0F, 0.0F };
 	state_.plane = make_box_construction_plane(kOrigin, kNormal);
 	const ConstructionPoint kPoint = construction_point_from_event(
 			state_.plane,
@@ -321,7 +333,7 @@ bool BoxTool::update_footprint(const PointerEvent &event) {
 	const ConstructionPoint kPoint = construction_point_from_event(
 			state_.plane,
 			event,
-			state_.stage == BoxToolStage::Footprint ? SurfaceHitFallback::Disabled : SurfaceHitFallback::Enabled);
+			state_.stage == BoxToolStage::Footprint ? SurfaceHitFallback::WhenRayMisses : SurfaceHitFallback::Enabled);
 	if (!kPoint.ok) {
 		return false;
 	}
@@ -374,9 +386,12 @@ bool BoxTool::commit(ToolContext &context) {
 			"Box",
 			std::move(mesh).value(),
 			quader::document::Transform{},
-			quader::document::default_box_material()));
+			quader::document::default_mesh_material()));
 	const bool kApplied = result.is_applied();
 	reset();
+	if (kApplied) {
+		completion_request_ = ToolCompletionRequest::ReturnToSelect;
+	}
 	return kApplied;
 }
 

@@ -89,6 +89,42 @@ TEST(Picking, EmptyRequestSpanDoesNotScheduleReadback) {
 	expect_true(crimson::picking_readback_requested(kOneRequest), "non-empty picking request span schedules readback");
 }
 
+TEST(Picking, ComponentPayloadHelpersKeepTypedTransportExplicit) {
+	expect_true(!crimson::picking_element_kind_is_component(crimson::PickingElementKind::None), "no-hit is not a component kind");
+	expect_true(!crimson::picking_element_kind_is_component(crimson::PickingElementKind::Object), "object hits are not component kinds");
+	expect_true(!crimson::picking_element_kind_is_component(crimson::PickingElementKind::Submesh), "submesh hits are not component kinds");
+	expect_true(crimson::picking_element_kind_is_component(crimson::PickingElementKind::Face), "face hits are component kinds");
+	expect_true(crimson::picking_element_kind_is_component(crimson::PickingElementKind::Edge), "edge hits are component kinds");
+	expect_true(crimson::picking_element_kind_is_component(crimson::PickingElementKind::Vertex), "vertex hits are component kinds");
+
+	const std::optional<crimson::PickingPayload> kEdge = crimson::make_component_picking_payload(
+			33,
+			crimson::PickingElementKind::Edge,
+			12,
+			2);
+	ASSERT_TRUE(kEdge.has_value());
+	expect_true(kEdge->object_id == 33, "component payload keeps object id");
+	expect_true(kEdge->submesh_index == 2, "component payload keeps submesh index");
+	expect_true(kEdge->element_kind == crimson::PickingElementKind::Edge, "component payload keeps typed element kind");
+	expect_true(kEdge->element_index == 12, "component payload keeps element index");
+	expect_true(
+			crimson::picking_payload_requires_external_resolution(*kEdge),
+			"component payload must be resolved against document topology outside Crimson");
+
+	expect_true(
+			!crimson::make_component_picking_payload(33, crimson::PickingElementKind::Object, 0).has_value(),
+			"object kind is rejected by component payload builder");
+	expect_true(
+			!crimson::make_component_picking_payload(0, crimson::PickingElementKind::Vertex, 0).has_value(),
+			"empty object id is rejected by component payload builder");
+	expect_true(
+			!crimson::picking_payload_requires_external_resolution(crimson::PickingPayload{
+					.object_id = 33,
+					.element_kind = crimson::PickingElementKind::Object,
+			}),
+			"object payloads do not require component topology resolution");
+}
+
 TEST(Picking, PickingPassStaysOutOfColorManagedTargets) {
 	const crimson::RenderGraph kGraph = crimson::make_v1_correctness_render_graph(
 			crimson::ViewportExtent{ 640, 480, 1.0F },

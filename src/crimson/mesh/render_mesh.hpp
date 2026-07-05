@@ -38,12 +38,12 @@ struct RenderMeshUploadDesc {
 	RenderMeshHandle handle;
 	/// Source revision being uploaded.
 	RenderMeshRevision revision;
-	/// Interleaved position/normal vertex data borrowed for the upload call.
-	std::span<const float> position_normal_interleaved;
+	/// Interleaved position/normal/UV0 vertex data borrowed for the upload call.
+	std::span<const float> position_normal_uv_interleaved;
 	/// Index data borrowed for the upload call.
 	std::span<const std::uint32_t> indices;
 	/// Vertex attributes present in the upload.
-	VertexAttributeMask attributes = VertexAttributePosition | VertexAttributeNormal;
+	VertexAttributeMask attributes = VertexAttributePosition | VertexAttributeNormal | VertexAttributeUv0;
 	/// Bounds represented by the uploaded mesh.
 	quader::math::Aabb bounds;
 };
@@ -54,12 +54,12 @@ struct RenderMeshUpload {
 	RenderMeshHandle handle;
 	/// Source revision being uploaded.
 	RenderMeshRevision revision;
-	/// Interleaved position/normal vertex data.
-	std::vector<float> position_normal_interleaved;
+	/// Interleaved position/normal/UV0 vertex data.
+	std::vector<float> position_normal_uv_interleaved;
 	/// Index data for triangle submission.
 	std::vector<std::uint32_t> indices;
 	/// Vertex attributes present in the upload.
-	VertexAttributeMask attributes = VertexAttributePosition | VertexAttributeNormal;
+	VertexAttributeMask attributes = VertexAttributePosition | VertexAttributeNormal | VertexAttributeUv0;
 	/// Bounds represented by the uploaded mesh.
 	quader::math::Aabb bounds;
 
@@ -68,7 +68,7 @@ struct RenderMeshUpload {
 		return RenderMeshUploadDesc{
 			.handle = handle,
 			.revision = revision,
-			.position_normal_interleaved = position_normal_interleaved,
+			.position_normal_uv_interleaved = position_normal_uv_interleaved,
 			.indices = indices,
 			.attributes = attributes,
 			.bounds = bounds,

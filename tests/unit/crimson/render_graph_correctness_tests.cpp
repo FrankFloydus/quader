@@ -43,11 +43,12 @@ const crimson::ResourceUse *find_use(const crimson::RenderPass &pass, std::strin
 TEST(RenderGraphCorrectness, Task9GraphDeclaresStablePassOrder) {
 	const crimson::RenderGraph kGraph = crimson::make_v1_correctness_render_graph(
 			crimson::ViewportExtent{ 1280, 720, 1.0F });
-	const std::array<std::string_view, 12> kExpected = {
+	const std::array<std::string_view, 13> kExpected = {
 		"FrameSetupPass",
 		"ResourceUploadPass",
 		"DepthPrepass",
 		"PickingPass",
+		"GridSceneUnderlayPass",
 		"OpaquePbrPass",
 		"AlphaCutoutPbrPass",
 		"TransparentPbrPass",
@@ -59,7 +60,7 @@ TEST(RenderGraphCorrectness, Task9GraphDeclaresStablePassOrder) {
 	};
 
 	expect_true(kGraph.validate().has_value(), "task #9 V1 correctness graph validates");
-	expect_true(kGraph.passes().size() == kExpected.size(), "task #9 graph declares twelve passes");
+	expect_true(kGraph.passes().size() == kExpected.size(), "task #9 graph declares thirteen passes");
 	for (std::size_t index = 0; index < kExpected.size(); ++index) {
 		expect_true(kGraph.passes()[index].name == kExpected[index], "task #9 graph pass order is stable");
 	}
@@ -117,6 +118,15 @@ TEST(RenderGraphCorrectness, ToneMapOverlayAndPresentResourceIsolationIsExplicit
 	expect_true(
 			opaque_pbr != nullptr && find_use(*opaque_pbr, crimson::kHdrSceneColorTargetName) != nullptr,
 			"opaque PBR pass writes HDR scene color");
+
+	const crimson::RenderPass *grid_underlay = find_pass(kGraph, "GridSceneUnderlayPass");
+	expect_true(grid_underlay != nullptr, "grid scene underlay pass exists");
+	expect_true(
+			grid_underlay != nullptr && find_use(*grid_underlay, crimson::kHdrSceneColorTargetName) != nullptr,
+			"grid scene underlay clears and writes HDR scene color before meshes");
+	expect_true(
+			grid_underlay != nullptr && find_use(*grid_underlay, crimson::kToneMappedColorTargetName) == nullptr,
+			"grid scene underlay is not a post-tonemap overlay");
 
 	const crimson::RenderPass *tone_map = find_pass(kGraph, "ToneMapPass");
 	expect_true(tone_map != nullptr, "tone-map pass exists");

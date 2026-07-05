@@ -34,6 +34,10 @@ std::string_view CreateMeshObjectCommand::name() const noexcept {
 }
 
 CommandResult CreateMeshObjectCommand::execute(quader::document::Document &document) {
+	if (!previous_selection_) {
+		previous_selection_ = document.selection();
+	}
+
 	if (created_object_) {
 		if (document.find_mesh_object(created_object_->id) != nullptr) {
 			return CommandResult::rejected("cannot redo create because the object is already live");
@@ -48,6 +52,17 @@ CommandResult CreateMeshObjectCommand::execute(quader::document::Document &docum
 
 		created_object_.reset();
 		object_id_ = kId;
+		quader::document::Selection selection;
+		auto selected = selection.set_objects({ kId });
+		if (!selected) {
+			return rejected_from_document_error(std::move(selected).error());
+		}
+
+		auto selection_applied = document.set_selection(std::move(selection));
+		if (!selection_applied) {
+			return rejected_from_document_error(std::move(selection_applied).error());
+		}
+
 		return CommandResult::applied();
 	}
 
@@ -63,11 +78,22 @@ CommandResult CreateMeshObjectCommand::execute(quader::document::Document &docum
 
 	object_id_ = created.value();
 	mesh_.reset();
+	quader::document::Selection selection;
+	auto selected = selection.set_objects({ *object_id_ });
+	if (!selected) {
+		return rejected_from_document_error(std::move(selected).error());
+	}
+
+	auto selection_applied = document.set_selection(std::move(selection));
+	if (!selection_applied) {
+		return rejected_from_document_error(std::move(selection_applied).error());
+	}
+
 	return CommandResult::applied();
 }
 
 CommandResult CreateMeshObjectCommand::undo(quader::document::Document &document) {
-	if (!object_id_) {
+	if (!object_id_ || !previous_selection_) {
 		return CommandResult::rejected("create command has not created an object");
 	}
 
@@ -77,6 +103,11 @@ CommandResult CreateMeshObjectCommand::undo(quader::document::Document &document
 	}
 
 	created_object_ = std::move(removed).value();
+	auto selected = document.set_selection(*previous_selection_);
+	if (!selected) {
+		return rejected_from_document_error(std::move(selected).error());
+	}
+
 	return CommandResult::applied();
 }
 

@@ -124,6 +124,8 @@ enum class ShaderProgramId : std::uint16_t {
 	AlphaCutoutPbr,
 	/// Transparent PBR surface program.
 	TransparentPbr,
+	/// Opaque unlit editor surface program.
+	UnlitSurface,
 	/// Unlit overlay program.
 	OverlayUnlit,
 	/// Unlit line-list overlay program.
@@ -154,6 +156,8 @@ constexpr std::string_view shader_program_id_name(ShaderProgramId id) noexcept {
 			return "AlphaCutoutPbr";
 		case ShaderProgramId::TransparentPbr:
 			return "TransparentPbr";
+		case ShaderProgramId::UnlitSurface:
+			return "UnlitSurface";
 		case ShaderProgramId::OverlayUnlit:
 			return "OverlayUnlit";
 		case ShaderProgramId::OverlayLine:
@@ -177,6 +181,8 @@ enum class BaseShaderId : std::uint16_t {
 	AlphaCutoutPbr,
 	/// Transparent metallic/roughness PBR shader.
 	TransparentPbr,
+	/// Opaque unlit editor surface shader.
+	UnlitSurface,
 	/// Unlit editor/debug overlay shader.
 	OverlayUnlit,
 };
@@ -195,6 +201,8 @@ constexpr std::string_view base_shader_id_name(BaseShaderId id) noexcept {
 			return "AlphaCutoutPbr";
 		case BaseShaderId::TransparentPbr:
 			return "TransparentPbr";
+		case BaseShaderId::UnlitSurface:
+			return "UnlitSurface";
 		case BaseShaderId::OverlayUnlit:
 			return "OverlayUnlit";
 	}

@@ -80,6 +80,16 @@ struct PackedPickingIdRgba8 {
 [[nodiscard]] std::array<float, 4> picking_id_rgba8_to_unorm(PackedPickingIdRgba8 encoded) noexcept;
 /// Return true when at least one picking request needs readback.
 [[nodiscard]] bool picking_readback_requested(std::span<const PickingRequest> requests) noexcept;
+/// Return true when a picking kind references document topology components.
+[[nodiscard]] bool picking_element_kind_is_component(PickingElementKind kind) noexcept;
+/// Return true when a payload must be resolved and validated against document topology outside Crimson.
+[[nodiscard]] bool picking_payload_requires_external_resolution(PickingPayload payload) noexcept;
+/// Build a typed component picking payload, rejecting object-level and empty kinds.
+[[nodiscard]] std::optional<PickingPayload> make_component_picking_payload(
+		RenderObjectId object_id,
+		PickingElementKind kind,
+		std::uint32_t element_index,
+		std::uint32_t submesh_index = 0) noexcept;
 
 /**
  * Allocates per-frame raw picking ids and resolves them back to payloads.

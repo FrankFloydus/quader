@@ -312,6 +312,9 @@ RenderGraph make_v1_correctness_render_graph(ViewportExtent extent, PickingIdTar
 													ResourceUse{ .resource_name = std::string(kSceneDepthTargetName), .access = RenderResourceAccess::Read },
 													ResourceUse{ .resource_name = std::string(kPickingIdTargetName), .access = RenderResourceAccess::Write },
 											}));
+	graph.add_pass(make_pass("GridSceneUnderlayPass", {
+														   ResourceUse{ .resource_name = std::string(kHdrSceneColorTargetName), .access = RenderResourceAccess::Write },
+												   }));
 	graph.add_pass(make_pass("OpaquePbrPass", {
 													  ResourceUse{ .resource_name = std::string(kSceneDepthTargetName), .access = RenderResourceAccess::Read },
 													  ResourceUse{ .resource_name = std::string(kHdrSceneColorTargetName), .access = RenderResourceAccess::ReadWrite },

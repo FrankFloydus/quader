@@ -20,7 +20,7 @@ struct ViewportSettings {
 	/// Clear color encoded as RGBA8.
 	std::uint32_t clear_color_rgba8 = 0x020202ff;
 	/// Tone mapper used for display conversion.
-	ToneMapper tone_mapper = ToneMapper::AcesFitted;
+	ToneMapper tone_mapper = ToneMapper::Linear;
 	/// Exposure value at ISO 100.
 	float exposure_ev100 = 12.0F;
 	/// Exposure compensation in stops.

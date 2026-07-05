@@ -13,6 +13,7 @@
 
 namespace quader::tools {
 class ToolManager;
+enum class SelectionMode;
 }
 
 namespace quader::ui {
@@ -37,7 +38,13 @@ private:
 	void handle_action_toggled(ActionId id, bool checked);
 	void undo();
 	void redo();
+	void select_all();
+	void clear_selection();
+	void invert_selection();
 	void delete_selection();
+	void flip_mesh_normals();
+	void set_selection_mode(quader::tools::SelectionMode mode);
+	void sync_selection_mode_from_document();
 	void refresh_actions();
 
 	ActionRegistry &actions_;

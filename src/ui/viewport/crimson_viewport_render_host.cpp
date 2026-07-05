@@ -15,6 +15,7 @@
 #include "geometry/normals.hpp"
 #include "math/aabb.hpp"
 #include "math/scalar.hpp"
+#include "math/vec2.hpp"
 #include "mesh/core/mesh_traversal.hpp"
 #include "tools/tool_manager.hpp"
 #include "tools/tool_preview.hpp"
@@ -169,11 +170,6 @@ constexpr float kPi = 3.14159265358979323846F;
 	return crimson::RenderMeshHandle{ id.index() + 1U, id.generation() };
 }
 
-[[nodiscard]] crimson::RenderObjectId render_object_id_for(
-		quader::document::ObjectId id) noexcept {
-	return (static_cast<crimson::RenderObjectId>(id.generation()) << 32U) | static_cast<crimson::RenderObjectId>(id.index());
-}
-
 [[nodiscard]] std::uint64_t hash_combine(std::uint64_t seed, std::uint64_t value) noexcept {
 	return seed ^ (value + 0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U));
 }
@@ -188,15 +184,91 @@ void append_revision_point(std::uint64_t &hash, quader::math::Vec3 point) noexce
 	hash = hash_combine(hash, hash_float(point.z));
 }
 
+constexpr float kGeneratedUvTilesPerWorldUnit = 0.5F;
+
+struct ViewportFaceUvBasis {
+	quader::math::Vec3 u_axis;
+	quader::math::Vec3 v_axis;
+	bool valid = false;
+};
+
+[[nodiscard]] int dominant_axis(quader::math::Vec3 value) noexcept {
+	const quader::math::Vec3 kAbs{
+		std::abs(value.x),
+		std::abs(value.y),
+		std::abs(value.z),
+	};
+	if (kAbs.x >= kAbs.y && kAbs.x >= kAbs.z) {
+		return 0;
+	}
+	if (kAbs.y >= kAbs.z) {
+		return 1;
+	}
+	return 2;
+}
+
+[[nodiscard]] quader::math::Vec3 quader_to_source_vector(quader::math::Vec3 value) noexcept {
+	return { value.x, -value.z, value.y };
+}
+
+[[nodiscard]] quader::math::Vec3 source_to_quader_vector(quader::math::Vec3 value) noexcept {
+	return { value.x, value.z, -value.y };
+}
+
+[[nodiscard]] ViewportFaceUvBasis generated_uv_basis_for_normal(quader::math::Vec3 normal) noexcept {
+	quader::math::Vec3 source_normal = quader::math::normalized(quader_to_source_vector(normal));
+	if (quader::math::length_squared(source_normal) <= quader::math::kDefaultEpsilon * quader::math::kDefaultEpsilon) {
+		source_normal = { 0.0F, 0.0F, 1.0F };
+	}
+	ViewportFaceUvBasis basis;
+	switch (dominant_axis(source_normal)) {
+		case 0: {
+			const float kSideSign = source_normal.x >= 0.0F ? 1.0F : -1.0F;
+			basis.u_axis = source_to_quader_vector({ 0.0F, kSideSign, 0.0F });
+			basis.v_axis = source_to_quader_vector({ 0.0F, 0.0F, -1.0F });
+			break;
+		}
+		case 1: {
+			const float kSideSign = source_normal.y >= 0.0F ? 1.0F : -1.0F;
+			basis.u_axis = source_to_quader_vector({ -kSideSign, 0.0F, 0.0F });
+			basis.v_axis = source_to_quader_vector({ 0.0F, 0.0F, -1.0F });
+			break;
+		}
+		default: {
+			const float kVerticalSign = source_normal.z >= 0.0F ? 1.0F : -1.0F;
+			basis.u_axis = source_to_quader_vector({ 1.0F, 0.0F, 0.0F });
+			basis.v_axis = source_to_quader_vector({ 0.0F, -kVerticalSign, 0.0F });
+			break;
+		}
+	}
+	basis.valid = true;
+	return basis;
+}
+
+[[nodiscard]] quader::math::Vec2 generated_uv(
+		quader::math::Vec3 position,
+		const ViewportFaceUvBasis &basis) noexcept {
+	if (!basis.valid) {
+		return {};
+	}
+	return {
+		quader::math::dot(position, basis.u_axis) * kGeneratedUvTilesPerWorldUnit,
+		quader::math::dot(position, basis.v_axis) * kGeneratedUvTilesPerWorldUnit,
+	};
+}
+
 void append_upload_vertex(crimson::RenderMeshUpload &upload,
 		quader::math::Vec3 position,
-		quader::math::Vec3 normal) {
-	upload.position_normal_interleaved.push_back(position.x);
-	upload.position_normal_interleaved.push_back(position.y);
-	upload.position_normal_interleaved.push_back(position.z);
-	upload.position_normal_interleaved.push_back(normal.x);
-	upload.position_normal_interleaved.push_back(normal.y);
-	upload.position_normal_interleaved.push_back(normal.z);
+		quader::math::Vec3 normal,
+		quader::math::Vec2 uv) {
+	upload.position_normal_uv_interleaved.push_back(position.x);
+	upload.position_normal_uv_interleaved.push_back(position.y);
+	upload.position_normal_uv_interleaved.push_back(position.z);
+	upload.position_normal_uv_interleaved.push_back(normal.x);
+	upload.position_normal_uv_interleaved.push_back(normal.y);
+	upload.position_normal_uv_interleaved.push_back(normal.z);
+	upload.position_normal_uv_interleaved.push_back(uv.x);
+	upload.position_normal_uv_interleaved.push_back(uv.y);
 	upload.indices.push_back(static_cast<std::uint32_t>(upload.indices.size()));
 }
 
@@ -206,6 +278,22 @@ void append_upload_vertex(crimson::RenderMeshUpload &upload,
 	return quader::math::length_squared(kNormalized) <= quader::math::kDefaultEpsilon * quader::math::kDefaultEpsilon
 			? fallback
 			: kNormalized;
+}
+
+void append_upload_triangle(crimson::RenderMeshUpload &upload,
+		quader::math::Vec3 a,
+		quader::math::Vec3 b,
+		quader::math::Vec3 c,
+		quader::math::Vec3 normal,
+		const ViewportFaceUvBasis &uv_basis) {
+	const quader::math::Vec3 kTriangleNormal = quader::math::cross(b - a, c - a);
+	if (quader::math::dot(kTriangleNormal, normal) < 0.0F) {
+		std::swap(b, c);
+	}
+
+	append_upload_vertex(upload, a, normal, generated_uv(a, uv_basis));
+	append_upload_vertex(upload, b, normal, generated_uv(b, uv_basis));
+	append_upload_vertex(upload, c, normal, generated_uv(c, uv_basis));
 }
 
 [[nodiscard]] crimson::RenderMeshRevision revision_for_mesh(
@@ -277,10 +365,9 @@ void append_upload_vertex(crimson::RenderMeshUpload &upload,
 		const quader::math::Vec3 kNormal = normalized_or(
 				quader::geometry::polygon_normal(points),
 				{ 0.0F, 1.0F, 0.0F });
+		const ViewportFaceUvBasis kUvBasis = generated_uv_basis_for_normal(kNormal);
 		for (std::size_t index = 1U; index + 1U < points.size(); ++index) {
-			append_upload_vertex(upload, points[0], kNormal);
-			append_upload_vertex(upload, points[index], kNormal);
-			append_upload_vertex(upload, points[index + 1U], kNormal);
+			append_upload_triangle(upload, points[0], points[index], points[index + 1U], kNormal, kUvBasis);
 		}
 	}
 
@@ -325,6 +412,23 @@ void append_upload_vertex(crimson::RenderMeshUpload &upload,
 }
 
 } // namespace
+
+crimson::BaseShaderId viewport_base_shader_for_shading_mode(
+		ViewportShadingMode mode) noexcept {
+	switch (mode) {
+		case ViewportShadingMode::Wireframe:
+		case ViewportShadingMode::Shaded:
+			return crimson::BaseShaderId::UnlitSurface;
+		case ViewportShadingMode::Rendered:
+			return crimson::BaseShaderId::OpaquePbr;
+	}
+	return crimson::BaseShaderId::UnlitSurface;
+}
+
+std::optional<crimson::RenderMeshUpload> make_crimson_viewport_mesh_upload(
+		const quader::document::MeshObject &object) {
+	return make_mesh_upload(object);
+}
 
 ViewportDiagnosticsSnapshot viewport_diagnostics_from_crimson(
 		const crimson::RendererDiagnosticsSnapshot &snapshot,
@@ -413,11 +517,18 @@ private:
 			std::span<const ViewportPickRequest> requests) const;
 	void append_document_render_data(
 			std::vector<crimson::RenderMeshUpload> &mesh_uploads,
-			std::vector<crimson::RenderObject> &objects) const;
+			std::vector<crimson::RenderObject> &objects,
+			ViewportShadingMode shading_mode) const;
 	void append_tool_preview_overlays(
 			std::size_t view_count,
 			std::vector<crimson::OverlayCommand> &overlays,
 			std::vector<crimson::LineOverlaySegment> &line_payloads) const;
+	void append_document_selection_overlays(
+			std::size_t view_count,
+			std::vector<crimson::OverlayCommand> &overlays,
+			std::vector<crimson::LineOverlaySegment> &line_payloads,
+			std::vector<crimson::TriangleOverlayPrimitive> &triangle_payloads,
+			std::vector<crimson::PointOverlayPrimitive> &point_payloads) const;
 
 	std::unique_ptr<crimson::Renderer> renderer_;
 	QString renderer_name_;
@@ -447,6 +558,7 @@ ViewportRenderResult CrimsonViewportRenderHost::initialize_surface(
 	crimson::RendererConfig config;
 	config.backend_preference = crimson::GraphicsBackendPreference::Auto;
 	config.shader_root = (QCoreApplication::applicationDirPath() + QStringLiteral("/shaders")).toStdString();
+	config.asset_root = (QCoreApplication::applicationDirPath() + QStringLiteral("/resources/modeling_assets")).toStdString();
 	config.vsync = true;
 	config.enable_debug_text = true;
 
@@ -486,9 +598,16 @@ ViewportRenderResult CrimsonViewportRenderHost::render_frame(const ViewportRende
 	const std::vector<crimson::PickingRequest> kPickingRequests = make_picking_requests(request.picking_requests);
 	std::vector<crimson::RenderMeshUpload> mesh_uploads;
 	std::vector<crimson::RenderObject> objects;
-	append_document_render_data(mesh_uploads, objects);
+	append_document_render_data(mesh_uploads, objects, request.shading_mode);
 	std::vector<crimson::OverlayCommand> overlays;
 	std::vector<crimson::LineOverlaySegment> line_overlay_payloads;
+	std::vector<crimson::TriangleOverlayPrimitive> triangle_overlay_payloads;
+	std::vector<crimson::PointOverlayPrimitive> point_overlay_payloads;
+	append_document_selection_overlays(request.panes.size(),
+			overlays,
+			line_overlay_payloads,
+			triangle_overlay_payloads,
+			point_overlay_payloads);
 	append_tool_preview_overlays(request.panes.size(), overlays, line_overlay_payloads);
 	const auto kFrame = crimson::PrototypeViewportFrame{
 		.target_extent = make_extent(request.surface_size, request.device_pixel_ratio),
@@ -498,6 +617,8 @@ ViewportRenderResult CrimsonViewportRenderHost::render_frame(const ViewportRende
 		.objects = std::span<const crimson::RenderObject>(objects.data(), objects.size()),
 		.overlays = std::span<const crimson::OverlayCommand>(overlays.data(), overlays.size()),
 		.line_overlay_payloads = std::span<const crimson::LineOverlaySegment>(line_overlay_payloads.data(), line_overlay_payloads.size()),
+		.triangle_overlay_payloads = std::span<const crimson::TriangleOverlayPrimitive>(triangle_overlay_payloads.data(), triangle_overlay_payloads.size()),
+		.point_overlay_payloads = std::span<const crimson::PointOverlayPrimitive>(point_overlay_payloads.data(), point_overlay_payloads.size()),
 		.picking_requests = std::span<const crimson::PickingRequest>(kPickingRequests.data(), kPickingRequests.size()),
 		.animation_enabled = request.prototype_animation_enabled,
 		.elapsed_seconds = request.elapsed_seconds,
@@ -638,12 +759,14 @@ std::vector<crimson::PickingRequest> CrimsonViewportRenderHost::make_picking_req
 
 void CrimsonViewportRenderHost::append_document_render_data(
 		std::vector<crimson::RenderMeshUpload> &mesh_uploads,
-		std::vector<crimson::RenderObject> &objects) const {
+		std::vector<crimson::RenderObject> &objects,
+		ViewportShadingMode shading_mode) const {
 	if (document_ == nullptr) {
 		return;
 	}
 
 	const std::vector<quader::document::ObjectId> kObjectIds = document_->object_ids();
+	const crimson::BaseShaderId kBaseShader = viewport_base_shader_for_shading_mode(shading_mode);
 	mesh_uploads.reserve(mesh_uploads.size() + kObjectIds.size());
 	objects.reserve(objects.size() + kObjectIds.size());
 	for (const quader::document::ObjectId kObjectId : kObjectIds) {
@@ -652,7 +775,7 @@ void CrimsonViewportRenderHost::append_document_render_data(
 			continue;
 		}
 
-		std::optional<crimson::RenderMeshUpload> upload = make_mesh_upload(*object);
+		std::optional<crimson::RenderMeshUpload> upload = make_crimson_viewport_mesh_upload(*object);
 		if (!upload) {
 			continue;
 		}
@@ -665,11 +788,11 @@ void CrimsonViewportRenderHost::append_document_render_data(
 
 		mesh_uploads.push_back(std::move(*upload));
 		objects.push_back(crimson::RenderObject{
-				.object_id = render_object_id_for(kObjectId),
+				.object_id = render_object_id_for_document_object(kObjectId),
 				.mesh = kMeshHandle,
 				.built_in_mesh = crimson::BuiltInRenderMesh::None,
 				.material = {},
-				.base_shader = crimson::BaseShaderId::OpaquePbr,
+				.base_shader = kBaseShader,
 				.world_from_object = render_transform_from(object->transform),
 				.world_bounds = kWorldBounds,
 				.queue = crimson::RenderQueue::Opaque,
@@ -690,6 +813,25 @@ void CrimsonViewportRenderHost::append_tool_preview_overlays(
 
 	const quader::tools::ToolPreview kPreview = tool_manager_->preview();
 	append_tool_preview_line_overlays(kPreview, view_count, overlays, line_payloads);
+}
+
+void CrimsonViewportRenderHost::append_document_selection_overlays(
+		std::size_t view_count,
+		std::vector<crimson::OverlayCommand> &overlays,
+		std::vector<crimson::LineOverlaySegment> &line_payloads,
+		std::vector<crimson::TriangleOverlayPrimitive> &triangle_payloads,
+		std::vector<crimson::PointOverlayPrimitive> &point_payloads) const {
+	if (document_ == nullptr) {
+		return;
+	}
+
+	quader::ui::append_document_selection_overlays(*document_,
+			view_count,
+			overlays,
+			line_payloads,
+			triangle_payloads,
+			point_payloads,
+			tool_manager_ != nullptr ? tool_manager_->selection_hover() : std::optional<quader::tools::SurfaceHit>{});
 }
 
 std::unique_ptr<IViewportRenderHost> create_crimson_viewport_render_host() {

@@ -19,7 +19,7 @@ namespace {
 
 [[nodiscard]] std::vector<crimson::RenderMeshUploadDesc> make_uploads(
 		std::uint32_t count,
-		std::vector<std::array<float, 18>> &vertices,
+		std::vector<std::array<float, 24>> &vertices,
 		std::vector<std::array<std::uint32_t, 3>> &indices) {
 	vertices.resize(count);
 	indices.resize(count);
@@ -33,16 +33,22 @@ namespace {
 			0.0F,
 			0.0F,
 			1.0F,
+			0.0F,
+			0.0F,
 			1.0F,
 			-1.0F,
 			0.0F,
 			0.0F,
 			0.0F,
 			1.0F,
+			1.0F,
+			0.0F,
 			0.0F,
 			1.0F,
 			0.0F,
 			0.0F,
+			0.0F,
+			1.0F,
 			0.0F,
 			1.0F,
 		};
@@ -50,9 +56,9 @@ namespace {
 		uploads.push_back(crimson::RenderMeshUploadDesc{
 				.handle = crimson::RenderMeshHandle{ index + 1, 1 },
 				.revision = crimson::RenderMeshRevision{ 1, 1, index % 4 },
-				.position_normal_interleaved = vertices[index],
+				.position_normal_uv_interleaved = vertices[index],
 				.indices = indices[index],
-				.attributes = crimson::VertexAttributePosition | crimson::VertexAttributeNormal,
+				.attributes = crimson::VertexAttributePosition | crimson::VertexAttributeNormal | crimson::VertexAttributeUv0,
 				.bounds = quader::math::Aabb{
 						.min = { -1.0F, -1.0F, -1.0F },
 						.max = { 1.0F, 1.0F, 1.0F },
@@ -65,7 +71,7 @@ namespace {
 } // namespace
 
 BenchmarkResult run_crimson_upload_benchmark(const BenchmarkRunConfig &config) {
-	std::vector<std::array<float, 18>> vertices;
+	std::vector<std::array<float, 24>> vertices;
 	std::vector<std::array<std::uint32_t, 3>> indices;
 	const std::vector<crimson::RenderMeshUploadDesc> kUploads =
 			make_uploads(config.fixture_size, vertices, indices);

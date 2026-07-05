@@ -77,6 +77,8 @@ public:
 			std::vector<OverlayCommand> overlays,
 			std::vector<GridOverlayCommand> grid_overlay_payloads,
 			std::vector<LineOverlaySegment> line_overlay_payloads,
+			std::vector<TriangleOverlayPrimitive> triangle_overlay_payloads,
+			std::vector<PointOverlayPrimitive> point_overlay_payloads,
 			std::vector<PickingRequest> picking_requests,
 			ViewportSettings viewport_settings,
 			DebugViewMode debug_view = DebugViewMode::FinalColor);
@@ -103,6 +105,10 @@ public:
 	[[nodiscard]] std::span<const GridOverlayCommand> grid_overlay_payloads() const noexcept;
 	/// Borrow line overlay payloads owned by this snapshot.
 	[[nodiscard]] std::span<const LineOverlaySegment> line_overlay_payloads() const noexcept;
+	/// Borrow triangle overlay payloads owned by this snapshot.
+	[[nodiscard]] std::span<const TriangleOverlayPrimitive> triangle_overlay_payloads() const noexcept;
+	/// Borrow point overlay payloads owned by this snapshot.
+	[[nodiscard]] std::span<const PointOverlayPrimitive> point_overlay_payloads() const noexcept;
 	/// Borrow picking requests owned by this snapshot.
 	[[nodiscard]] std::span<const PickingRequest> picking_requests() const noexcept;
 	/// Return viewport render settings.
@@ -122,6 +128,8 @@ private:
 	std::vector<OverlayCommand> overlays_;
 	std::vector<GridOverlayCommand> grid_overlay_payloads_;
 	std::vector<LineOverlaySegment> line_overlay_payloads_;
+	std::vector<TriangleOverlayPrimitive> triangle_overlay_payloads_;
+	std::vector<PointOverlayPrimitive> point_overlay_payloads_;
 	std::vector<PickingRequest> picking_requests_;
 	ViewportSettings viewport_settings_;
 	DebugViewMode debug_view_ = DebugViewMode::FinalColor;

@@ -52,6 +52,35 @@ namespace {
 	return ActionId::SelectTool;
 }
 
+[[nodiscard]] ActionId action_for_selection_mode(
+		quader::document::SelectionMode mode) noexcept {
+	switch (mode) {
+		case quader::document::SelectionMode::Object:
+			return ActionId::SelectObjectMode;
+		case quader::document::SelectionMode::Vertex:
+			return ActionId::SelectVertexMode;
+		case quader::document::SelectionMode::Edge:
+			return ActionId::SelectEdgeMode;
+		case quader::document::SelectionMode::Face:
+			return ActionId::SelectFaceMode;
+	}
+
+	return ActionId::SelectObjectMode;
+}
+
+[[nodiscard]] bool can_flip_mesh_normals(
+		const quader::document::Selection &selection) noexcept {
+	if (selection.mode() == quader::document::SelectionMode::Object) {
+		return !selection.selected_objects().empty();
+	}
+
+	if (selection.mode() == quader::document::SelectionMode::Face) {
+		return !selection.selected_components().empty();
+	}
+
+	return false;
+}
+
 } // namespace
 
 EditorActionStateProvider::EditorActionStateProvider(
@@ -74,7 +103,11 @@ EditorStateSnapshot EditorActionStateProvider::editor_state_snapshot() const {
 	snapshot.has_active_document = true;
 	snapshot.document_dirty = document_.is_dirty();
 	snapshot.has_selection = !document_.selection().empty();
+	snapshot.can_select_all = document_.object_count() > 0U;
+	snapshot.can_clear_selection = snapshot.has_selection;
+	snapshot.can_invert_selection = document_.object_count() > 0U;
 	snapshot.can_delete_selection = document_.selection().selected_objects().size() == 1U && document_.selection().selected_components().empty();
+	snapshot.can_flip_mesh_normals = can_flip_mesh_normals(document_.selection());
 
 	snapshot.can_undo = command_history_.can_undo();
 	snapshot.undo_text = command_action_text(QStringLiteral("Undo"), command_history_.undo_name());
@@ -85,6 +118,7 @@ EditorStateSnapshot EditorActionStateProvider::editor_state_snapshot() const {
 	if (const auto kActiveTool = tool_manager_.active_tool_id()) {
 		snapshot.active_tool = action_for_tool(*kActiveTool);
 	}
+	snapshot.active_selection_mode = action_for_selection_mode(document_.selection().mode());
 
 	return snapshot;
 }

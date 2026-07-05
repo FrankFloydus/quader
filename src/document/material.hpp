@@ -17,7 +17,7 @@ namespace quader::document {
 /// Document-owned PBR material values for mesh objects.
 struct PbrMaterial {
 	/// Linear base color in normalized RGB channels.
-	quader::math::Vec3 base_color{ 0.5F, 0.5F, 0.5F };
+	quader::math::Vec3 base_color{ 1.0F, 1.0F, 1.0F };
 	/// Roughness in the normalized range `[0, 1]`.
 	float roughness = 1.0F;
 	/// Metallic factor in the normalized range `[0, 1]`.
@@ -30,12 +30,21 @@ struct PbrMaterial {
 };
 
 /**
+ * Return the default material assigned to newly created mesh objects.
+ *
+ * @return White, fully rough, non-metallic PBR material values.
+ */
+[[nodiscard]] constexpr PbrMaterial default_mesh_material() noexcept {
+	return PbrMaterial{};
+}
+
+/**
  * Return the default material assigned to newly committed Box tool meshes.
  *
- * @return Neutral gray, fully rough, non-metallic PBR material values.
+ * @return White, fully rough, non-metallic PBR material values.
  */
 [[nodiscard]] constexpr PbrMaterial default_box_material() noexcept {
-	return PbrMaterial{};
+	return default_mesh_material();
 }
 
 /**

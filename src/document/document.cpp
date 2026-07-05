@@ -226,6 +226,15 @@ quader::foundation::Result<void, DocumentError> Document::validate_component_ref
 			component.component);
 }
 
+quader::foundation::Result<void, DocumentError> Document::validate_selection_liveness(
+		const Selection &selection) const {
+	return validate_selection(selection);
+}
+
+quader::foundation::Result<void, DocumentError> Document::validate_current_selection_liveness() const {
+	return validate_selection(selection_);
+}
+
 const Selection &Document::selection() const noexcept {
 	return selection_;
 }

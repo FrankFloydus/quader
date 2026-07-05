@@ -23,6 +23,7 @@ APP_EXE_CANDIDATES = ("quader.exe", "QuaderQtBgfx.exe")
 RUNTIME_DIRS = (
     ".qt",
     "compiled_shaders",
+    "resources",
     "shaders",
     "generic",
     "iconengines",

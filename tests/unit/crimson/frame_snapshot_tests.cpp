@@ -99,11 +99,16 @@ TEST(FrameSnapshot, BuilderFreezesPrototypeFrameIntoImmutableSnapshot) {
 	expect_true(snapshot.overlays().size() == 1, "prototype snapshot contains one overlay command");
 	expect_true(snapshot.grid_overlay_payloads().size() == 1, "prototype snapshot contains one grid overlay payload");
 	expect_true(snapshot.line_overlay_payloads().empty(), "empty prototype frame has no line overlay payload");
+	expect_true(snapshot.triangle_overlay_payloads().empty(), "empty prototype frame has no triangle overlay payload");
+	expect_true(snapshot.point_overlay_payloads().empty(), "empty prototype frame has no point overlay payload");
 	expect_true(snapshot.picking_requests().size() == 1, "prototype snapshot copies picking requests");
 	expect_true(snapshot.picking_requests()[0].x_px == 12, "picking request is immutable from source changes");
 	expect_true(
 			snapshot.viewport_settings().exposure_ev100 == 0.0F,
 			"prototype snapshot preserves non-physical exposure until fixture lighting is physical");
+	expect_true(
+			snapshot.viewport_settings().tone_mapper == crimson::ToneMapper::Linear,
+			"prototype viewport defaults to linear tone mapping like the reference app's post-processing-disabled view");
 	expect_true(
 			snapshot.overlays()[0].primitive == crimson::OverlayPrimitive::Grid && snapshot.overlays()[0].base_shader == crimson::BaseShaderId::OverlayUnlit,
 			"prototype grid is emitted as an OverlayUnlit grid command");
@@ -124,8 +129,16 @@ TEST(FrameSnapshot, BuilderCopiesCallerRenderObjectsAndOverlayPayloads) {
 	crimson::RenderMeshUpload upload;
 	upload.handle = crimson::RenderMeshHandle{ 7, 2 };
 	upload.revision = crimson::RenderMeshRevision{ 1, 2, 3 };
-	upload.position_normal_interleaved = {
+	upload.position_normal_uv_interleaved = {
 		0.0F,
+		0.0F,
+		0.0F,
+		0.0F,
+		1.0F,
+		0.0F,
+		0.0F,
+		0.0F,
+		1.0F,
 		0.0F,
 		0.0F,
 		0.0F,
@@ -134,7 +147,6 @@ TEST(FrameSnapshot, BuilderCopiesCallerRenderObjectsAndOverlayPayloads) {
 		1.0F,
 		0.0F,
 		0.0F,
-		0.0F,
 		1.0F,
 		0.0F,
 		0.0F,
@@ -142,7 +154,6 @@ TEST(FrameSnapshot, BuilderCopiesCallerRenderObjectsAndOverlayPayloads) {
 		0.0F,
 		0.0F,
 		1.0F,
-		0.0F,
 	};
 	upload.indices = { 0, 1, 2 };
 	upload.bounds = quader::math::Aabb{ .min = { 0.0F, 0.0F, 0.0F }, .max = { 1.0F, 1.0F, 0.0F } };
@@ -158,6 +169,21 @@ TEST(FrameSnapshot, BuilderCopiesCallerRenderObjectsAndOverlayPayloads) {
 	};
 	std::array<crimson::LineOverlaySegment, 1> lines = {
 		crimson::LineOverlaySegment{ .start = { 0.0F, 0.0F, 0.0F }, .end = { 1.0F, 0.0F, 0.0F } },
+	};
+	std::array<crimson::TriangleOverlayPrimitive, 1> triangles = {
+		crimson::TriangleOverlayPrimitive{
+				.a = { 0.0F, 0.0F, 0.0F },
+				.b = { 1.0F, 0.0F, 0.0F },
+				.c = { 0.0F, 1.0F, 0.0F },
+				.semantic_role = crimson::OverlaySemanticRole::SelectedFaceFill,
+		},
+	};
+	std::array<crimson::PointOverlayPrimitive, 1> points = {
+		crimson::PointOverlayPrimitive{
+				.position = { 0.0F, 0.0F, 0.0F },
+				.size_px = 6.0F,
+				.semantic_role = crimson::OverlaySemanticRole::SelectedVertex,
+		},
 	};
 	std::array<crimson::OverlayCommand, 1> overlays = {
 		crimson::OverlayCommand{
@@ -176,6 +202,8 @@ TEST(FrameSnapshot, BuilderCopiesCallerRenderObjectsAndOverlayPayloads) {
 		.objects = objects,
 		.overlays = overlays,
 		.line_overlay_payloads = lines,
+		.triangle_overlay_payloads = triangles,
+		.point_overlay_payloads = points,
 	};
 
 	const crimson::FrameBuilder kBuilder;
@@ -189,12 +217,18 @@ TEST(FrameSnapshot, BuilderCopiesCallerRenderObjectsAndOverlayPayloads) {
 	objects[0].object_id = 1;
 	uploads[0].indices[0] = 2;
 	lines[0].end.x = 5.0F;
+	triangles[0].b.x = 5.0F;
+	points[0].position.x = 5.0F;
 
 	expect_true(snapshot.mesh_uploads().size() == 1, "snapshot copies mesh upload payloads");
 	expect_true(snapshot.mesh_uploads()[0].indices[0] == 0, "mesh upload indices are immutable from source changes");
 	expect_true(snapshot.objects().size() == 1 && snapshot.objects()[0].object_id == 99, "snapshot copies caller render objects");
 	expect_true(snapshot.line_overlay_payloads().size() == 1, "snapshot copies line overlay payloads");
 	expect_true(snapshot.line_overlay_payloads()[0].end.x == 1.0F, "line overlay payload is immutable from source changes");
+	expect_true(snapshot.triangle_overlay_payloads().size() == 1, "snapshot copies triangle overlay payloads");
+	expect_true(snapshot.triangle_overlay_payloads()[0].b.x == 1.0F, "triangle overlay payload is immutable from source changes");
+	expect_true(snapshot.point_overlay_payloads().size() == 1, "snapshot copies point overlay payloads");
+	expect_true(snapshot.point_overlay_payloads()[0].position.x == 0.0F, "point overlay payload is immutable from source changes");
 }
 
 TEST(FrameSnapshot, RenderWorldStoresPreparedObjectsById) {

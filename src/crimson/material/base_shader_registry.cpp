@@ -15,7 +15,7 @@ namespace crimson {
 namespace {
 
 constexpr VertexAttributeMask kPbrVertexAttributes =
-		VertexAttributePosition | VertexAttributeNormal | VertexAttributeTangent | VertexAttributeUv0;
+		VertexAttributePosition | VertexAttributeNormal | VertexAttributeUv0;
 
 constexpr VertexAttributeMask kOverlayVertexAttributes =
 		VertexAttributePosition | VertexAttributeColor0;
@@ -158,6 +158,31 @@ constexpr VertexAttributeMask kOverlayVertexAttributes =
 	};
 }
 
+[[nodiscard]] std::vector<MaterialParameterDesc> unlit_surface_parameters() {
+	return {
+		color_param("base_color", MaterialColorSrgb{ 1.0F, 1.0F, 1.0F, 1.0F }),
+		color_param("emissive_color", MaterialColorSrgb{ 0.0F, 0.0F, 0.0F, 1.0F }),
+		float_param("emissive_strength", 0.0F, 0.0F, 100000.0F),
+		bool_param("double_sided", false),
+	};
+}
+
+[[nodiscard]] std::vector<MaterialTextureSlotDesc> unlit_surface_texture_slots() {
+	return {
+		texture_slot("base_color", TextureColorSpace::Srgb),
+	};
+}
+
+[[nodiscard]] std::vector<MaterialUiFieldDesc> unlit_surface_ui_schema() {
+	return {
+		parameter_field("Base Color", MaterialUiControl::Color, "base_color"),
+		texture_field("Base Color Texture", "base_color"),
+		parameter_field("Emissive Color", MaterialUiControl::Color, "emissive_color"),
+		parameter_field("Emissive Strength", MaterialUiControl::Float, "emissive_strength"),
+		parameter_field("Double Sided", MaterialUiControl::Checkbox, "double_sided"),
+	};
+}
+
 [[nodiscard]] BaseShaderDefinition make_opaque_pbr() {
 	return BaseShaderDefinition{
 		.id = BaseShaderId::OpaquePbr,
@@ -173,6 +198,24 @@ constexpr VertexAttributeMask kOverlayVertexAttributes =
 		.texture_slots = opaque_pbr_texture_slots(),
 		.ui_schema = opaque_pbr_ui_schema(),
 		.program = ShaderProgramId::OpaquePbr,
+	};
+}
+
+[[nodiscard]] BaseShaderDefinition make_unlit_surface() {
+	return BaseShaderDefinition{
+		.id = BaseShaderId::UnlitSurface,
+		.name = "UnlitSurface",
+		.domain = RenderDomain::LitSurface,
+		.default_queue = RenderQueue::Opaque,
+		.depth_mode = DepthMode::TestWrite,
+		.blend_mode = BlendMode::Off,
+		.cull_mode = CullMode::Back,
+		.shadow_mode = ShadowMode::None,
+		.required_attributes = kPbrVertexAttributes,
+		.parameters = unlit_surface_parameters(),
+		.texture_slots = unlit_surface_texture_slots(),
+		.ui_schema = unlit_surface_ui_schema(),
+		.program = ShaderProgramId::UnlitSurface,
 	};
 }
 
@@ -302,8 +345,9 @@ bool BaseShaderRegistry::empty() const noexcept {
 
 BaseShaderRegistry make_v1_base_shader_registry() {
 	std::vector<BaseShaderDefinition> definitions;
-	definitions.reserve(4);
+	definitions.reserve(5);
 	definitions.push_back(make_opaque_pbr());
+	definitions.push_back(make_unlit_surface());
 	definitions.push_back(make_alpha_cutout_pbr());
 	definitions.push_back(make_transparent_pbr());
 	definitions.push_back(make_overlay_unlit());

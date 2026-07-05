@@ -21,40 +21,42 @@
 namespace crimson::gpu {
 namespace {
 
-struct PosNormalVertex {
+struct PbrVertex {
 	float x;
 	float y;
 	float z;
 	float nx;
 	float ny;
 	float nz;
+	float u;
+	float v;
 };
 
-const PosNormalVertex kCubeVertices[] = {
-	{ -1.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F },
-	{ 1.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F },
-	{ -1.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F },
-	{ 1.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F },
-	{ -1.0F, 1.0F, -1.0F, 0.0F, 0.0F, -1.0F },
-	{ 1.0F, 1.0F, -1.0F, 0.0F, 0.0F, -1.0F },
-	{ -1.0F, -1.0F, -1.0F, 0.0F, 0.0F, -1.0F },
-	{ 1.0F, -1.0F, -1.0F, 0.0F, 0.0F, -1.0F },
-	{ -1.0F, 1.0F, -1.0F, 0.0F, 1.0F, 0.0F },
-	{ 1.0F, 1.0F, -1.0F, 0.0F, 1.0F, 0.0F },
-	{ -1.0F, 1.0F, 1.0F, 0.0F, 1.0F, 0.0F },
-	{ 1.0F, 1.0F, 1.0F, 0.0F, 1.0F, 0.0F },
-	{ -1.0F, -1.0F, -1.0F, 0.0F, -1.0F, 0.0F },
-	{ 1.0F, -1.0F, -1.0F, 0.0F, -1.0F, 0.0F },
-	{ -1.0F, -1.0F, 1.0F, 0.0F, -1.0F, 0.0F },
-	{ 1.0F, -1.0F, 1.0F, 0.0F, -1.0F, 0.0F },
-	{ 1.0F, -1.0F, -1.0F, 1.0F, 0.0F, 0.0F },
-	{ 1.0F, 1.0F, -1.0F, 1.0F, 0.0F, 0.0F },
-	{ 1.0F, -1.0F, 1.0F, 1.0F, 0.0F, 0.0F },
-	{ 1.0F, 1.0F, 1.0F, 1.0F, 0.0F, 0.0F },
-	{ -1.0F, -1.0F, -1.0F, -1.0F, 0.0F, 0.0F },
-	{ -1.0F, 1.0F, -1.0F, -1.0F, 0.0F, 0.0F },
-	{ -1.0F, -1.0F, 1.0F, -1.0F, 0.0F, 0.0F },
-	{ -1.0F, 1.0F, 1.0F, -1.0F, 0.0F, 0.0F },
+const PbrVertex kCubeVertices[] = {
+	{ -1.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F },
+	{ 1.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F },
+	{ -1.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F },
+	{ 1.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F },
+	{ -1.0F, 1.0F, -1.0F, 0.0F, 0.0F, -1.0F, 1.0F, 1.0F },
+	{ 1.0F, 1.0F, -1.0F, 0.0F, 0.0F, -1.0F, 0.0F, 1.0F },
+	{ -1.0F, -1.0F, -1.0F, 0.0F, 0.0F, -1.0F, 1.0F, 0.0F },
+	{ 1.0F, -1.0F, -1.0F, 0.0F, 0.0F, -1.0F, 0.0F, 0.0F },
+	{ -1.0F, 1.0F, -1.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F },
+	{ 1.0F, 1.0F, -1.0F, 0.0F, 1.0F, 0.0F, 1.0F, 1.0F },
+	{ -1.0F, 1.0F, 1.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F },
+	{ 1.0F, 1.0F, 1.0F, 0.0F, 1.0F, 0.0F, 1.0F, 0.0F },
+	{ -1.0F, -1.0F, -1.0F, 0.0F, -1.0F, 0.0F, 0.0F, 0.0F },
+	{ 1.0F, -1.0F, -1.0F, 0.0F, -1.0F, 0.0F, 1.0F, 0.0F },
+	{ -1.0F, -1.0F, 1.0F, 0.0F, -1.0F, 0.0F, 0.0F, 1.0F },
+	{ 1.0F, -1.0F, 1.0F, 0.0F, -1.0F, 0.0F, 1.0F, 1.0F },
+	{ 1.0F, -1.0F, -1.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F },
+	{ 1.0F, 1.0F, -1.0F, 1.0F, 0.0F, 0.0F, 0.0F, 1.0F },
+	{ 1.0F, -1.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F },
+	{ 1.0F, 1.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 1.0F },
+	{ -1.0F, -1.0F, -1.0F, -1.0F, 0.0F, 0.0F, 1.0F, 0.0F },
+	{ -1.0F, 1.0F, -1.0F, -1.0F, 0.0F, 0.0F, 1.0F, 1.0F },
+	{ -1.0F, -1.0F, 1.0F, -1.0F, 0.0F, 0.0F, 0.0F, 0.0F },
+	{ -1.0F, 1.0F, 1.0F, -1.0F, 0.0F, 0.0F, 0.0F, 1.0F },
 };
 
 const std::uint16_t kCubeIndices[] = {
@@ -128,6 +130,7 @@ RenderMeshHandle GpuMeshCache::create_unit_box(RendererStatus &status) {
 			.begin()
 			.add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
 			.add(bgfx::Attrib::Normal, 3, bgfx::AttribType::Float)
+			.add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
 			.end();
 	resource.vertex_buffer.reset(bgfx::createVertexBuffer(
 			bgfx::makeRef(kCubeVertices, sizeof(kCubeVertices)),
@@ -158,11 +161,12 @@ bool GpuMeshCache::upload_mesh(const RenderMeshUploadDesc &desc, RendererStatus 
 			.begin()
 			.add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
 			.add(bgfx::Attrib::Normal, 3, bgfx::AttribType::Float)
+			.add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
 			.end();
 	resource.vertex_buffer.reset(bgfx::createVertexBuffer(
 			bgfx::copy(
-					desc.position_normal_interleaved.data(),
-					static_cast<std::uint32_t>(desc.position_normal_interleaved.size_bytes())),
+					desc.position_normal_uv_interleaved.data(),
+					static_cast<std::uint32_t>(desc.position_normal_uv_interleaved.size_bytes())),
 			resource.vertex_layout));
 	resource.index_buffer.reset(bgfx::createIndexBuffer(
 			bgfx::copy(desc.indices.data(), static_cast<std::uint32_t>(desc.indices.size_bytes())),

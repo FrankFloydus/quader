@@ -71,6 +71,9 @@ GridOverlayCommand make_grid_overlay_for_view(const RenderView &view) {
 	command.view_index = view.view_index;
 
 	const RenderCamera &camera = view.camera;
+	command.depth_mode = camera.projection == CameraProjection::Orthographic
+			? OverlayDepthMode::DepthTested
+			: OverlayDepthMode::AlwaysOnTop;
 	const GridPlane kPlane = grid_plane_for_camera(camera);
 	const float kAspect = std::max(0.0001F, static_cast<float>(std::max<std::uint16_t>(1, view.rect.width)) / static_cast<float>(std::max<std::uint16_t>(1, view.rect.height)));
 
@@ -122,7 +125,7 @@ OverlayCommand make_grid_overlay_command(const GridOverlayCommand &grid, std::ui
 	return OverlayCommand{
 		.view_index = grid.view_index,
 		.primitive = OverlayPrimitive::Grid,
-		.depth_mode = OverlayDepthMode::DepthTested,
+		.depth_mode = grid.depth_mode,
 		.base_shader = BaseShaderId::OverlayUnlit,
 		.color_srgb = ColorSrgb{ 1.0F, 1.0F, 1.0F, 1.0F },
 		.opacity = 1.0F,

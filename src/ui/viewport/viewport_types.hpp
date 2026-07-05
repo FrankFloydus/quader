@@ -70,6 +70,13 @@ enum class ViewportLayoutMode {
 	Quad,   ///< Four viewport panes.
 };
 
+/// Viewport mesh surface shading mode.
+enum class ViewportShadingMode {
+	Wireframe, ///< Reference wireframe/shaded scene layer.
+	Shaded,   ///< Unlit editor shaded mode.
+	Rendered, ///< Lit rendered mode.
+};
+
 /// Splitter handle under the pointer.
 enum class ViewportSplitHandle {
 	None,       ///< No splitter.
@@ -200,6 +207,8 @@ struct ViewportRenderRequest {
 	std::span<const ViewportCameraSnapshot> cameras;
 	/// Borrowed picking request list valid for the call.
 	std::span<const ViewportPickRequest> picking_requests;
+	/// Mesh surface shading mode for document objects.
+	ViewportShadingMode shading_mode = ViewportShadingMode::Shaded;
 	/// True when prototype animation should advance.
 	bool prototype_animation_enabled = true;
 	/// Elapsed application time in seconds.

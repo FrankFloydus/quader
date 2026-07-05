@@ -88,6 +88,10 @@ void MainWindow::build_menus() {
 	edit_menu->addAction(&context_.actions.action(ActionId::Undo));
 	edit_menu->addAction(&context_.actions.action(ActionId::Redo));
 	edit_menu->addSeparator();
+	edit_menu->addAction(&context_.actions.action(ActionId::SelectAll));
+	edit_menu->addAction(&context_.actions.action(ActionId::ClearSelection));
+	edit_menu->addAction(&context_.actions.action(ActionId::InvertSelection));
+	edit_menu->addSeparator();
 	edit_menu->addAction(&context_.actions.action(ActionId::DuplicateSelection));
 	edit_menu->addAction(&context_.actions.action(ActionId::DeleteSelection));
 
@@ -97,6 +101,13 @@ void MainWindow::build_menus() {
 	tools_menu->addAction(&context_.actions.action(ActionId::RotateTool));
 	tools_menu->addAction(&context_.actions.action(ActionId::ScaleTool));
 	tools_menu->addAction(&context_.actions.action(ActionId::BoxTool));
+	tools_menu->addSeparator();
+	tools_menu->addAction(&context_.actions.action(ActionId::SelectObjectMode));
+	tools_menu->addAction(&context_.actions.action(ActionId::SelectVertexMode));
+	tools_menu->addAction(&context_.actions.action(ActionId::SelectEdgeMode));
+	tools_menu->addAction(&context_.actions.action(ActionId::SelectFaceMode));
+	tools_menu->addSeparator();
+	tools_menu->addAction(&context_.actions.action(ActionId::FlipMeshNormals));
 
 	auto *create_menu = menuBar()->addMenu(QStringLiteral("&Create"));
 	create_menu->addAction(&context_.actions.action(ActionId::CreateCube));
@@ -122,6 +133,16 @@ void MainWindow::build_central_area() {
 	context_.viewport_diagnostics.attach_render_host(*viewport_render_host_);
 	viewport_controller_ = std::make_unique<ViewportController>(*viewport_render_host_, context_.tools);
 	viewport_ = new ViewportWidget(*viewport_controller_, this);
+	viewport_->addAction(&context_.actions.action(ActionId::SelectTool));
+	viewport_->addAction(&context_.actions.action(ActionId::MoveTool));
+	viewport_->addAction(&context_.actions.action(ActionId::RotateTool));
+	viewport_->addAction(&context_.actions.action(ActionId::ScaleTool));
+	viewport_->addAction(&context_.actions.action(ActionId::BoxTool));
+	viewport_->addAction(&context_.actions.action(ActionId::SelectVertexMode));
+	viewport_->addAction(&context_.actions.action(ActionId::SelectEdgeMode));
+	viewport_->addAction(&context_.actions.action(ActionId::SelectFaceMode));
+	viewport_->addAction(&context_.actions.action(ActionId::SelectObjectMode));
+	viewport_->addAction(&context_.actions.action(ActionId::FlipMeshNormals));
 	setCentralWidget(viewport_);
 }
 

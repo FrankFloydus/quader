@@ -72,6 +72,8 @@ struct SemanticMeshObjectState {
 struct DocumentSemanticState {
 	/// Object snapshots in document iteration order.
 	std::vector<SemanticMeshObjectState> objects;
+	/// Current document selection mode.
+	quader::document::SelectionMode selection_mode = quader::document::SelectionMode::Object;
 	/// Selected object ids.
 	std::vector<quader::document::ObjectId> selected_objects;
 	/// Selected component references.
@@ -147,6 +149,7 @@ inline DocumentSemanticState capture_document_state(const quader::document::Docu
 		});
 	}
 
+	state.selection_mode = document.selection().mode();
 	state.selected_objects.assign(document.selection().selected_objects().begin(),
 			document.selection().selected_objects().end());
 	state.selected_components.assign(document.selection().selected_components().begin(),

@@ -33,10 +33,18 @@ struct EditorStateSnapshot {
 	bool document_dirty = false;
 	/// True when the document selection is non-empty.
 	bool has_selection = false;
+	/// True when select-all can run for the active selection mode.
+	bool can_select_all = false;
+	/// True when clear-selection can run.
+	bool can_clear_selection = false;
+	/// True when invert-selection can run for the active selection mode.
+	bool can_invert_selection = false;
 	/// True when duplicate-selection can run.
 	bool can_duplicate_selection = false;
 	/// True when delete-selection can run.
 	bool can_delete_selection = false;
+	/// True when Flip Mesh Normals can be requested.
+	bool can_flip_mesh_normals = false;
 
 	/// True when undo is available.
 	bool can_undo = false;
@@ -53,6 +61,8 @@ struct EditorStateSnapshot {
 	bool creation_available = false;
 	/// Action id corresponding to the active tool.
 	ActionId active_tool = ActionId::SelectTool;
+	/// Action id corresponding to the active selection mode.
+	ActionId active_selection_mode = ActionId::SelectObjectMode;
 
 	/// True when viewport services are available.
 	bool viewport_available = true;

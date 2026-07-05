@@ -86,6 +86,10 @@ struct PrototypeViewportFrame {
 	std::span<const OverlayCommand> overlays;
 	/// Line overlay payloads borrowed for the duration of the call.
 	std::span<const LineOverlaySegment> line_overlay_payloads;
+	/// Triangle overlay payloads borrowed for the duration of the call.
+	std::span<const TriangleOverlayPrimitive> triangle_overlay_payloads;
+	/// Point overlay payloads borrowed for the duration of the call.
+	std::span<const PointOverlayPrimitive> point_overlay_payloads;
 	/// Picking requests borrowed for the duration of the call.
 	std::span<const PickingRequest> picking_requests;
 	/// Whether the prototype scene animation is enabled.

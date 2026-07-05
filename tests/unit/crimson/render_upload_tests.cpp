@@ -29,23 +29,29 @@ void expect_true(bool condition, std::string_view message) {
 }
 
 [[nodiscard]] crimson::RenderMeshUploadDesc upload_desc(crimson::RenderMeshRevision revision) {
-	static const std::array<float, 18> kVertices = {
+	static const std::array<float, 24> kVertices = {
 		-1.0F,
 		-1.0F,
 		0.0F,
 		0.0F,
 		0.0F,
 		1.0F,
+		0.0F,
+		0.0F,
 		1.0F,
 		-1.0F,
 		0.0F,
 		0.0F,
 		0.0F,
 		1.0F,
+		1.0F,
+		0.0F,
 		0.0F,
 		1.0F,
 		0.0F,
 		0.0F,
+		0.0F,
+		1.0F,
 		0.0F,
 		1.0F,
 	};
@@ -53,9 +59,9 @@ void expect_true(bool condition, std::string_view message) {
 	return crimson::RenderMeshUploadDesc{
 		.handle = crimson::RenderMeshHandle{ 1, 1 },
 		.revision = revision,
-		.position_normal_interleaved = kVertices,
+		.position_normal_uv_interleaved = kVertices,
 		.indices = kIndices,
-		.attributes = crimson::VertexAttributePosition | crimson::VertexAttributeNormal,
+		.attributes = crimson::VertexAttributePosition | crimson::VertexAttributeNormal | crimson::VertexAttributeUv0,
 		.bounds = unit_bounds(),
 	};
 }
@@ -67,7 +73,7 @@ TEST(RenderUpload, UploadTrackerCountsCreateCleanSkipAndUpdate) {
 	const auto kFirst = tracker.process_uploads(kFirstUploads);
 	expect_true(kFirst.has_value(), "first prepared upload is accepted");
 	expect_true(kFirst && kFirst.value().mesh_create_count == 1, "new revision creates an upload record");
-	expect_true(kFirst && kFirst.value().uploaded_vertex_bytes == 72, "vertex upload bytes are counted");
+	expect_true(kFirst && kFirst.value().uploaded_vertex_bytes == 96, "vertex upload bytes are counted");
 	expect_true(kFirst && kFirst.value().uploaded_index_bytes == 12, "index upload bytes are counted");
 
 	const std::array kCleanUploads = { upload_desc(crimson::RenderMeshRevision{ 1, 1, 1 }) };
@@ -85,7 +91,7 @@ TEST(RenderUpload, UploadTrackerCountsCreateCleanSkipAndUpdate) {
 
 TEST(RenderUpload, InvalidUploadsReturnStructuredDiagnostics) {
 	crimson::RenderMeshUploadDesc invalid = upload_desc(crimson::RenderMeshRevision{ 1, 1, 1 });
-	invalid.position_normal_interleaved = {};
+	invalid.position_normal_uv_interleaved = {};
 
 	const auto kResult = crimson::validate_render_mesh_upload_desc(invalid);
 	expect_true(!kResult, "invalid upload is rejected");

@@ -1,33 +1,27 @@
-# Quader Task Board v2
+# Quader Task Board
 
-The active board is `project_board.md`. The archive is `project_board_archive.md`.
+Active board: `project_board.md`. Archive: `project_board_archive.md`. `$quader-workflow` is the board authority; do not hand-edit either file.
 
 ## Authority
 
-Board mutations are software-architect authorized. Root may run mutating `tools/project_board.py` commands only when applying exact commands returned by `quader-software-architect`.
-
-Use `--architect-authorized` for new mutating commands. `--pm-authorized` is a legacy alias kept only so old commands do not break.
-
-Other agents return reports to root; they do not edit the board directly. `quader-performance-dev` may use `--architect-authorized` for its own explicit performance audit/fix tasks only.
-
-Validate after board changes:
+Use `--workflow-authorized` for new mutating commands. `--architect-authorized` and `--pm-authorized` are legacy aliases only. Validate after board changes:
 
 ```powershell
 python tools/project_board.py validate
 ```
 
-## Board Sections
+## Sections
 
 - `Backlog`: accepted work not started.
-- `In Progress`: actively executing or integrating work.
-- `In Review`: implementation finished and awaiting architect decision.
-- `Bugs`: accepted bugs not yet fixed or verified.
+- `In Progress`: executing/integrating work.
+- `In Review`: implementation finished, awaiting closeout.
+- `Bugs`: accepted unfixed bugs.
 
-Completed tasks and fixed bugs are moved to `project_board_archive.md` with `complete`; they are not deleted.
+Completed/fixed items move to archive with `complete`; they are not deleted unless explicitly removed.
 
-## Entry Shape
+## Entry Metadata
 
-Required task lines:
+Required:
 
 ```text
 #25 [priority:high][type:enhancement][area:crimson] Title - Summary.
@@ -36,237 +30,70 @@ Required task lines:
   Created: 2026-07-05T12:00:00+02:00
 ```
 
-Common optional lines:
+Optional/common:
 
 ```text
   Final owner: src/crimson module and tests.
-  Plans: agents/plans/implementation_feature_renderer_doc.md
+  Plans: agents/plans/implementation_task25_slug.md
   Source refs: C:\path\reference | src/foo.cpp:12-88; include/foo.h:4-31
-  Authority: [owner:renderer][status:pending][agent:pending] Renderer architect owns final review.
-  Rework: [owner:renderer][agent:quader-renderer-architect][checked:2026-07-05T12:30:00Z] Current architect-requested corrections after a rejected review.
-  Active: [lead:root][status:running][workers:4] Parallel implementation slices are active.
-  Coordination: Short coordination note.
+  Authority: [owner:workflow][status:pending][agent:quader-workflow] ...
+  Rework: [owner:workflow][agent:quader-workflow][checked:...] Current requested corrections.
+  Active: [lead:quader-workflow][status:running][workers:0] ...
+  Coordination: Context note only.
 ```
 
-Legacy `PM:` and `Assignment:` metadata remains valid for old entries, but v2 entries should avoid PM/assignment clutter unless a historical task already has it.
-
-`Active:` is optional and should be used only when live coordination needs to be visible:
-
-```text
-Active: [lead:<root-or-thread-id>][status:running|integrating|reviewing|blocked][workers:0-6] Note.
-```
+Legacy `PM:`/`Assignment:` lines remain valid for old entries but should not be added to new v2 entries.
 
 ## Commands
 
-Add task:
-
-```powershell
-python tools/project_board.py add --architect-authorized --title "Title" --summary "Short summary." --brief "Detailed brief." --priority high --type enhancement --area core --final-owner "src/document and tests" --plans agents/plans/implementation_feature_doc.md
-```
-
-Add bug:
-
-```powershell
-python tools/project_board.py add-bug --architect-authorized --title "Bug title" --summary "Observed failure." --brief "Repro, expected behavior, likely area." --priority high --area ui --final-owner "src/ui and tests"
-```
-
-Edit the canonical brief line:
-
-```powershell
-python tools/project_board.py edit-brief --architect-authorized --id 25 --brief "Updated brief."
-```
-
-Set freshness:
-
-```powershell
-python tools/project_board.py set-freshness --architect-authorized --id 25 --status fresh --checked now --note "Revalidated against current files and active board metadata."
-```
-
-Start:
-
-```powershell
-python tools/project_board.py start --architect-authorized --id 25
-```
-
-Move:
-
-```powershell
-python tools/project_board.py move --architect-authorized --id 25 --to "In Progress"
-```
-
-Request changes after rejected review:
-
-```powershell
-python tools/project_board.py request-changes --architect-authorized --id 25 --owner renderer --agent quader-renderer-architect --summary "Overlay validation is incomplete." --rework "Add the missing overlay regression test and rerun the targeted renderer test."
-```
-
-Use `request-changes` for rejected review closeout. Do not use a plain `move --to "In Progress"` for rejected review cards.
-
-Move to review:
-
-```powershell
-python tools/project_board.py review --architect-authorized --id 25
-```
-
-Set review authority:
-
-```powershell
-python tools/project_board.py set-authority --architect-authorized --id 25 --owner renderer --status pending --agent pending --note "Renderer architect owns final review."
-```
-
-Record or clear active coordination:
-
-```powershell
-python tools/project_board.py set-active --architect-authorized --id 25 --lead root --status running --workers 4 --note "Executing independent slices."
-python tools/project_board.py clear-active --architect-authorized --id 25
-```
-
-Coordination notes are context only. They are not the authoritative correction list for rejected reviews; that must be stored in `Rework:` through `request-changes`.
-
-Archive approved task:
-
-```powershell
-python tools/project_board.py complete --architect-authorized --id 25
-```
-
-Archive fixed bug:
-
-```powershell
-python tools/project_board.py complete --architect-authorized --id 19 --resolution "Fixed the runtime target binding and restored expected viewport behavior."
-```
-
-Remove an active board entry only when the software architect issued the exact command:
-
-```powershell
-python tools/project_board.py remove --architect-authorized --id 25
-```
-
-Search archive:
-
-```powershell
-python tools/project_board.py archive-search --query "diagnostics" --full
-```
-
-Reopen archive:
-
-```powershell
-python tools/project_board.py reopen-archive --architect-authorized --id 25 --reason "Follow-up requested from archived task context."
-```
-
-List active entries:
-
 ```powershell
 python tools/project_board.py list
+python tools/project_board.py add --workflow-authorized --title "Title" --summary "Summary." --brief "Brief." --priority high --type enhancement --area core --final-owner "src/document and tests"
+python tools/project_board.py add-bug --workflow-authorized --title "Bug" --summary "Observed failure." --brief "Repro, expected, likely fix." --priority high --area ui
+python tools/project_board.py edit-brief --workflow-authorized --id 25 --brief "Updated brief."
+python tools/project_board.py set-freshness --workflow-authorized --id 25 --status fresh --checked now --note "Revalidated."
+python tools/project_board.py start --workflow-authorized --id 25
+python tools/project_board.py move --workflow-authorized --id 25 --to "In Progress"
+python tools/project_board.py request-changes --workflow-authorized --id 25 --owner workflow --agent quader-workflow --summary "Why rejected." --rework "Actionable corrections."
+python tools/project_board.py review --workflow-authorized --id 25
+python tools/project_board.py set-authority --workflow-authorized --id 25 --owner workflow --status pending --agent quader-workflow --note "Workflow owns final review."
+python tools/project_board.py set-active --workflow-authorized --id 25 --lead quader-workflow --status running --workers 0 --note "Executing."
+python tools/project_board.py clear-active --workflow-authorized --id 25
+python tools/project_board.py complete --workflow-authorized --id 25
+python tools/project_board.py complete --workflow-authorized --id 19 --resolution "Fixed by ..."
+python tools/project_board.py remove --workflow-authorized --id 25
+python tools/project_board.py archive-search --query "diagnostics" --full
+python tools/project_board.py reopen-archive --workflow-authorized --id 25 --reason "Follow-up requested."
 ```
+
+Rejected review closeout must use `request-changes`; `Coordination:` is not authoritative rework.
 
 ## Freshness Gate
 
-Every new task starts as:
+New/missing freshness means `needs-refresh`. Before start, revalidate against current workspace, source refs, active board metadata, linked plans, and likely touched files.
 
-```text
-Freshness: [status:needs-refresh][checked:never]
-```
-
-Missing freshness metadata also counts as `needs-refresh`.
-
-Before work starts, root revalidates the task against current workspace state, linked plans, source refs, active board metadata, and likely touched files. If the task is domain-specific or uncertain, ask the owning architect for `TASK_REVALIDATION`.
-
-Outcomes:
-
-- `fresh`: architect issues `set-freshness --architect-authorized --status fresh`; root may start.
-- `stale`: architect issues `set-freshness --architect-authorized --status stale`; task returns to software architect for revised brief or replacement.
-- `superseded`: architect issues `set-freshness --architect-authorized --status superseded`; do not implement unless replaced.
+- `fresh`: mark fresh, then start.
+- `stale`: mark stale; do not implement until brief is revised.
+- `superseded`: mark superseded; do not implement unless replaced.
 
 `start` and `move --to "In Progress"` fail unless freshness is `fresh`.
 
-## Intake To Board
+## Intake
 
-Fresh requests do not become direct edits. The v2 flow is:
+Fresh requests create board entries, not direct implementation. Exception: if the user explicitly asks to implement/fix/do now without a task id, add the entry first, capture the id, then execute it.
 
-1. Relevant architect scout(s) produce `Task Intake Domain Findings`.
-2. `quader-software-architect` produces one `Final Task Intake Report`.
-3. The software architect returns exact add/add-bug commands or duplicate/no-op.
-4. Root applies exact commands.
+Briefs must include behavior, likely files/modules, initial direction, risks, source refs for parity/reference tasks, and likely verification. Quader Windows parity briefs must name `C:\Users\Drako\Desktop\quader-windows\quader-app` as source of truth and list inspected reference files/folders.
 
-Reference/parity tasks must include `Source refs:` with exact source folder path and file-to-line mapping.
+## Execution And Review
 
-Renderer parity tasks that reference `C:\Users\Drako\Desktop\quader-windows\quader-app` must point `quader-renderer-architect` at that app's renderer internals. The task must not assume the reference app's renderer math, projection, picking, shader/material, or coordinate-space conventions match Crimson/current runtime behavior.
+Execution creates/updates exactly one plan: `agents/plans/implementation_task{id}_{slug}.md`.
 
-## Execution Coordination
+In Review cards are closeout prompts, not perform-task prompts. Decisions: approve/archive, request changes with `Rework:`, mark stale, or mark superseded. Returned In Progress prompts must prioritize `Rework:` over the original brief.
 
-Root coordinates execution. Up to 6 workers may run in parallel when tasks or slices are independent.
-
-Workers:
-
-- receive clean scoped prompts with `fork_context: false`,
-- set `/goal` before edits,
-- implement only their assigned slice,
-- run their assigned checks when feasible,
-- report exact files changed and verification results,
-- do not mutate the board.
-
-Root:
-
-- records `Active:` if helpful,
-- integrates worker output,
-- runs required build/tests,
-- deploys for user-visible runtime changes,
-- creates a dev-build archive before review for runnable/runtime-affecting work, or records a valid `Dev build checkpoint deferred:` blocker,
-- asks the owning architect for review,
-- applies exact architect-issued board commands.
-
-## Review And Rejection Handling
-
-In Review cards are not perform-task prompts. They are closeout prompts.
-
-For a single review card or a batch, the owning architect returns one decision per task:
-
-- `approved`: archive with `complete --architect-authorized`.
-- `changes-requested`: use `request-changes --architect-authorized` with mandatory actionable `--rework`; this moves the task back to `In Progress`, updates `Authority: [status:changes-requested]`, and stores the current `Rework:` correction list.
-- `stale`: mark freshness `stale` and return to software-architect finalization.
-- `superseded`: mark freshness `superseded`; do not implement.
-
-When a returned task is copied from `In Progress`, the copied prompt must prioritize `Rework:` over the original broad task brief. If a task is `changes-requested` without `Rework:`, stop and recover the architect rejection note before implementation.
-
-For C++/CMake/shader/runtime-affecting tasks, review must also check dev-build closeout. If no archived dev version/path is reported and no valid `Dev build checkpoint deferred:` blocker exists, the decision is `changes-requested`, not `approved`.
-
-Documentation closeout blocks only stale, incomplete, or contradictory existing documentation, documentation-specific tasks, or explicit task/plan documentation requirements. Missing Doxygen notes for newly added, previously undocumented code are not a reason to reject an otherwise valid implementation; record `Docs maintainer follow-up:` and route it after approval.
-
-For a mixed batch, root archives only approved tasks and moves or marks only the rejected tasks. Do not rerun implementation for approved tasks, and do not archive rejected tasks.
-
-Fixed bugs require a `Bug resolution summary:` from the executor before archival. The archive command must include `--resolution`.
+Fixed bugs require `Bug resolution summary:` and archive `--resolution`.
 
 ## Archive
 
-`complete` moves the entry to `project_board_archive.md`, grouped by archive date and current internal dev version. The archive keeps the original title/tags, brief, metadata, and resolution for bugs.
+`complete` moves entries to `project_board_archive.md`, grouped by archive date and internal dev version. Reopening resets active freshness to `needs-refresh`.
 
-Archive search is read-only. Reopening an archived entry is software-architect authorized and returns the entry to the active board with `Freshness: needs-refresh`.
-
-## Dashboard Behavior
-
-The external Next.js board may read and display the board directly. Dashboard delete/remove/archive actions must still use software-architect authorized commands. Copied prompts must route:
-
-- Backlog/In Progress work to root coordination with freshness gate.
-- In Review cards to architect review and archive/reject split.
-- Archived cards to historical reference or software-architect authorized reopen.
-
-Use the `$quader-board-developer` skill for non-trivial changes to the external Next.js board app at `C:\Users\Drako\Desktop\quader-project-board`, including board/archive/changelog views, copied prompts, API routes, dev-build controls, and styling. That skill workflow may edit the external board app directly, but it must not mutate board markdown except by applying exact software-architect commands.
-
-## Future Useful Commands
-
-Useful but not required now:
-
-- `edit-summary`
-- `edit-title`
-- `edit-final-owner`
-- `edit-plans`
-- `edit-source-refs`
-- `set-priority`
-- `set-area`
-- `set-type`
-- `append-note`
-- `append-coordination`
-- `block` / `unblock`
-- `claim` / `release`
-- `duplicate`
-- `split-task`
+Dashboard actions may read/display board files but must call `tools/project_board.py` for mutations. Copied prompts route through `$quader-workflow`.

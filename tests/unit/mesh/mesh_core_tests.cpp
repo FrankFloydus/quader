@@ -128,6 +128,38 @@ TEST(MeshCore, SingleTriangleHasValidTopologyAndBoundaryPlaceholders) {
 	}
 }
 
+TEST(MeshCore, ReverseFaceWindingPreservesIdsAndRestoresOnSecondReverse) {
+	auto fixture = quader::tests::mesh_fixtures::make_single_triangle();
+	auto before_vertices = quader::mesh::face_vertices(fixture.mesh, fixture.face);
+	ASSERT_TRUE(before_vertices);
+	auto before_edges = quader::mesh::face_edges(fixture.mesh, fixture.face);
+	ASSERT_TRUE(before_edges);
+
+	const auto kReversed = fixture.mesh.reverse_face_winding(fixture.face);
+	ASSERT_TRUE(kReversed);
+	EXPECT_TRUE(fixture.mesh.is_valid(fixture.face));
+	for (const auto kEdge : before_edges.value()) {
+		EXPECT_TRUE(fixture.mesh.is_valid(kEdge));
+	}
+	EXPECT_TRUE(quader::mesh::validate_mesh(fixture.mesh).ok());
+
+	auto reversed_vertices = quader::mesh::face_vertices(fixture.mesh, fixture.face);
+	ASSERT_TRUE(reversed_vertices);
+	const std::array<quader::mesh::VertexId, 3> kExpectedReversed{
+		fixture.vertices[0],
+		fixture.vertices[2],
+		fixture.vertices[1],
+	};
+	EXPECT_TRUE(is_same_cyclic_vertex_order(reversed_vertices.value(), kExpectedReversed));
+
+	const auto kRestored = fixture.mesh.reverse_face_winding(fixture.face);
+	ASSERT_TRUE(kRestored);
+	auto restored_vertices = quader::mesh::face_vertices(fixture.mesh, fixture.face);
+	ASSERT_TRUE(restored_vertices);
+	EXPECT_TRUE(is_same_cyclic_vertex_order(restored_vertices.value(), fixture.vertices));
+	EXPECT_TRUE(quader::mesh::validate_mesh(fixture.mesh).ok());
+}
+
 TEST(MeshCore, DeleteFaceInvalidatesTopologyIdsAndReusesVertexGeneration) {
 	auto fixture = quader::tests::mesh_fixtures::make_single_triangle();
 	const auto kFace = fixture.face;

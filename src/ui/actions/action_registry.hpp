@@ -13,8 +13,10 @@
 
 #include <QAction>
 #include <QKeySequence>
+#include <QList>
 #include <QObject>
 #include <QString>
+#include <Qt>
 
 #include <cstddef>
 #include <unordered_map>
@@ -27,8 +29,10 @@ struct ActionSpec {
 	QString text;
 	/// Status bar text.
 	QString status_tip;
-	/// Optional keyboard shortcut.
-	QKeySequence shortcut;
+	/// Optional keyboard shortcuts.
+	QList<QKeySequence> shortcuts;
+	/// Qt shortcut activation scope.
+	Qt::ShortcutContext shortcut_context = Qt::WindowShortcut;
 	/// True when the action carries checked state.
 	bool checkable = false;
 	/// Initial enabled state before an action-state refresh.

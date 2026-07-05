@@ -1,80 +1,47 @@
 # Code Style
 
-This file is the human guide for Quader C++ style. The executable authorities
-are the root `.clang-format` and `.clang-tidy` files.
+Human guide for Quader C++ style. Executable authorities are root `.clang-format` and `.clang-tidy`.
 
-For C++ copyright headers and Doxygen/API documentation, read
-`agents/documentation-policy.md`; that policy is separate from clang-format and
-clang-tidy style. If a code change makes existing symbol documentation stale,
-update that documentation in the same edit.
-
-## Required Read
-
-Read this file before writing, modifying, reviewing, or planning non-trivial
-C++ source, tests, benchmarks, clang-format, clang-tidy, or style validation.
-If this guide and the clang files disagree, follow the clang files and update
-this guide in the same change.
+For copyright/Doxygen, read `agents/documentation-policy.md`.
 
 ## Permission Lock
 
-Do not run clang-format, clang-tidy, `check_format`, `check_clang_tidy`,
-`check_static_analysis`, `tools/check_clang_format.py`,
-`tools/check_clang_tidy.py`, raw `clang-format`, raw `clang-tidy`, or any
-CTest/preset command that includes those gates unless the user gives immediate
-explicit permission in the current turn.
-
-A plan or checklist that lists these commands is not permission to run them.
-It is only a gated final-validation candidate unless it explicitly says
-`run now without asking`.
+Do not run clang-format, clang-tidy, `check_format`, `check_clang_tidy`, `check_static_analysis`, related Python tools, raw clang tools, or any CTest/preset containing those gates unless the user gives immediate explicit permission in the current turn. A plan/checklist is not permission unless it says `run now without asking`.
 
 ## Formatting
 
-- Use the repository `.clang-format`; do not hand-tune formatting by taste.
-- C++ uses `Standard: c++20`.
-- Indentation uses tabs with width 4. Continuation indentation is 8.
-- There is no hard column limit. Prefer readable expressions over artificial
-  wrapping.
-- Include blocks are preserved. Keep quoted project includes before C `.h`
-  headers, then other system headers.
-- Do not align comments or operands manually when clang-format would undo it.
+- C++20.
+- Tabs, width 4; continuation indent 8.
+- No hard column limit.
+- Preserve include blocks: project includes, C `.h`, other system headers.
+- Do not hand-align comments/operands against clang-format.
+- Do not format generated files, build output, fetched dependencies, or third-party code.
 
-When explicitly authorized, check formatting with:
+Authorized format check:
 
 ```powershell
 cmake --build --preset qt-mingw-debug --target check_format
 ```
 
-## Naming And Tidy Rules
+## Naming
 
-Use the repository `.clang-tidy` profile. Important naming rules:
+Follow `.clang-tidy`:
 
 - namespaces: `lower_case`
-- classes, structs, enums: `CamelCase`
-- functions, methods, variables, parameters: `lower_case`
+- classes/structs/enums: `CamelCase`
+- functions/methods/variables/parameters: `lower_case`
 - private/protected members: `lower_case_`
 - constants: `kCamelCase`
 - macros: `UPPER_CASE`
-- Qt event overrides keep Qt names, such as `resizeEvent` and `mousePressEvent`.
+- Qt overrides keep Qt names, e.g. `resizeEvent`.
 
-When explicitly authorized, check tidy diagnostics with:
+Authorized tidy/static checks:
 
 ```powershell
 cmake --build --preset qt-mingw-debug --target check_clang_tidy
-```
-
-## Scope And Escalation
-
-- Style checks cover Quader-owned code under `src`, `tests`, and `benchmarks`.
-- Do not format, tidy, or rewrite generated files, build output, fetched
-  dependencies, or third-party source trees.
-- Do not weaken style, validation, file scope, naming, or warning rules merely
-  so current code passes. Current code is migration evidence, not permission to
-  lower the standard.
-- If enforcing the requested style causes broad churn or conflicts with an
-  accepted plan, stop and report a `Workaround/Deviation Report`.
-
-When explicitly authorized, run the full static validation when style or quality-gate behavior changes:
-
-```powershell
 cmake --build --preset qt-mingw-debug --target check_static_analysis
 ```
+
+## Scope
+
+Do not weaken style, validation, file scope, naming, or warning rules so current code passes. If requested style enforcement causes broad churn or conflicts with an accepted plan, stop and report a `Workaround/Deviation Report`.

@@ -1,38 +1,14 @@
 # Critical Hindsight Register
 
-This register records durable lessons that future agents should not need to
-rediscover. It is not a changelog, task board, plan archive, or historical
-narrative. Keep entries short, current-facing, and backed by evidence.
+Durable lessons future agents should not rediscover. This is not a changelog, task board, plan archive, or todo list.
 
-## When To Record
+Read/search relevant entries before intake, revalidation, execution, audit/beautify, review, docs, performance, or deviation handling. Cite matching IDs only when they affect the work.
 
-Record only reusable critical knowledge that prevents likely repeated mistakes:
+Record only reusable traps/invariants: build/tool traps, parity mismatches, renderer math conventions, workflow holes, stale assumptions, ownership constraints, licensing/reuse constraints, or repeated review failures.
 
-- hidden build, deploy, tooling, or verification traps;
-- parity/reference mismatches and adaptation rules;
-- renderer math, coordinate-space, shader, or resource-lifetime conventions;
-- workflow holes, stale assumptions, and rejected shortcuts;
-- non-obvious architecture constraints or ownership invariants;
-- licensing/reuse constraints for reference material;
-- review findings that expose a repeatable failure mode.
+Do not record normal progress, generic best practices, one-off bugs, changelog items, active todos, or plan content.
 
-Do not record normal progress, generic best practices, one-off bugs, ordinary
-changelog items, active task todos, or plan content that belongs in
-`agents/plans/`.
-
-## Hindsight Gate
-
-Before intake, task revalidation, implementation, audit/beautify, deviation
-review, bug review, final review, documentation maintenance, or performance
-work, search/read this file for entries matching the relevant area. Reference
-matching IDs in reports, plans, task briefs, or review decisions only when they
-change or constrain the work. If no entry applies, do not add noisy boilerplate.
-
-## Candidate Flow
-
-Workers, scouts, architects, docs maintainers, and performance agents must not
-bury critical lessons only in final prose. When they discover reusable critical
-knowledge, they add this block to their report:
+Candidate format:
 
 ```text
 Hindsight Candidate:
@@ -42,26 +18,18 @@ Evidence:
 Applies when:
 ```
 
-Root routes candidates to the owning architect for acceptance. Root or
-`quader-docs-mantainer` records only accepted entries. Accepted entries must
-include concrete evidence: file paths, line ranges, docs, task ids, archived task
-ids, plans, or external links.
-
-## Entry Template
-
-Copy this exact shape for new accepted entries:
+Accepted entries require evidence and use:
 
 ```text
 ### H-YYYYMMDD-NNN - Short title
-
-- Area/tags: area, tag
+- Area/tags:
 - Status: active | superseded
 - Owner: software | core | build-workflow | ui | renderer | docs | performance
-- Applies when: Short trigger condition.
-- Hindsight: One or two sentences with the reusable lesson.
-- Evidence: `path/to/file.ext:line`, task/archive id, plan path, or URL.
+- Applies when:
+- Hindsight:
+- Evidence:
 - Last checked: YYYY-MM-DD
-- Review when: Condition that could make this stale.
+- Review when:
 ```
 
 ## Accepted Entries
@@ -98,3 +66,25 @@ Copy this exact shape for new accepted entries:
 - Evidence: `src/mesh/ops/box_builder.cpp:120`, `src/mesh/ops/box_builder.cpp:141`, `src/ui/viewport/crimson_viewport_render_host.cpp:269`, `shaders/pbr/opaque_pbr.fs.sc:13`, `C:\Users\Drako\Desktop\quader-windows\quader-app\src\editor\modeling\runtime\session.cpp:174`, `C:\Users\Drako\Desktop\quader-windows\quader-app\src\editor\modeling\runtime\session.cpp:2046`, `C:\Users\Drako\Desktop\quader-windows\quader-app\tests\modeling_domain\tool\qdr_modeling_runtime_tool_box_tests.cpp:273`
 - Last checked: 2026-07-05
 - Review when: Box mesh construction moves to a centralized primitive builder, face-winding canonicalization becomes a mesh invariant, or Crimson changes document-mesh normal generation.
+
+### H-20260705-004 - Component source-wire ownership is mode-specific
+
+- Area/tags: UI, renderer, selection, overlays, reference-parity, sticky-selection
+- Status: active
+- Owner: software
+- Applies when: Implementing or reviewing mesh/component selection overlays, sticky active edit mesh behavior, hover replacement, component-mode transitions, or source-wire regressions.
+- Hindsight: Component-mode source-wire ownership is mode-specific. A selected face makes source wire sticky only in face mode, a selected edge only in edge mode, and a selected vertex only in vertex mode; object selection alone is only a fallback when there is no mode-matching selected component or hover candidate.
+- Evidence: `C:\Users\Drako\Desktop\quader-windows\quader-app\docs\overlay-handling.md:83`, `C:\Users\Drako\Desktop\quader-windows\quader-app\docs\overlay-handling.md:267`, `C:\Users\Drako\Desktop\quader-windows\quader-app\src\editor\modeling\runtime\session_selection_overlay.cpp:401`, `C:\Users\Drako\Desktop\quader-windows\quader-app\src\editor\modeling\runtime\session_selection_overlay.cpp:450`, `C:\Users\Drako\Desktop\quader-windows\quader-app\tests\modeling_domain\qdr_modeling_runtime_overlay_tests.cpp:550`
+- Last checked: 2026-07-05
+- Review when: Selection mode ownership, source-wire fallback policy, or the Windows reference parity target changes.
+
+### H-20260705-005 - Source-wire parity needs semantic depth-stamp metadata
+
+- Area/tags: renderer, selection-overlays, picking, inverted-normals, reference-parity, source-wire
+- Status: active
+- Owner: renderer
+- Applies when: Planning or reviewing Crimson selection overlays, component handles, source wire, inverted-normal validation, or future gizmo/diagnostic overlay features that need layer/source/depth semantics.
+- Hindsight: Source-wire parity is not an overlay layer toggle. It requires semantic source kind plus metadata-only depth stamps; `SourceWire` itself stays draw-on-top, component selected/hover handles become depth-tested only when they carry component source, and selected/hover face fills need depth-stamped two-pass, two-sided rendering to remain correct on flipped or inverted meshes.
+- Evidence: `C:\Users\Drako\Desktop\quader-windows\quader-app\docs\overlay-handling.md:132`, `C:\Users\Drako\Desktop\quader-windows\quader-app\src\render\viewport_overlay_policy.cpp:73`, `C:\Users\Drako\Desktop\quader-windows\quader-app\src\render\overlay\overlay_renderable_builder.cpp:270`, `C:\Users\Drako\Desktop\quader-windows\quader-app\tests\core_tests.cpp:1806`, `src/crimson/overlays/overlay_command.hpp:20`
+- Last checked: 2026-07-05
+- Review when: Crimson gains a semantic selection-overlay frame with depth-stamp metadata and parity tests for flipped/inverted mesh overlays, or the Windows reference parity target changes.
