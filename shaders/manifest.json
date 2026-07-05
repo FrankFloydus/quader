@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "targets": [
+    "vulkan",
+    "dx11",
+    "dx12",
+    "metal"
+  ],
+  "programs": [
+    {
+      "id": "PrototypeLitCube",
+      "stages": {
+        "vertex": {
+          "source": "vs_cube.sc",
+          "output": "vs_cube.bin"
+        },
+        "fragment": {
+          "source": "fs_cube.sc",
+          "output": "fs_cube.bin"
+        }
+      }
+    },
+    {
+      "id": "PrototypeGridOverlay",
+      "stages": {
+        "vertex": {
+          "source": "vs_grid.sc",
+          "output": "vs_grid.bin"
+        },
+        "fragment": {
+          "source": "fs_grid.sc",
+          "output": "fs_grid.bin"
+        }
+      }
+    },
+    {
+      "id": "ToneMap",
+      "stages": {
+        "vertex": {
+          "source": "post/fullscreen_triangle.vs.sc",
+          "output": "fullscreen_triangle.bin"
+        },
+        "fragment": {
+          "source": "post/tone_map.fs.sc",
+          "output": "tone_map.bin"
+        }
+      }
+    },
+    {
+      "id": "OpaquePbr",
+      "stages": {
+        "vertex": {
+          "source": "pbr/opaque_pbr.vs.sc",
+          "output": "opaque_pbr.vs.bin"
+        },
+        "fragment": {
+          "source": "pbr/opaque_pbr.fs.sc",
+          "output": "opaque_pbr.fs.bin"
+        }
+      }
+    },
+    {
+      "id": "AlphaCutoutPbr",
+      "stages": {
+        "vertex": {
+          "source": "pbr/alpha_cutout_pbr.vs.sc",
+          "output": "alpha_cutout_pbr.vs.bin"
+        },
+        "fragment": {
+          "source": "pbr/alpha_cutout_pbr.fs.sc",
+          "output": "alpha_cutout_pbr.fs.bin"
+        }
+      }
+    },
+    {
+      "id": "TransparentPbr",
+      "stages": {
+        "vertex": {
+          "source": "pbr/transparent_pbr.vs.sc",
+          "output": "transparent_pbr.vs.bin"
+        },
+        "fragment": {
+          "source": "pbr/transparent_pbr.fs.sc",
+          "output": "transparent_pbr.fs.bin"
+        }
+      }
+    },
+    {
+      "id": "OverlayUnlit",
+      "stages": {
+        "vertex": {
+          "source": "vs_grid.sc",
+          "output": "overlay_unlit.vs.bin"
+        },
+        "fragment": {
+          "source": "fs_grid.sc",
+          "output": "overlay_unlit.fs.bin"
+        }
+      }
+    },
+    {
+      "id": "Picking",
+      "stages": {
+        "vertex": {
+          "source": "picking/picking.vs.sc",
+          "output": "picking.vs.bin"
+        },
+        "fragment": {
+          "source": "picking/picking.fs.sc",
+          "output": "picking.fs.bin"
+        }
+      }
+    },
+    {
+      "id": "Present",
+      "stages": {
+        "vertex": {
+          "source": "post/fullscreen_triangle.vs.sc",
+          "output": "fullscreen_triangle.bin"
+        },
+        "fragment": {
+          "source": "post/present.fs.sc",
+          "output": "present.bin"
+        }
+      }
+    }
+  ]
+}

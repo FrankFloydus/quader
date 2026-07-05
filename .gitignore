@@ -1,0 +1,30 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+out/
+compile_commands.json
+
+# Local runtime archives and external support tooling
+dev-builds/
+frontend/
+
+# CMake and IDE local state
+CMakeUserPresets.json
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+
+# OS metadata
+Thumbs.db
+.DS_Store
