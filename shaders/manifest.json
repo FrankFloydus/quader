@@ -8,32 +8,6 @@
   ],
   "programs": [
     {
-      "id": "PrototypeLitCube",
-      "stages": {
-        "vertex": {
-          "source": "vs_cube.sc",
-          "output": "vs_cube.bin"
-        },
-        "fragment": {
-          "source": "fs_cube.sc",
-          "output": "fs_cube.bin"
-        }
-      }
-    },
-    {
-      "id": "PrototypeGridOverlay",
-      "stages": {
-        "vertex": {
-          "source": "vs_grid.sc",
-          "output": "vs_grid.bin"
-        },
-        "fragment": {
-          "source": "fs_grid.sc",
-          "output": "fs_grid.bin"
-        }
-      }
-    },
-    {
       "id": "ToneMap",
       "stages": {
         "vertex": {
@@ -102,11 +76,11 @@
       "id": "OverlayUnlit",
       "stages": {
         "vertex": {
-          "source": "vs_grid.sc",
+          "source": "overlay_unlit.vs.sc",
           "output": "overlay_unlit.vs.bin"
         },
         "fragment": {
-          "source": "fs_grid.sc",
+          "source": "overlay_unlit.fs.sc",
           "output": "overlay_unlit.fs.bin"
         }
       }

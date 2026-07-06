@@ -206,7 +206,6 @@ TEST(UiActionWiring, StateProviderDrivesUndoRedoTextAndKeepsUnavailableActionsDi
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::OpenScene).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SaveScene).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SaveSceneAs).isEnabled());
-	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::CreateCube).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::CreateLight).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::CreateCamera).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::DuplicateSelection).isEnabled());

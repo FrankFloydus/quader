@@ -62,6 +62,8 @@ TEST(FrameSnapshot, BuilderRejectsInvalidViews) {
 
 TEST(FrameSnapshot, BuilderFreezesViewportFrameIntoImmutableSnapshot) {
 	std::array<crimson::ViewportCamera, 1> cameras = { make_camera() };
+	cameras[0].near_plane_m = 0.25F;
+	cameras[0].far_plane_m = 250.0F;
 	std::array<crimson::ViewportFrameView, 1> views = {
 		crimson::ViewportFrameView{
 				.rect = crimson::ViewportFrameRect{ 4, 8, 320, 200 },
@@ -98,6 +100,10 @@ TEST(FrameSnapshot, BuilderFreezesViewportFrameIntoImmutableSnapshot) {
 	expect_true(snapshot.views().size() == 1, "snapshot keeps copied view count");
 	expect_true(snapshot.views()[0].rect.width == 320, "snapshot view rect is immutable from source changes");
 	expect_true(snapshot.views()[0].camera.eye.x == 0.0F, "snapshot camera is immutable from source changes");
+	expect_true(
+			near(snapshot.views()[0].camera.near_plane_m, 0.25F) &&
+					near(snapshot.views()[0].camera.far_plane_m, 250.0F),
+			"snapshot preserves viewport camera clip settings");
 	expect_true(snapshot.elapsed_seconds() == 2.0, "snapshot keeps copied elapsed seconds");
 	expect_true(snapshot.objects().empty(), "empty viewport frame has no default render object");
 	expect_true(snapshot.mesh_uploads().empty(), "empty viewport frame has no mesh uploads");

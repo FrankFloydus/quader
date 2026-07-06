@@ -43,10 +43,8 @@ struct ViewportCameraState {
 	float distance = 11.18034F;
 	/// Projection mode.
 	CameraProjection projection = CameraProjection::Perspective;
-	/// Orthographic height in world units.
-	float orthographic_size = 24.0F;
-	/// Perspective field of view in degrees.
-	float fov_degrees = 60.0F;
+	/// User-facing camera properties.
+	ViewportCameraSettings settings;
 	/// Forward vector used by locked orthographic views.
 	quader::math::Vec3 locked_forward{ 0.0F, 0.0F, -1.0F };
 	/// Up vector used by locked orthographic views.
@@ -79,6 +77,12 @@ public:
 	[[nodiscard]] const ViewportCameraState &camera(int camera_index) const;
 	/// Return projection mode for a camera.
 	[[nodiscard]] CameraProjection camera_projection(int camera_index) const;
+	/// Return sanitized settings for a camera.
+	[[nodiscard]] ViewportCameraSettings camera_settings(int camera_index) const;
+	/// Set user-facing settings for a camera.
+	void set_camera_settings(int camera_index, ViewportCameraSettings settings);
+	/// Set the same clip range on every viewport camera.
+	void set_clip_range(ViewportCameraClipRange clip_range) noexcept;
 
 	/// Return current navigation mode.
 	[[nodiscard]] NavigationMode navigation_mode() const noexcept;

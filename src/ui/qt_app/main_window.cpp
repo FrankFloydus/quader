@@ -110,7 +110,6 @@ void MainWindow::build_menus() {
 	tools_menu->addAction(&context_.actions.action(ActionId::FlipMeshNormals));
 
 	auto *create_menu = menuBar()->addMenu(QStringLiteral("&Create"));
-	create_menu->addAction(&context_.actions.action(ActionId::CreateCube));
 	create_menu->addAction(&context_.actions.action(ActionId::CreateLight));
 	create_menu->addAction(&context_.actions.action(ActionId::CreateCamera));
 

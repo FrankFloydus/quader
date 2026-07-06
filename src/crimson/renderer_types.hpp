@@ -114,10 +114,6 @@ constexpr bool is_valid_extent(const ViewportExtent &extent) noexcept {
 
 /// Shader program identifiers known to the compiled shader manifest.
 enum class ShaderProgramId : std::uint16_t {
-	/// Viewport lit cube fallback program.
-	ViewportLitCube,
-	/// Viewport grid overlay program.
-	ViewportGridOverlay,
 	/// Opaque PBR surface program.
 	OpaquePbr,
 	/// Alpha-cutout PBR surface program.
@@ -146,10 +142,6 @@ enum class ShaderProgramId : std::uint16_t {
  */
 constexpr std::string_view shader_program_id_name(ShaderProgramId id) noexcept {
 	switch (id) {
-		case ShaderProgramId::ViewportLitCube:
-			return "ViewportLitCube";
-		case ShaderProgramId::ViewportGridOverlay:
-			return "ViewportGridOverlay";
 		case ShaderProgramId::OpaquePbr:
 			return "OpaquePbr";
 		case ShaderProgramId::AlphaCutoutPbr:

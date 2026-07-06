@@ -28,7 +28,6 @@ using PbrPassPackets = DrawPacketBuildResult;
  * @param registry Base shader registry used for shader schema lookup.
  * @param materials Material system used for material lookup.
  * @param camera Camera used for culling and distance sorting.
- * @param unit_box_mesh Built-in unit box mesh for explicitly marked objects.
  * @param fallback_material Material handle substituted when an object has no material.
  * @param view_aspect_ratio View aspect ratio used for frustum culling.
  * @return Queue-separated PBR packets and counters.
@@ -38,7 +37,6 @@ using PbrPassPackets = DrawPacketBuildResult;
 		const BaseShaderRegistry &registry,
 		const MaterialSystem &materials,
 		const RenderCamera &camera,
-		RenderMeshHandle unit_box_mesh,
 		RenderMaterialHandle fallback_material,
 		float view_aspect_ratio = 1.0F);
 

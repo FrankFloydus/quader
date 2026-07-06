@@ -61,7 +61,6 @@ public:
 	 * @param snapshot Frame snapshot containing picking requests.
 	 * @param mesh_cache Mesh cache used to draw pickable objects.
 	 * @param program_cache Program cache containing the picking shader.
-	 * @param unit_box_mesh Fallback mesh handle used for bounding proxies.
 	 * @param picking_program Program handle selected for the picking pass.
 	 * @param completed_bgfx_frame Latest bgfx frame index known complete.
 	 * @return Completed readback results and count of new readbacks.
@@ -70,7 +69,6 @@ public:
 			const FrameSnapshot &snapshot,
 			const GpuMeshCache &mesh_cache,
 			const GpuProgramCache &program_cache,
-			RenderMeshHandle unit_box_mesh,
 			RenderProgramHandle picking_program,
 			std::uint32_t completed_bgfx_frame);
 

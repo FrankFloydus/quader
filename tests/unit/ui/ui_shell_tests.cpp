@@ -54,7 +54,7 @@
 
 namespace {
 
-constexpr std::array<quader::ui::ActionId, 33> kStandardActions = {
+constexpr std::array<quader::ui::ActionId, 32> kStandardActions = {
 	quader::ui::ActionId::NewScene,
 	quader::ui::ActionId::OpenScene,
 	quader::ui::ActionId::SaveScene,
@@ -77,7 +77,6 @@ constexpr std::array<quader::ui::ActionId, 33> kStandardActions = {
 	quader::ui::ActionId::SelectEdgeMode,
 	quader::ui::ActionId::SelectFaceMode,
 	quader::ui::ActionId::FlipMeshNormals,
-	quader::ui::ActionId::CreateCube,
 	quader::ui::ActionId::CreateLight,
 	quader::ui::ActionId::CreateCamera,
 	quader::ui::ActionId::ViewPerspective,
@@ -168,7 +167,6 @@ TEST(UiShell, ActionStateUpdaterDisablesUnavailableDocumentToolAndCreateActions)
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SelectEdgeMode).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SelectFaceMode).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::FlipMeshNormals).isEnabled());
-	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::CreateCube).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::CreateLight).isEnabled());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::CreateCamera).isEnabled());
 
@@ -227,7 +225,6 @@ TEST(UiShell, ActionStateUpdaterUsesEditorSnapshot) {
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::SelectFaceMode).isChecked());
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SelectObjectMode).isChecked());
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::FlipMeshNormals).isEnabled());
-	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::CreateCube).isEnabled());
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::ToggleQuadViewports).isChecked());
 }
 
@@ -407,7 +404,6 @@ TEST(UiShell, MainWindowConstructsWithServicesWithoutShowingGpuSurface) {
 	EXPECT_EQ(window.objectName(), QStringLiteral("quader.main_window"));
 	EXPECT_TRUE(window.centralWidget() != nullptr);
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::NewScene).isEnabled());
-	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::CreateCube).isEnabled());
 
 	QMenu *file_menu = window.menuBar()->actions().at(0)->menu();
 	EXPECT_TRUE(file_menu->actions().contains(&fixture.actions.action(quader::ui::ActionId::NewScene)));

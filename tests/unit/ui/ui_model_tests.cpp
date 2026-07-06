@@ -32,6 +32,7 @@
 #include <QApplication>
 #include <QItemSelectionModel>
 #include <QModelIndex>
+#include <QSignalSpy>
 #include <QString>
 #include <QVariant>
 
@@ -291,6 +292,31 @@ TEST(UiModel, PropertyItemModelTransformEditPreservesOtherFields) {
 	EXPECT_TRUE(fixture.command_history.can_undo());
 	EXPECT_EQ(fixture.command_history.undo_name(),
 			std::string_view("Set Object Transform"));
+}
+
+TEST(UiModel, PropertyItemModelPreviewTransformUpdatesValuesWithoutReset) {
+	UiModelFixture fixture;
+	const auto kObject = fixture.add_triangle_object();
+	fixture.select_objects_direct({ kObject });
+
+	quader::ui::PropertyItemModel model(fixture.document_ui);
+	QAbstractItemModelTester tester(
+			&model, QAbstractItemModelTester::FailureReportingMode::Fatal);
+
+	const QModelIndex kTranslationX =
+			value_index(model, quader::ui::PropertyField::TranslationX);
+	ASSERT_TRUE(kTranslationX.isValid());
+	QSignalSpy reset_spy(&model, &QAbstractItemModel::modelAboutToBeReset);
+	QSignalSpy data_spy(&model, &QAbstractItemModel::dataChanged);
+
+	auto transform = fixture.document.find_mesh_object(kObject)->transform;
+	transform.translation.x = 12.5F;
+	ASSERT_TRUE(fixture.document.set_preview_transform(kObject, transform));
+	fixture.document_ui.refresh_from_document();
+
+	EXPECT_EQ(reset_spy.count(), 0);
+	EXPECT_GT(data_spy.count(), 0);
+	EXPECT_NEAR(kTranslationX.data(Qt::DisplayRole).toDouble(), 12.5, 0.0001);
 }
 
 TEST(UiModel, PropertyItemModelRejectsReadonlyAndNonfiniteValues) {

@@ -198,10 +198,6 @@ void register_standard_actions(ActionRegistry &registry) {
 																 Qt::WidgetWithChildrenShortcut,
 														 });
 
-	registry.register_action(ActionId::CreateCube, {
-														   QStringLiteral("Cube"),
-														   QStringLiteral("Create a cube when document creation commands are available."),
-												   });
 	registry.register_action(ActionId::CreateLight, {
 															QStringLiteral("Light"),
 															QStringLiteral("Create a light when document creation commands are available."),

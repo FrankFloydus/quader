@@ -14,6 +14,7 @@
 #include "crimson/overlays/overlay_command.hpp"
 #include "crimson/picking/picking.hpp"
 #include "crimson/renderer_types.hpp"
+#include "crimson/scene/render_camera.hpp"
 #include "crimson/scene/render_object.hpp"
 #include "math/vec3.hpp"
 
@@ -42,6 +43,10 @@ struct ViewportCamera {
 	quader::math::Vec3 forward{ 0.0F, 0.0F, -1.0F };
 	/// Projection mode.
 	ViewportCameraProjection projection = ViewportCameraProjection::Perspective;
+	/// Near clip distance in meters.
+	float near_plane_m = kDefaultCameraNearPlaneM;
+	/// Far clip distance in meters.
+	float far_plane_m = kDefaultCameraFarPlaneM;
 	/// Perspective vertical field of view in degrees.
 	float fov_degrees = 60.0F;
 	/// Orthographic view height in world units.

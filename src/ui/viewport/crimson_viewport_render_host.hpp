@@ -12,10 +12,15 @@
 #include "crimson/diagnostics/renderer_diagnostics_snapshot.hpp"
 #include "crimson/material/base_shader.hpp"
 #include "crimson/mesh/render_mesh.hpp"
+#include "document/object_id.hpp"
+#include "math/aabb.hpp"
 #include "ui/viewport/viewport_render_host.hpp"
 
+#include <cstddef>
 #include <memory>
 #include <optional>
+#include <span>
+#include <vector>
 
 #include <QString>
 
@@ -61,6 +66,40 @@ namespace quader::ui {
  */
 [[nodiscard]] std::optional<crimson::RenderMeshUpload> make_crimson_viewport_mesh_upload(
 		const quader::document::MeshObject &object);
+
+/// Cached document mesh render data for one viewport frame.
+struct ViewportDocumentRenderMesh {
+	/// Stable Crimson mesh handle for the document object.
+	crimson::RenderMeshHandle handle;
+	/// Local-space bounds represented by the mesh.
+	quader::math::Aabb local_bounds;
+	/// Upload payload when the mesh revision is new or stale.
+	std::optional<crimson::RenderMeshUpload> upload;
+};
+
+/// Cache document mesh render metadata so clean viewport frames skip upload payloads.
+class ViewportDocumentRenderCache final {
+public:
+	/// Return render data for a document mesh object, including an upload only when stale.
+	[[nodiscard]] std::optional<ViewportDocumentRenderMesh> mesh_for(
+			const quader::document::MeshObject &object);
+	/// Remove cached objects no longer present in the document.
+	void prune(std::span<const quader::document::ObjectId> live_objects);
+	/// Drop every cached mesh entry.
+	void clear() noexcept;
+	/// Return the number of cached document mesh entries.
+	[[nodiscard]] std::size_t cached_mesh_count() const noexcept;
+
+private:
+	struct Entry {
+		quader::document::ObjectId object;
+		crimson::RenderMeshRevision revision;
+		crimson::RenderMeshHandle handle;
+		quader::math::Aabb local_bounds;
+	};
+
+	std::vector<Entry> entries_;
+};
 
 /// Create a standalone Crimson viewport render host with viewport content.
 std::unique_ptr<IViewportRenderHost> create_crimson_viewport_render_host();

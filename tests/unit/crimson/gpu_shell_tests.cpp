@@ -116,16 +116,6 @@ TEST(GpuShell, ShaderLibraryResolvesManifestTargetShaderPaths) {
 
 	expect_true(
 			crimson::gpu::shader_file_name(
-					crimson::ShaderProgramId::ViewportLitCube,
-					crimson::gpu::ShaderStage::Vertex) == "vs_cube.bin",
-			"viewport cube vertex shader name is stable");
-	expect_true(
-			crimson::gpu::shader_file_name(
-					crimson::ShaderProgramId::ViewportGridOverlay,
-					crimson::gpu::ShaderStage::Fragment) == "fs_grid.bin",
-			"viewport grid fragment shader name is stable");
-	expect_true(
-			crimson::gpu::shader_file_name(
 					crimson::ShaderProgramId::OpaquePbr,
 					crimson::gpu::ShaderStage::Fragment) == "opaque_pbr.fs.bin",
 			"OpaquePbr fragment shader name is stable");
@@ -146,18 +136,18 @@ TEST(GpuShell, ShaderLibraryResolvesManifestTargetShaderPaths) {
 			"Picking fragment shader name is stable");
 	expect_true(
 			library.shader_path(
-						   crimson::ShaderProgramId::ViewportLitCube,
+						   crimson::ShaderProgramId::OverlayUnlit,
 						   crimson::gpu::ShaderStage::Fragment,
 						   crimson::gpu::ShaderTarget::Vulkan)
-							.generic_string() == "shaders/vulkan/fs_cube.bin",
-			"shader library resolves Vulkan paths relative to shader root");
+							.generic_string() == "shaders/vulkan/overlay_unlit.fs.bin",
+			"shader library resolves Vulkan overlay paths relative to shader root");
 	expect_true(
 			library.shader_path(
-						   crimson::ShaderProgramId::ViewportLitCube,
-						   crimson::gpu::ShaderStage::Fragment,
+						   crimson::ShaderProgramId::OverlayUnlit,
+						   crimson::gpu::ShaderStage::Vertex,
 						   crimson::gpu::ShaderTarget::Direct3D12)
-							.generic_string() == "shaders/dx12/fs_cube.bin",
-			"shader library resolves Direct3D12 target paths");
+							.generic_string() == "shaders/dx12/overlay_unlit.vs.bin",
+			"shader library resolves Direct3D12 overlay target paths");
 	expect_true(
 			crimson::gpu::shader_target_directory_name(crimson::gpu::ShaderTarget::Metal) == "metal",
 			"Metal target directory name is stable");

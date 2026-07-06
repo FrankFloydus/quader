@@ -68,32 +68,18 @@ TEST(ShaderManifest, RuntimeLookupPointsToCompiledTargetFolders) {
 	crimson::gpu::ShaderLibrary library("runtime/shaders");
 
 	expect_shader_path(library,
-			crimson::ShaderProgramId::ViewportLitCube,
-			crimson::gpu::ShaderStage::Vertex,
-			crimson::gpu::ShaderTarget::Vulkan,
-			"vulkan/vs_cube.bin",
-			"Vulkan shader path uses the Vulkan compiled target folder");
-
-	expect_shader_path(library,
-			crimson::ShaderProgramId::ViewportLitCube,
-			crimson::gpu::ShaderStage::Fragment,
-			crimson::gpu::ShaderTarget::Direct3D11,
-			"dx11/fs_cube.bin",
-			"Direct3D11 shader path uses the dx11 compiled target folder");
-
-	expect_shader_path(library,
-			crimson::ShaderProgramId::ViewportGridOverlay,
+			crimson::ShaderProgramId::OverlayUnlit,
 			crimson::gpu::ShaderStage::Vertex,
 			crimson::gpu::ShaderTarget::Direct3D12,
-			"dx12/vs_grid.bin",
-			"Direct3D12 shader path uses the dx12 compiled target folder");
+			"dx12/overlay_unlit.vs.bin",
+			"Direct3D12 overlay shader path uses the dx12 compiled target folder");
 
 	expect_shader_path(library,
-			crimson::ShaderProgramId::ViewportGridOverlay,
+			crimson::ShaderProgramId::OverlayUnlit,
 			crimson::gpu::ShaderStage::Fragment,
 			crimson::gpu::ShaderTarget::Metal,
-			"metal/fs_grid.bin",
-			"Metal shader path uses the Metal compiled target folder");
+			"metal/overlay_unlit.fs.bin",
+			"Metal overlay shader path uses the Metal compiled target folder");
 
 	expect_shader_path(library,
 			crimson::ShaderProgramId::ToneMap,
@@ -155,7 +141,7 @@ TEST(ShaderManifest, RuntimeLookupPointsToCompiledTargetFolders) {
 TEST(ShaderManifest, RuntimeLookupNeverPointsToShaderSources) {
 	crimson::gpu::ShaderLibrary library("runtime/shaders");
 	const auto kBinary = library.shader_binary(
-			crimson::ShaderProgramId::ViewportLitCube,
+			crimson::ShaderProgramId::OpaquePbr,
 			crimson::gpu::ShaderStage::Vertex,
 			crimson::gpu::ShaderTarget::Vulkan);
 

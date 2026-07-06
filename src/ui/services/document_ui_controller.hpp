@@ -82,6 +82,8 @@ Q_SIGNALS:
 	void selection_changed();
 	/// Emitted when document dirty flags change.
 	void dirty_state_changed(quader::document::DocumentDirtyFlags flags);
+	/// Emitted for every typed document change drained from the document.
+	void document_changed(const quader::document::DocumentChange &change);
 	/// Emitted when undo/redo availability may have changed.
 	void command_history_changed();
 	/// Emitted after a drain cycle completes.

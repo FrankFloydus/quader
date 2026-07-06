@@ -493,7 +493,6 @@ TEST(MaterialSystem, PbrPacketPreparationBucketsAndSortsDrawPackets) {
 			materials.registry(),
 			materials,
 			kCamera,
-			crimson::RenderMeshHandle{ 9, 1 },
 			kOpaque,
 			1.0F);
 

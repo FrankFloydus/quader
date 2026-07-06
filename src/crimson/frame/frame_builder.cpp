@@ -44,6 +44,8 @@ namespace {
 		.up = camera.up,
 		.forward = camera.forward,
 		.projection = projection_from(camera.projection),
+		.near_plane_m = camera.near_plane_m,
+		.far_plane_m = camera.far_plane_m,
 		.vertical_fov_degrees = camera.fov_degrees,
 		.orthographic_height_m = camera.orthographic_size,
 	};

@@ -115,6 +115,8 @@ void DocumentUiController::drain_pending_changes() {
 void DocumentUiController::emit_change(const quader::document::DocumentChange &change) {
 	using quader::document::DocumentChangeKind;
 
+	Q_EMIT document_changed(change);
+
 	switch (change.kind) {
 		case DocumentChangeKind::ObjectCreated:
 		case DocumentChangeKind::ObjectDeleted:

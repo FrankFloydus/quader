@@ -1257,8 +1257,7 @@ set(MODELING_ASSET_FILES
 )
 set(SHADER_SOURCE_FILES
     "${SHADER_SOURCE_DIR}/common/color_space.sh"
-    "${SHADER_SOURCE_DIR}/fs_cube.sc"
-    "${SHADER_SOURCE_DIR}/fs_grid.sc"
+    "${SHADER_SOURCE_DIR}/overlay_unlit.fs.sc"
     "${SHADER_SOURCE_DIR}/overlay_line.fs.sc"
     "${SHADER_SOURCE_DIR}/overlay_line.vs.sc"
     "${SHADER_SOURCE_DIR}/pbr/alpha_cutout_pbr.fs.sc"
@@ -1274,15 +1273,13 @@ set(SHADER_SOURCE_FILES
     "${SHADER_SOURCE_DIR}/post/present.fs.sc"
     "${SHADER_SOURCE_DIR}/post/tone_map.fs.sc"
     "${SHADER_SOURCE_DIR}/varying.def.sc"
-    "${SHADER_SOURCE_DIR}/vs_cube.sc"
-    "${SHADER_SOURCE_DIR}/vs_grid.sc"
+    "${SHADER_SOURCE_DIR}/overlay_unlit.vs.sc"
 )
 
 add_custom_command(
     OUTPUT "${SHADER_STAMP}"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${COMPILED_SHADER_DIR}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${COMPILED_SHADER_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${COMPILED_SHADER_DIR}/spirv"
-    COMMAND ${CMAKE_COMMAND} -E remove -f "${COMPILED_SHADER_DIR}/manifest.stamp"
     COMMAND "${Python3_EXECUTABLE}" "${SHADER_COMPILE_SCRIPT}"
         --manifest "${SHADER_MANIFEST}"
         --shaderc "$<TARGET_FILE:shaderc>"

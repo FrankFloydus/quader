@@ -28,9 +28,9 @@ struct CameraFrustum {
 	/// Projection mode.
 	CameraProjection projection = CameraProjection::Perspective;
 	/// Near clip distance in meters.
-	float near_plane_m = 0.05F;
+	float near_plane_m = kDefaultCameraNearPlaneM;
 	/// Far clip distance in meters.
-	float far_plane_m = 1000.0F;
+	float far_plane_m = kDefaultCameraFarPlaneM;
 	/// Tangent of half the vertical field of view.
 	float vertical_tangent = 1.0F;
 	/// Tangent of half the horizontal field of view.

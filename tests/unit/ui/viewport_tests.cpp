@@ -56,6 +56,7 @@ struct FakeRenderHost final : quader::ui::IViewportRenderHost {
 	quader::ui::ViewportLayoutMode last_layout = quader::ui::ViewportLayoutMode::Single;
 	std::size_t last_pane_count = 0;
 	std::size_t last_camera_count = 0;
+	std::vector<quader::ui::ViewportCameraSnapshot> last_cameras;
 	bool last_animation_enabled = false;
 	std::optional<quader::ui::ViewportFrameStats> stats;
 	std::optional<quader::ui::ViewportDiagnosticsSnapshot> diagnostics;
@@ -82,6 +83,7 @@ struct FakeRenderHost final : quader::ui::IViewportRenderHost {
 		last_layout = request.layout_mode;
 		last_pane_count = request.panes.size();
 		last_camera_count = request.cameras.size();
+		last_cameras.assign(request.cameras.begin(), request.cameras.end());
 		last_animation_enabled = request.scene_animation_enabled;
 		stats = quader::ui::ViewportFrameStats{
 			request.surface_size.width,
@@ -440,6 +442,45 @@ TEST(Viewport, CrimsonMeshUploadPreservesFlipFacesWinding) {
 	}
 }
 
+TEST(Viewport, DocumentRenderCacheSubmitsUploadsOnlyWhenMeshRevisionChanges) {
+	quader::document::Document document;
+	const quader::document::ObjectId object_id = add_box_object(
+			document,
+			"Cached Box",
+			{ -1.0F, 0.0F, -1.0F },
+			{ 1.0F, 1.0F, 1.0F });
+	auto *object = document.find_mesh_object(object_id);
+	ASSERT_TRUE(object != nullptr);
+
+	quader::ui::ViewportDocumentRenderCache cache;
+	const std::optional<quader::ui::ViewportDocumentRenderMesh> kFirst =
+			cache.mesh_for(*object);
+	ASSERT_TRUE(kFirst.has_value());
+	ASSERT_TRUE(kFirst->upload.has_value());
+	EXPECT_EQ(cache.cached_mesh_count(), 1U);
+
+	const std::optional<quader::ui::ViewportDocumentRenderMesh> kClean =
+			cache.mesh_for(*object);
+	ASSERT_TRUE(kClean.has_value());
+	EXPECT_FALSE(kClean->upload.has_value());
+	EXPECT_EQ(kClean->handle.index, kFirst->handle.index);
+	EXPECT_EQ(kClean->handle.generation, kFirst->handle.generation);
+
+	std::vector<quader::mesh::VertexId> vertices = object->mesh.vertex_ids();
+	ASSERT_FALSE(vertices.empty());
+	auto moved = object->mesh.set_vertex_position(vertices.front(), { -1.5F, 0.0F, -1.0F });
+	ASSERT_TRUE(moved);
+
+	const std::optional<quader::ui::ViewportDocumentRenderMesh> kChanged =
+			cache.mesh_for(*object);
+	ASSERT_TRUE(kChanged.has_value());
+	EXPECT_TRUE(kChanged->upload.has_value());
+	EXPECT_EQ(cache.cached_mesh_count(), 1U);
+
+	cache.prune(std::span<const quader::document::ObjectId>{});
+	EXPECT_EQ(cache.cached_mesh_count(), 0U);
+}
+
 TEST(Viewport, LayoutStateClampsQuadPanesAndHitTests) {
 	quader::ui::ViewportLayoutState layout;
 	EXPECT_EQ(layout.pane_count(), 1);
@@ -474,9 +515,49 @@ TEST(Viewport, CameraControllerUpdatesFromSyntheticInputWithoutQtEvents) {
 	const quader::ui::ViewportCameraSnapshot kAfter = cameras.camera_snapshots()[0];
 	EXPECT_TRUE(!quader::math::nearly_equal(kBefore.eye, kAfter.eye, 0.0001F));
 	EXPECT_EQ(cameras.navigation_mode(), quader::ui::NavigationMode::None);
+	EXPECT_FLOAT_EQ(kAfter.settings.clip.near_clip_m, 0.01F);
+	EXPECT_FLOAT_EQ(kAfter.settings.clip.far_clip_m, 1000.0F);
+	EXPECT_FLOAT_EQ(kAfter.settings.fov_degrees, 60.0F);
 
 	const quader::ui::ViewportCameraSnapshot kTop = cameras.camera_snapshots()[1];
 	EXPECT_EQ(kTop.projection, quader::ui::CameraProjection::Orthographic);
+	EXPECT_FLOAT_EQ(kTop.settings.clip.near_clip_m, 0.01F);
+	EXPECT_FLOAT_EQ(kTop.settings.clip.far_clip_m, 1000.0F);
+	EXPECT_FLOAT_EQ(kTop.settings.orthographic_size, 24.0F);
+}
+
+TEST(Viewport, CameraControllerOwnsPerCameraSettings) {
+	quader::ui::ViewportCameraController cameras;
+	cameras.set_camera_settings(0, quader::ui::ViewportCameraSettings{
+			.clip = {
+					.near_clip_m = 0.02F,
+					.far_clip_m = 500.0F,
+			},
+			.fov_degrees = 45.0F,
+			.orthographic_size = 12.0F,
+	});
+
+	const quader::ui::ViewportCameraSnapshotArray kSnapshots = cameras.camera_snapshots();
+	EXPECT_FLOAT_EQ(kSnapshots[0].settings.clip.near_clip_m, 0.02F);
+	EXPECT_FLOAT_EQ(kSnapshots[0].settings.clip.far_clip_m, 500.0F);
+	EXPECT_FLOAT_EQ(kSnapshots[0].settings.fov_degrees, 45.0F);
+	EXPECT_FLOAT_EQ(kSnapshots[0].settings.orthographic_size, 12.0F);
+	EXPECT_FLOAT_EQ(kSnapshots[1].settings.clip.near_clip_m, 0.01F);
+	EXPECT_FLOAT_EQ(kSnapshots[1].settings.clip.far_clip_m, 1000.0F);
+}
+
+TEST(Viewport, CameraControllerCanApplyClipRangeToEveryPane) {
+	quader::ui::ViewportCameraController cameras;
+	cameras.set_clip_range(quader::ui::ViewportCameraClipRange{
+			.near_clip_m = 0.02F,
+			.far_clip_m = 500.0F,
+	});
+
+	const quader::ui::ViewportCameraSnapshotArray kSnapshots = cameras.camera_snapshots();
+	for (const quader::ui::ViewportCameraSnapshot &snapshot : kSnapshots) {
+		EXPECT_FLOAT_EQ(snapshot.settings.clip.near_clip_m, 0.02F);
+		EXPECT_FLOAT_EQ(snapshot.settings.clip.far_clip_m, 500.0F);
+	}
 }
 
 TEST(Viewport, ControllerForwardsSurfaceResizeAndQuadRenderRequests) {
@@ -506,6 +587,9 @@ TEST(Viewport, ControllerForwardsSurfaceResizeAndQuadRenderRequests) {
 	EXPECT_EQ(host.last_layout, quader::ui::ViewportLayoutMode::Quad);
 	EXPECT_EQ(host.last_pane_count, 4U);
 	EXPECT_EQ(host.last_camera_count, 4U);
+	ASSERT_EQ(host.last_cameras.size(), 4U);
+	EXPECT_FLOAT_EQ(host.last_cameras[0].settings.clip.near_clip_m, 0.01F);
+	EXPECT_FLOAT_EQ(host.last_cameras[0].settings.clip.far_clip_m, 1000.0F);
 	EXPECT_TRUE(host.last_animation_enabled);
 
 	controller.set_scene_animation_enabled(false);

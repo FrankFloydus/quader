@@ -20,13 +20,6 @@ namespace crimson::gpu {
 class GpuMeshCache final {
 public:
 	/**
-	 * Create and store the built-in unit box mesh.
-	 *
-	 * @param status Status receiving resource diagnostics.
-	 * @return Handle for the created mesh, or an invalid handle on failure.
-	 */
-	[[nodiscard]] RenderMeshHandle create_unit_box(RendererStatus &status);
-	/**
 	 * Upload or replace a caller-owned render mesh.
 	 *
 	 * @param desc Upload descriptor with stable public mesh handle.

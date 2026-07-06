@@ -57,8 +57,6 @@ std::string_view action_id_name(ActionId id) noexcept {
 			return "SelectFaceMode";
 		case ActionId::FlipMeshNormals:
 			return "FlipMeshNormals";
-		case ActionId::CreateCube:
-			return "CreateCube";
 		case ActionId::CreateLight:
 			return "CreateLight";
 		case ActionId::CreateCamera:

@@ -13,6 +13,11 @@
 
 namespace crimson {
 
+/// Default near clip distance for viewport cameras, in meters.
+inline constexpr float kDefaultCameraNearPlaneM = 0.01F;
+/// Default far clip distance for viewport cameras, in meters.
+inline constexpr float kDefaultCameraFarPlaneM = 1000.0F;
+
 /// Camera projection mode for renderer views.
 enum class CameraProjection {
 	/// Perspective projection.
@@ -34,9 +39,9 @@ struct RenderCamera {
 	/// Projection mode.
 	CameraProjection projection = CameraProjection::Perspective;
 	/// Near clip distance in meters.
-	float near_plane_m = 0.05F;
+	float near_plane_m = kDefaultCameraNearPlaneM;
 	/// Far clip distance in meters.
-	float far_plane_m = 1000.0F;
+	float far_plane_m = kDefaultCameraFarPlaneM;
 	/// Perspective vertical field of view in degrees.
 	float vertical_fov_degrees = 60.0F;
 	/// Orthographic view height in meters.

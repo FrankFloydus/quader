@@ -69,9 +69,6 @@ TEST(RendererPublicTypes, ExtentAndNativeSurfaceValidationRejectInvalidSurfaces)
 
 TEST(RendererPublicTypes, NamesAreStableForPublicDiagnosticsAndConfig) {
 	expect_true(
-			crimson::shader_program_id_name(crimson::ShaderProgramId::ViewportLitCube) == "ViewportLitCube",
-			"viewport cube program name is stable");
-	expect_true(
 			crimson::shader_program_id_name(crimson::ShaderProgramId::ToneMap) == "ToneMap",
 			"tone-map program name is stable");
 	expect_true(
@@ -115,6 +112,14 @@ TEST(RendererPublicTypes, RenderObjectContractDoesNotExposeProgramSelection) {
 	expect_true(
 			!HasPublicProgramMember<crimson::RenderObject>,
 			"RenderObject does not expose arbitrary shader program selection");
+}
+
+TEST(RendererPublicTypes, RenderCameraDefaultsUseViewportClipRange) {
+	const crimson::RenderCamera kCamera;
+	expect_true(
+			kCamera.near_plane_m == 0.01F &&
+					kCamera.far_plane_m == 1000.0F,
+			"RenderCamera defaults to the requested viewport clip range");
 }
 
 TEST(RendererPublicTypes, CameraProjectionRaysFollowCrimsonRenderedViewBasis) {

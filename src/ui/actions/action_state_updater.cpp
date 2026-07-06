@@ -95,7 +95,6 @@ void ActionStateUpdater::refresh_from_snapshot(const EditorStateSnapshot &snapsh
 	set_enabled(actions_, ActionId::FlipMeshNormals, snapshot.has_active_document && snapshot.can_flip_mesh_normals);
 
 	const bool kCreationEnabled = snapshot.has_active_document && snapshot.creation_available;
-	set_enabled(actions_, ActionId::CreateCube, kCreationEnabled);
 	set_enabled(actions_, ActionId::CreateLight, kCreationEnabled);
 	set_enabled(actions_, ActionId::CreateCamera, kCreationEnabled);
 

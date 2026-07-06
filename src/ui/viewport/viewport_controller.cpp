@@ -158,7 +158,7 @@ struct ScreenHandleHit {
 		quader::math::Vec3 world_position) noexcept {
 	const float kViewportHeightPx = std::max(1.0F, static_cast<float>(context.pane_size.height));
 	if (context.camera.projection == CameraProjection::Orthographic) {
-		return std::max(0.01F, context.camera.orthographic_size) / kViewportHeightPx;
+		return std::max(0.01F, context.camera.settings.orthographic_size) / kViewportHeightPx;
 	}
 
 	const quader::math::Vec3 kForward = normalized_or(
@@ -166,7 +166,8 @@ struct ScreenHandleHit {
 			normalized_or(context.camera.forward, { 0.0F, 0.0F, -1.0F }));
 	const float kForwardDistance = quader::math::dot(world_position - context.camera.eye, kForward);
 	const float kDistance = std::max(0.001F, kForwardDistance);
-	const float kFovRadians = radians_from_degrees(std::clamp(context.camera.fov_degrees, 1.0F, 179.0F));
+	const float kFovRadians = radians_from_degrees(
+			std::clamp(context.camera.settings.fov_degrees, 1.0F, 179.0F));
 	return (2.0F * std::tan(kFovRadians * 0.5F) * kDistance) / kViewportHeightPx;
 }
 
@@ -199,7 +200,7 @@ struct ScreenHandleHit {
 	float ndc_x = 0.0F;
 	float ndc_y = 0.0F;
 	if (context.camera.projection == CameraProjection::Orthographic) {
-		const float kExtent = std::max(0.01F, context.camera.orthographic_size) * 0.5F;
+		const float kExtent = std::max(0.01F, context.camera.settings.orthographic_size) * 0.5F;
 		ndc_x = quader::math::dot(kCameraRelative, kRight) / (kExtent * kAspect);
 		ndc_y = quader::math::dot(kCameraRelative, kUp) / kExtent;
 	} else {
@@ -207,7 +208,8 @@ struct ScreenHandleHit {
 			return std::nullopt;
 		}
 
-		const float kTanY = std::tan(radians_from_degrees(std::clamp(context.camera.fov_degrees, 1.0F, 179.0F)) * 0.5F);
+		const float kTanY = std::tan(radians_from_degrees(
+				std::clamp(context.camera.settings.fov_degrees, 1.0F, 179.0F)) * 0.5F);
 		const float kTanX = kTanY * kAspect;
 		ndc_x = quader::math::dot(kCameraRelative, kRight) / (kCameraDistance * kTanX);
 		ndc_y = quader::math::dot(kCameraRelative, kUp) / (kCameraDistance * kTanY);
@@ -883,8 +885,10 @@ std::optional<quader::tools::ViewportRay> ViewportController::ray_for_point(
 		.projection = camera.projection == CameraProjection::Orthographic
 				? crimson::CameraProjection::Orthographic
 				: crimson::CameraProjection::Perspective,
-		.vertical_fov_degrees = camera.fov_degrees,
-		.orthographic_height_m = camera.orthographic_size,
+		.near_plane_m = camera.settings.clip.near_clip_m,
+		.far_plane_m = camera.settings.clip.far_clip_m,
+		.vertical_fov_degrees = camera.settings.fov_degrees,
+		.orthographic_height_m = camera.settings.orthographic_size,
 	};
 	const crimson::RenderCameraRay kRay = crimson::render_camera_ray_from_viewport_point(
 			kCamera,
@@ -1196,8 +1200,8 @@ bool ViewportController::dispatch_tool_pointer(ViewportMouseButton button,
 				.projection = camera.projection == CameraProjection::Orthographic
 						? quader::tools::ViewportCameraProjection::Orthographic
 						: quader::tools::ViewportCameraProjection::Perspective,
-				.fov_degrees = camera.fov_degrees,
-				.orthographic_size = camera.orthographic_size,
+				.fov_degrees = camera.settings.fov_degrees,
+				.orthographic_size = camera.settings.orthographic_size,
 				.viewport_size_pixels = {
 						static_cast<float>(std::max(1, pane.rect.width)),
 						static_cast<float>(std::max(1, pane.rect.height)),
@@ -1287,8 +1291,8 @@ void ViewportController::refresh_transform_tool_hover() {
 				.projection = camera.projection == CameraProjection::Orthographic
 						? quader::tools::ViewportCameraProjection::Orthographic
 						: quader::tools::ViewportCameraProjection::Perspective,
-				.fov_degrees = camera.fov_degrees,
-				.orthographic_size = camera.orthographic_size,
+				.fov_degrees = camera.settings.fov_degrees,
+				.orthographic_size = camera.settings.orthographic_size,
 				.viewport_size_pixels = {
 						static_cast<float>(std::max(1, pane.rect.width)),
 						static_cast<float>(std::max(1, pane.rect.height)),

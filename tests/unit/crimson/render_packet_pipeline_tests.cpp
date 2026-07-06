@@ -76,7 +76,6 @@ TEST(RenderPacketPipeline, CullingKeepsVisibleRejectsOutsideAndCountsInvalidBoun
 			materials.registry(),
 			materials,
 			camera(),
-			crimson::RenderMeshHandle{ 9, 1 },
 			kOpaque,
 			1.0F);
 
@@ -99,7 +98,6 @@ TEST(RenderPacketPipeline, CullingUsesNonSquareViewAspect) {
 			materials.registry(),
 			materials,
 			camera(),
-			crimson::RenderMeshHandle{ 9, 1 },
 			kOpaque,
 			1.0F);
 	const crimson::DrawPacketBuildResult kWidePackets = crimson::build_draw_packets(
@@ -107,7 +105,6 @@ TEST(RenderPacketPipeline, CullingUsesNonSquareViewAspect) {
 			materials.registry(),
 			materials,
 			camera(),
-			crimson::RenderMeshHandle{ 9, 1 },
 			kOpaque,
 			2.0F);
 
@@ -131,7 +128,6 @@ TEST(RenderPacketPipeline, OpaqueSortIsDeterministicAndStateFriendly) {
 			materials.registry(),
 			materials,
 			camera(),
-			crimson::RenderMeshHandle{ 9, 1 },
 			kMaterialA,
 			1.0F);
 
@@ -154,7 +150,6 @@ TEST(RenderPacketPipeline, DefaultOpaquePacketsAreSingleSided) {
 			materials.registry(),
 			materials,
 			camera(),
-			crimson::RenderMeshHandle{ 9, 1 },
 			kOpaque,
 			1.0F);
 
@@ -183,7 +178,6 @@ TEST(RenderPacketPipeline, DoubleSidedMaterialDisablesBackfaceCulling) {
 			materials.registry(),
 			materials,
 			camera(),
-			crimson::RenderMeshHandle{ 9, 1 },
 			kDoubleSided,
 			1.0F);
 
@@ -207,7 +201,6 @@ TEST(RenderPacketPipeline, TransparentSortIsBackToFrontWithStableTies) {
 			materials.registry(),
 			materials,
 			camera(),
-			crimson::RenderMeshHandle{ 9, 1 },
 			kTransparent,
 			1.0F);
 
@@ -218,30 +211,22 @@ TEST(RenderPacketPipeline, TransparentSortIsBackToFrontWithStableTies) {
 			"same-depth transparent packets use stable object id tie-breakers");
 }
 
-TEST(RenderPacketPipeline, MeshlessObjectsRequireExplicitBuiltInMesh) {
+TEST(RenderPacketPipeline, MeshlessObjectsAreSkipped) {
 	crimson::MaterialSystem materials;
 	const crimson::RenderMaterialHandle kOpaque = materials.create_default_material(crimson::BaseShaderId::OpaquePbr).value();
 	crimson::RenderObject skipped = object(1, kOpaque, crimson::BaseShaderId::OpaquePbr, crimson::RenderQueue::Opaque, bounds(0.0F, 0.0F, -5.0F));
 	skipped.mesh = {};
-	skipped.built_in_mesh = crimson::BuiltInRenderMesh::None;
-	crimson::RenderObject built_in = skipped;
-	built_in.object_id = 2;
-	built_in.built_in_mesh = crimson::BuiltInRenderMesh::UnitBox;
 
-	const std::array<crimson::RenderObject, 2> kObjects = { skipped, built_in };
-	const crimson::RenderMeshHandle kUnitBox = crimson::RenderMeshHandle{ 9, 1 };
+	const std::array<crimson::RenderObject, 1> kObjects = { skipped };
 	const crimson::DrawPacketBuildResult kPackets = crimson::build_draw_packets(
 			kObjects,
 			materials.registry(),
 			materials,
 			camera(),
-			kUnitBox,
 			kOpaque,
 			1.0F);
 
-	expect_true(kPackets.opaque.size() == 1, "only explicit built-in mesh object emits a draw packet");
-	expect_true(kPackets.opaque[0].object_id == 2, "meshless ordinary object is skipped");
-	expect_true(kPackets.opaque[0].mesh == kUnitBox, "explicit built-in unit box object uses the unit-box handle");
+	expect_true(kPackets.opaque.empty(), "meshless objects do not emit draw packets");
 }
 
 TEST(RenderPacketPipeline, InstancingKeysExcludeTransformAndObjectId) {

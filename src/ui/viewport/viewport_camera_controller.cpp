@@ -22,8 +22,11 @@ using quader::math::normalized;
 using quader::math::Vec3;
 
 constexpr float kHalfPi = 1.57079632679F;
-constexpr float kDefaultFovDegrees = 60.0F;
-constexpr float kDefaultOrthographicSize = 24.0F;
+constexpr float kMinimumNearClipM = 0.0001F;
+constexpr float kMinimumClipRangeM = 0.001F;
+constexpr float kMinimumFovDegrees = 1.0F;
+constexpr float kMaximumFovDegrees = 179.0F;
+constexpr float kMinimumOrthographicSize = 0.0001F;
 constexpr float kDefaultCameraDistance = 11.18034F;
 constexpr float kDefaultCameraYaw = -0.6435011F;
 constexpr float kDefaultCameraPitch = -0.4636476F;
@@ -259,7 +262,7 @@ void apply_navigation_transform(
 	camera.target = transform.origin + camera.forward * kViewDistance;
 	camera.distance = kViewDistance;
 	if (has_camera_size) {
-		camera.orthographic_size = std::max(0.0001F, camera_size);
+		camera.settings.orthographic_size = std::max(kMinimumOrthographicSize, camera_size);
 	}
 	sync_angles_for_forward(camera, camera.forward);
 }
@@ -298,6 +301,29 @@ void apply_orbit_transform(ViewportCameraState &camera, const CameraTransform &t
 	return std::clamp(camera_index, 0, 3);
 }
 
+[[nodiscard]] float sanitized_near_clip(float near_clip_m) noexcept {
+	return std::max(kMinimumNearClipM, near_clip_m);
+}
+
+[[nodiscard]] float sanitized_far_clip(float near_clip_m, float far_clip_m) noexcept {
+	return std::max(sanitized_near_clip(near_clip_m) + kMinimumClipRangeM, far_clip_m);
+}
+
+[[nodiscard]] ViewportCameraClipRange sanitized_clip_range(ViewportCameraClipRange clip_range) noexcept {
+	return ViewportCameraClipRange{
+		.near_clip_m = sanitized_near_clip(clip_range.near_clip_m),
+		.far_clip_m = sanitized_far_clip(clip_range.near_clip_m, clip_range.far_clip_m),
+	};
+}
+
+[[nodiscard]] ViewportCameraSettings sanitized_camera_settings(ViewportCameraSettings settings) noexcept {
+	return ViewportCameraSettings{
+		.clip = sanitized_clip_range(settings.clip),
+		.fov_degrees = std::clamp(settings.fov_degrees, kMinimumFovDegrees, kMaximumFovDegrees),
+		.orthographic_size = std::max(kMinimumOrthographicSize, settings.orthographic_size),
+	};
+}
+
 } // namespace
 
 ViewportCameraController::ViewportCameraController() {
@@ -314,8 +340,7 @@ void ViewportCameraController::reset_default_cameras() {
 		camera.up = make_camera_basis(camera.forward, fallback_up_for_forward(camera.forward)).up;
 		camera.distance = kDefaultCameraDistance;
 		camera.projection = CameraProjection::Perspective;
-		camera.orthographic_size = kDefaultOrthographicSize;
-		camera.fov_degrees = kDefaultFovDegrees;
+		camera.settings = {};
 		camera.locked_forward = { 0.0F, 0.0F, -1.0F };
 		camera.locked_up = { 0.0F, 1.0F, 0.0F };
 		camera.locked_orthographic_view = false;
@@ -352,6 +377,24 @@ const ViewportCameraState &ViewportCameraController::camera(int camera_index) co
 
 CameraProjection ViewportCameraController::camera_projection(int camera_index) const {
 	return camera(camera_index).projection;
+}
+
+ViewportCameraSettings ViewportCameraController::camera_settings(int camera_index) const {
+	return sanitized_camera_settings(camera(camera_index).settings);
+}
+
+void ViewportCameraController::set_camera_settings(
+		int camera_index,
+		ViewportCameraSettings settings) {
+	cameras_[static_cast<std::size_t>(clamped_camera_index(camera_index))].settings =
+			sanitized_camera_settings(settings);
+}
+
+void ViewportCameraController::set_clip_range(ViewportCameraClipRange clip_range) noexcept {
+	const ViewportCameraClipRange kClipRange = sanitized_clip_range(clip_range);
+	for (ViewportCameraState &camera : cameras_) {
+		camera.settings.clip = kClipRange;
+	}
 }
 
 NavigationMode ViewportCameraController::navigation_mode() const noexcept {
@@ -428,9 +471,10 @@ void ViewportCameraController::update_navigation(ViewportPoint position, Viewpor
 	} else if (navigation_mode_ == NavigationMode::Pan) {
 		const ViewportPixelSize kSafeSize = safe_viewport_size(viewport_size);
 		const float kViewportHeight = static_cast<float>(kSafeSize.height);
+		const ViewportCameraSettings kSettings = sanitized_camera_settings(camera.settings);
 		const float kVisibleHeight = camera.projection == CameraProjection::Orthographic
-				? std::max(0.0001F, camera.orthographic_size)
-				: std::max(0.0001F, 2.0F * viewport_distance_to_pivot(kCameraTransform, camera.pivot) * std::tan(camera.fov_degrees * 3.14159265359F / 180.0F * 0.5F));
+				? kSettings.orthographic_size
+				: std::max(0.0001F, 2.0F * viewport_distance_to_pivot(kCameraTransform, camera.pivot) * std::tan(kSettings.fov_degrees * 3.14159265359F / 180.0F * 0.5F));
 		const float kWorldPerPixel = kVisibleHeight / kViewportHeight;
 		const Vec3 kMove = viewport_camera_right(kCameraTransform) * (static_cast<float>(kDelta.x) * kWorldPerPixel) + viewport_camera_up(kCameraTransform) * (static_cast<float>(kDelta.y) * kWorldPerPixel);
 		CameraTransform result_transform = kCameraTransform;
@@ -481,7 +525,11 @@ void ViewportCameraController::apply_wheel_zoom(
 	const float kZoomFactor = std::pow(kNavigationZoomStepFactor, wheel_steps);
 	const CameraTransform kCameraTransform = transform_from_pose(camera_pose(active_camera_index_));
 	if (camera.projection == CameraProjection::Orthographic) {
-		const float kNewSize = capped_orthographic_zoom_size(camera.orthographic_size, kZoomFactor, wheel_steps);
+		const ViewportCameraSettings kSettings = sanitized_camera_settings(camera.settings);
+		const float kNewSize = capped_orthographic_zoom_size(
+				kSettings.orthographic_size,
+				kZoomFactor,
+				wheel_steps);
 		apply_navigation_transform(camera, kCameraTransform, camera.pivot, true, kNewSize);
 	} else {
 		const float kDistance = viewport_distance_to_pivot(kCameraTransform, camera.pivot);
@@ -587,6 +635,7 @@ ViewportCameraSnapshotArray ViewportCameraController::camera_snapshots() const {
 	ViewportCameraSnapshotArray snapshots{};
 	for (int index = 0; index < 4; ++index) {
 		const ViewportCameraState &state = camera(index);
+		const ViewportCameraSettings kSettings = camera_settings(index);
 		const ViewportCameraPose kPose = camera_pose(index);
 		snapshots[static_cast<std::size_t>(index)] = ViewportCameraSnapshot{
 			.camera_index = index,
@@ -595,8 +644,7 @@ ViewportCameraSnapshotArray ViewportCameraController::camera_snapshots() const {
 			.up = kPose.up,
 			.forward = kPose.forward,
 			.projection = state.projection,
-			.fov_degrees = state.fov_degrees,
-			.orthographic_size = state.orthographic_size,
+			.settings = kSettings,
 		};
 	}
 	return snapshots;

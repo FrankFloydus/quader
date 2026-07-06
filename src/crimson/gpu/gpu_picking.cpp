@@ -224,7 +224,6 @@ GpuPickingFrameResult GpuPicking::submit_frame_requests(
 		const FrameSnapshot &snapshot,
 		const GpuMeshCache &mesh_cache,
 		const GpuProgramCache &program_cache,
-		RenderMeshHandle unit_box_mesh,
 		RenderProgramHandle picking_program,
 		std::uint32_t completed_bgfx_frame) {
 	GpuPickingFrameResult result;
@@ -268,12 +267,11 @@ GpuPickingFrameResult GpuPicking::submit_frame_requests(
 			continue;
 		}
 
-		if (!is_valid_handle(object.mesh) && object.built_in_mesh == BuiltInRenderMesh::None) {
+		if (!is_valid_handle(object.mesh)) {
 			continue;
 		}
 
-		const RenderMeshHandle kMeshHandle = is_valid_handle(object.mesh) ? object.mesh : unit_box_mesh;
-		const GpuMeshResource *mesh = mesh_cache.get(kMeshHandle);
+		const GpuMeshResource *mesh = mesh_cache.get(object.mesh);
 		if (mesh == nullptr || !mesh->valid()) {
 			continue;
 		}

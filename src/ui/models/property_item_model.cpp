@@ -18,8 +18,10 @@
 #include "ui/models/item_model_roles.hpp"
 #include "ui/services/document_ui_controller.hpp"
 
+#include <QList>
 #include <QVariant>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -41,6 +43,33 @@ constexpr int kPropertyItemColumnCount = 2;
 descriptor_matches_object(const PropertyDescriptor &descriptor,
 		quader::document::ObjectId object) noexcept {
 	return descriptor.path.object == object;
+}
+
+[[nodiscard]] bool same_descriptor_topology(
+		const std::vector<PropertyDescriptor> &left,
+		const std::vector<PropertyDescriptor> &right) noexcept {
+	if (left.size() != right.size()) {
+		return false;
+	}
+
+	for (std::size_t index = 0; index < left.size(); ++index) {
+		if (left[index].path != right[index].path || left[index].kind != right[index].kind) {
+			return false;
+		}
+	}
+	return true;
+}
+
+[[nodiscard]] bool descriptor_display_data_equal(
+		const PropertyDescriptor &left,
+		const PropertyDescriptor &right) {
+	return left.label == right.label &&
+			left.value == right.value &&
+			left.minimum == right.minimum &&
+			left.maximum == right.maximum &&
+			left.decimals == right.decimals &&
+			left.editable == right.editable &&
+			left.tooltip == right.tooltip;
 }
 
 [[nodiscard]] bool value_to_finite_float(const QVariant &value,
@@ -107,12 +136,8 @@ PropertyItemModel::PropertyItemModel(DocumentUiController &documents,
 	register_ui_model_metatypes();
 	rebuild_from_document();
 
-	connect(&documents_, &DocumentUiController::selection_changed, this,
-			&PropertyItemModel::rebuild_from_document);
-	connect(&documents_, &DocumentUiController::object_list_changed, this,
-			&PropertyItemModel::rebuild_from_document);
-	connect(&documents_, &DocumentUiController::object_changed, this,
-			&PropertyItemModel::refresh_object);
+	connect(&documents_, &DocumentUiController::document_changed, this,
+			&PropertyItemModel::refresh_from_change);
 }
 
 int PropertyItemModel::rowCount(const QModelIndex &parent_index) const {
@@ -227,7 +252,28 @@ void PropertyItemModel::refresh_object(quader::document::ObjectId object) {
 					});
 
 	if (kSelectedObjectChanged || kCurrentDescriptorsReferenceObject) {
-		rebuild_from_document();
+		refresh_current_descriptor_values();
+	}
+}
+
+void PropertyItemModel::refresh_from_change(
+		const quader::document::DocumentChange &change) {
+	using quader::document::DocumentChangeKind;
+
+	switch (change.kind) {
+		case DocumentChangeKind::ObjectCreated:
+		case DocumentChangeKind::ObjectDeleted:
+		case DocumentChangeKind::SelectionChanged:
+			rebuild_from_document();
+			break;
+		case DocumentChangeKind::ObjectRenamed:
+		case DocumentChangeKind::TransformChanged:
+		case DocumentChangeKind::MeshTopologyChanged:
+		case DocumentChangeKind::MeshGeometryChanged:
+			refresh_object(change.object);
+			break;
+		case DocumentChangeKind::DirtyStateChanged:
+			break;
 	}
 }
 
@@ -275,6 +321,39 @@ bool PropertyItemModel::apply_descriptor_edit(
 			std::make_unique<quader::commands::SetObjectTransformCommand>(
 					descriptor.path.object, transform));
 	return result.is_applied();
+}
+
+void PropertyItemModel::refresh_current_descriptor_values() {
+	std::vector<PropertyDescriptor> next_descriptors =
+			build_property_descriptors(documents_.document());
+	if (!same_descriptor_topology(descriptors_, next_descriptors)) {
+		beginResetModel();
+		descriptors_ = std::move(next_descriptors);
+		endResetModel();
+		return;
+	}
+
+	const QList<int> kChangedRoles{
+		Qt::DisplayRole,
+		Qt::EditRole,
+		Qt::ToolTipRole,
+		property_item_roles::kPropertyPathRole,
+		property_item_roles::kValueKindRole,
+		property_item_roles::kEditableRole,
+		property_item_roles::kDescriptorRole,
+	};
+	for (std::size_t index = 0; index < descriptors_.size(); ++index) {
+		const bool kChanged =
+				!descriptor_display_data_equal(descriptors_[index], next_descriptors[index]);
+		descriptors_[index] = std::move(next_descriptors[index]);
+		if (kChanged) {
+			const int kRow = static_cast<int>(index);
+			Q_EMIT dataChanged(
+					this->index(kRow, 0),
+					this->index(kRow, kPropertyItemColumnCount - 1),
+					kChangedRoles);
+		}
+	}
 }
 
 } // namespace quader::ui

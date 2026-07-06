@@ -20,14 +20,6 @@ namespace crimson {
 /// Stable renderer object identifier used for drawing and picking.
 using RenderObjectId = std::uint64_t;
 
-/// Built-in mesh payloads supplied by Crimson when no uploaded mesh is needed.
-enum class BuiltInRenderMesh {
-	/// No built-in mesh is requested.
-	None,
-	/// Unit box mesh owned by the renderer runtime.
-	UnitBox,
-};
-
 /**
  * Create a column-major identity transform.
  *
@@ -60,8 +52,6 @@ struct RenderObject {
 	RenderObjectId object_id = 0;
 	/// Mesh resource used by this object.
 	RenderMeshHandle mesh;
-	/// Built-in renderer mesh used when no document-uploaded mesh handle exists.
-	BuiltInRenderMesh built_in_mesh = BuiltInRenderMesh::None;
 	/// Material resource used by this object.
 	RenderMaterialHandle material;
 	/// Base shader schema used for material interpretation.

@@ -108,6 +108,33 @@ enum class CameraProjection {
 	Orthographic, ///< Orthographic projection.
 };
 
+/// Default near clip distance for viewport cameras, in meters.
+inline constexpr float kDefaultViewportCameraNearClipM = 0.01F;
+/// Default far clip distance for viewport cameras, in meters.
+inline constexpr float kDefaultViewportCameraFarClipM = 1000.0F;
+/// Default perspective field of view for viewport cameras, in degrees.
+inline constexpr float kDefaultViewportCameraFovDegrees = 60.0F;
+/// Default orthographic view height for viewport cameras, in world units.
+inline constexpr float kDefaultViewportCameraOrthographicSize = 24.0F;
+
+/// Clip range for an editor viewport camera.
+struct ViewportCameraClipRange {
+	/// Near clip distance in meters.
+	float near_clip_m = kDefaultViewportCameraNearClipM;
+	/// Far clip distance in meters.
+	float far_clip_m = kDefaultViewportCameraFarClipM;
+};
+
+/// User-facing camera properties for one editor viewport camera.
+struct ViewportCameraSettings {
+	/// Clip range used for projection, picking, and renderer culling.
+	ViewportCameraClipRange clip;
+	/// Perspective field of view in degrees.
+	float fov_degrees = kDefaultViewportCameraFovDegrees;
+	/// Orthographic view height in world units.
+	float orthographic_size = kDefaultViewportCameraOrthographicSize;
+};
+
 /// Active viewport navigation mode.
 enum class NavigationMode {
 	None,  ///< No navigation gesture.
@@ -140,10 +167,8 @@ struct ViewportCameraSnapshot {
 	quader::math::Vec3 forward{ 0.0F, 0.0F, -1.0F };
 	/// Projection mode.
 	CameraProjection projection = CameraProjection::Perspective;
-	/// Perspective field of view in degrees.
-	float fov_degrees = 60.0F;
-	/// Orthographic view height in world units.
-	float orthographic_size = 24.0F;
+	/// Resolved camera settings for this viewport pane.
+	ViewportCameraSettings settings;
 };
 
 /// Stable id for viewport picking requests.

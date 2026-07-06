@@ -9,6 +9,7 @@
  */
 #pragma once
 
+#include "document/document_events.hpp"
 #include "document/object_id.hpp"
 #include "ui/models/property_descriptor.hpp"
 
@@ -58,12 +59,15 @@ public Q_SLOTS:
 	void rebuild_from_document();
 	/// Refresh descriptor rows associated with `object`.
 	void refresh_object(quader::document::ObjectId object);
+	/// Refresh descriptor rows affected by a typed document change.
+	void refresh_from_change(const quader::document::DocumentChange &change);
 
 private:
 	[[nodiscard]] const PropertyDescriptor *
 	descriptor_for_row(int row) const noexcept;
 	[[nodiscard]] bool apply_descriptor_edit(const PropertyDescriptor &descriptor,
 			const QVariant &value);
+	void refresh_current_descriptor_values();
 
 	DocumentUiController &documents_;
 	std::vector<PropertyDescriptor> descriptors_;

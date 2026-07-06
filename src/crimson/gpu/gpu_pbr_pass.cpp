@@ -16,10 +16,9 @@ PbrPassPackets prepare_pbr_pass_packets(
 		const BaseShaderRegistry &registry,
 		const MaterialSystem &materials,
 		const RenderCamera &camera,
-		RenderMeshHandle unit_box_mesh,
 		RenderMaterialHandle fallback_material,
 		float view_aspect_ratio) {
-	return build_draw_packets(objects, registry, materials, camera, unit_box_mesh, fallback_material, view_aspect_ratio);
+	return build_draw_packets(objects, registry, materials, camera, fallback_material, view_aspect_ratio);
 }
 
 } // namespace crimson::gpu

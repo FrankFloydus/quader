@@ -57,18 +57,14 @@ namespace {
 		const BaseShaderDefinition &definition,
 		const MaterialInstance *material_instance,
 		RenderMaterialHandle material,
-		RenderMeshHandle unit_box_mesh,
 		const RenderCamera &camera) {
 	const RenderQueue kQueue = object.queue == RenderQueue::ViewportOpaque
 			? RenderQueue::Opaque
 			: object.queue;
-	const RenderMeshHandle kMesh = is_valid_handle(object.mesh)	 ? object.mesh
-			: object.built_in_mesh == BuiltInRenderMesh::UnitBox ? unit_box_mesh
-																 : RenderMeshHandle{};
 
 	return DrawPacket{
 		.object_id = object.object_id,
-		.mesh = kMesh,
+		.mesh = object.mesh,
 		.material = material,
 		.base_shader = definition.id,
 		.queue = kQueue,
@@ -92,7 +88,6 @@ DrawPacketBuildResult build_draw_packets(
 		const BaseShaderRegistry &registry,
 		const MaterialSystem &materials,
 		const RenderCamera &camera,
-		RenderMeshHandle unit_box_mesh,
 		RenderMaterialHandle fallback_material,
 		float view_aspect_ratio) {
 	DrawPacketBuildResult result;
@@ -125,7 +120,7 @@ DrawPacketBuildResult build_draw_packets(
 		if (definition->domain != RenderDomain::LitSurface && definition->domain != RenderDomain::TransparentSurface) {
 			continue;
 		}
-		if (!is_valid_handle(object.mesh) && object.built_in_mesh == BuiltInRenderMesh::None) {
+		if (!is_valid_handle(object.mesh)) {
 			continue;
 		}
 
@@ -133,7 +128,6 @@ DrawPacketBuildResult build_draw_packets(
 				*definition,
 				materials.get(kMaterial),
 				kMaterial,
-				unit_box_mesh,
 				camera);
 		switch (packet.queue) {
 			case RenderQueue::Opaque:

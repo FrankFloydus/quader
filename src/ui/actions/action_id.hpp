@@ -43,7 +43,6 @@ enum class ActionId : std::uint16_t {
 
 	FlipMeshNormals, ///< Flip face winding for the current mesh selection.
 
-	CreateCube, ///< Create a cube primitive.
 	CreateLight, ///< Create a light object.
 	CreateCamera, ///< Create a camera object.
 

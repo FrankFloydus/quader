@@ -326,10 +326,11 @@ void append_upload_triangle(crimson::RenderMeshUpload &upload,
 }
 
 [[nodiscard]] std::optional<crimson::RenderMeshUpload> make_mesh_upload(
-		const quader::document::MeshObject &object) {
+		const quader::document::MeshObject &object,
+		crimson::RenderMeshRevision revision) {
 	crimson::RenderMeshUpload upload;
 	upload.handle = render_mesh_handle_for(object.id);
-	upload.revision = revision_for_mesh(object.mesh);
+	upload.revision = revision;
 
 	for (const auto kVertex : object.mesh.vertex_ids()) {
 		auto position = object.mesh.vertex_position(kVertex);
@@ -377,16 +378,34 @@ void append_upload_triangle(crimson::RenderMeshUpload &upload,
 	return upload;
 }
 
-[[nodiscard]] quader::math::Aabb world_bounds_for(
+[[nodiscard]] std::optional<crimson::RenderMeshUpload> make_mesh_upload(
 		const quader::document::MeshObject &object) {
-	quader::math::Aabb bounds;
-	for (const auto kVertex : object.mesh.vertex_ids()) {
-		auto position = object.mesh.vertex_position(kVertex);
-		if (position) {
-			quader::math::expand(bounds, transform_point(position.value(), object.transform));
-		}
+	return make_mesh_upload(object, revision_for_mesh(object.mesh));
+}
+
+[[nodiscard]] quader::math::Aabb transform_bounds(
+		quader::math::Aabb bounds,
+		quader::document::Transform transform) noexcept {
+	if (quader::math::empty(bounds)) {
+		return {};
 	}
-	return bounds;
+
+	const std::array<quader::math::Vec3, 8> kCorners{ {
+			{ bounds.min.x, bounds.min.y, bounds.min.z },
+			{ bounds.max.x, bounds.min.y, bounds.min.z },
+			{ bounds.min.x, bounds.max.y, bounds.min.z },
+			{ bounds.max.x, bounds.max.y, bounds.min.z },
+			{ bounds.min.x, bounds.min.y, bounds.max.z },
+			{ bounds.max.x, bounds.min.y, bounds.max.z },
+			{ bounds.min.x, bounds.max.y, bounds.max.z },
+			{ bounds.max.x, bounds.max.y, bounds.max.z },
+	} };
+
+	quader::math::Aabb transformed;
+	for (const quader::math::Vec3 kCorner : kCorners) {
+		quader::math::expand(transformed, transform_point(kCorner, transform));
+	}
+	return transformed;
 }
 
 [[nodiscard]] ViewportFrameStats viewport_frame_stats_from(const crimson::FrameStats &stats) noexcept {
@@ -428,6 +447,68 @@ crimson::BaseShaderId viewport_base_shader_for_shading_mode(
 std::optional<crimson::RenderMeshUpload> make_crimson_viewport_mesh_upload(
 		const quader::document::MeshObject &object) {
 	return make_mesh_upload(object);
+}
+
+std::optional<ViewportDocumentRenderMesh> ViewportDocumentRenderCache::mesh_for(
+		const quader::document::MeshObject &object) {
+	const crimson::RenderMeshRevision kRevision = revision_for_mesh(object.mesh);
+	auto entry = std::find_if(entries_.begin(), entries_.end(), [object_id = object.id](const Entry &candidate) {
+		return candidate.object == object_id;
+	});
+	if (entry != entries_.end() && entry->revision == kRevision) {
+		return ViewportDocumentRenderMesh{
+			.handle = entry->handle,
+			.local_bounds = entry->local_bounds,
+			.upload = std::nullopt,
+		};
+	}
+
+	std::optional<crimson::RenderMeshUpload> upload = make_mesh_upload(object, kRevision);
+	if (!upload) {
+		if (entry != entries_.end()) {
+			entries_.erase(entry);
+		}
+		return std::nullopt;
+	}
+
+	const crimson::RenderMeshHandle kHandle = upload->handle;
+	const quader::math::Aabb kLocalBounds = upload->bounds;
+	if (entry == entries_.end()) {
+		entries_.push_back(Entry{
+				.object = object.id,
+				.revision = kRevision,
+				.handle = kHandle,
+				.local_bounds = kLocalBounds,
+		});
+	} else {
+		*entry = Entry{
+			.object = object.id,
+			.revision = kRevision,
+			.handle = kHandle,
+			.local_bounds = kLocalBounds,
+		};
+	}
+
+	return ViewportDocumentRenderMesh{
+		.handle = kHandle,
+		.local_bounds = kLocalBounds,
+		.upload = std::move(upload),
+	};
+}
+
+void ViewportDocumentRenderCache::prune(
+		std::span<const quader::document::ObjectId> live_objects) {
+	entries_.erase(std::remove_if(entries_.begin(), entries_.end(), [live_objects](const Entry &entry) {
+		return std::find(live_objects.begin(), live_objects.end(), entry.object) == live_objects.end();
+	}), entries_.end());
+}
+
+void ViewportDocumentRenderCache::clear() noexcept {
+	entries_.clear();
+}
+
+std::size_t ViewportDocumentRenderCache::cached_mesh_count() const noexcept {
+	return entries_.size();
 }
 
 ViewportDiagnosticsSnapshot viewport_diagnostics_from_crimson(
@@ -536,6 +617,7 @@ private:
 	std::optional<ViewportFrameStats> latest_stats_;
 	const quader::document::Document *document_ = nullptr;
 	const quader::tools::ToolManager *tool_manager_ = nullptr;
+	mutable ViewportDocumentRenderCache document_render_cache_;
 };
 
 CrimsonViewportRenderHost::CrimsonViewportRenderHost() = default;
@@ -568,6 +650,7 @@ ViewportRenderResult CrimsonViewportRenderHost::initialize_surface(
 		return result_from_diagnostic(created.error());
 	}
 
+	document_render_cache_.clear();
 	renderer_ = std::move(created).value();
 	const crimson::RendererStatus kStatus = renderer_->status();
 	renderer_name_ = QString::fromStdString(kStatus.backend_name);
@@ -631,11 +714,13 @@ ViewportRenderResult CrimsonViewportRenderHost::render_frame(const ViewportRende
 	const crimson::FrameBuilder kFrameBuilder;
 	auto snapshot = kFrameBuilder.build_snapshot(kFrame);
 	if (!snapshot) {
+		document_render_cache_.clear();
 		return result_from_diagnostic(snapshot.error());
 	}
 
 	auto rendered = renderer_->render(snapshot.value());
 	if (!rendered) {
+		document_render_cache_.clear();
 		return result_from_diagnostic(rendered.error());
 	}
 
@@ -652,6 +737,7 @@ ViewportRenderResult CrimsonViewportRenderHost::render_frame(const ViewportRende
 
 void CrimsonViewportRenderHost::shutdown_surface() {
 	renderer_.reset();
+	document_render_cache_.clear();
 	latest_stats_ = std::nullopt;
 }
 
@@ -720,8 +806,10 @@ std::array<crimson::ViewportCamera, 4> CrimsonViewportRenderHost::make_cameras(
 			.up = source.up,
 			.forward = source.forward,
 			.projection = projection_from(source.projection),
-			.fov_degrees = source.fov_degrees,
-			.orthographic_size = source.orthographic_size,
+			.near_plane_m = source.settings.clip.near_clip_m,
+			.far_plane_m = source.settings.clip.far_clip_m,
+			.fov_degrees = source.settings.fov_degrees,
+			.orthographic_size = source.settings.orthographic_size,
 		};
 	}
 	return result;
@@ -779,22 +867,24 @@ void CrimsonViewportRenderHost::append_document_render_data(
 			continue;
 		}
 
-		std::optional<crimson::RenderMeshUpload> upload = make_crimson_viewport_mesh_upload(*object);
-		if (!upload) {
+		std::optional<ViewportDocumentRenderMesh> render_mesh =
+				document_render_cache_.mesh_for(*object);
+		if (!render_mesh) {
 			continue;
 		}
 
-		const crimson::RenderMeshHandle kMeshHandle = upload->handle;
-		const quader::math::Aabb kWorldBounds = world_bounds_for(*object);
+		const quader::math::Aabb kWorldBounds =
+				transform_bounds(render_mesh->local_bounds, object->transform);
 		if (quader::math::empty(kWorldBounds)) {
 			continue;
 		}
 
-		mesh_uploads.push_back(std::move(*upload));
+		if (render_mesh->upload) {
+			mesh_uploads.push_back(std::move(*render_mesh->upload));
+		}
 		objects.push_back(crimson::RenderObject{
 				.object_id = render_object_id_for_document_object(kObjectId),
-				.mesh = kMeshHandle,
-				.built_in_mesh = crimson::BuiltInRenderMesh::None,
+				.mesh = render_mesh->handle,
 				.material = {},
 				.base_shader = kBaseShader,
 				.world_from_object = render_transform_from(object->transform),
@@ -805,6 +895,7 @@ void CrimsonViewportRenderHost::append_document_render_data(
 				.pickable = true,
 		});
 	}
+	document_render_cache_.prune(kObjectIds);
 }
 
 void CrimsonViewportRenderHost::append_tool_preview_overlays(

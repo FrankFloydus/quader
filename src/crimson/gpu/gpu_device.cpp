@@ -828,7 +828,6 @@ struct GpuDevice::Impl {
 	GpuPicking picking;
 	ViewportResources viewport_resources;
 	PostProcessResources post_resources;
-	RenderMeshHandle unit_box_mesh;
 	RenderMaterialHandle default_opaque_material;
 	RenderProgramHandle overlay_program;
 	RenderProgramHandle overlay_line_program;
@@ -961,7 +960,6 @@ bool GpuDevice::initialize(const RendererConfig &config, const NativeSurfaceDesc
 	}
 	impl_->default_opaque_material = default_material.value();
 
-	impl_->unit_box_mesh = impl_->mesh_cache.create_unit_box(status_);
 	ShaderLibrary shader_library(config.shader_root);
 	const ShaderTarget kShaderTarget = shader_target_for_backend(*selected_backend_);
 	(void)impl_->program_cache.load_program(shader_library, ShaderProgramId::OpaquePbr, kShaderTarget, status_);
@@ -1081,7 +1079,6 @@ void GpuDevice::shutdown() noexcept {
 	impl_->program_cache.clear();
 	impl_->mesh_cache.clear();
 	impl_->material_system = MaterialSystem{};
-	impl_->unit_box_mesh = {};
 	impl_->default_opaque_material = {};
 	impl_->overlay_program = {};
 	impl_->overlay_line_program = {};
@@ -1208,7 +1205,6 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 				snapshot,
 				impl_->mesh_cache,
 				impl_->program_cache,
-				impl_->unit_box_mesh,
 				impl_->picking_program,
 				impl_->completed_bgfx_frame);
 	}
@@ -1269,7 +1265,6 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 					impl_->material_system.registry(),
 					impl_->material_system,
 					view.camera,
-					impl_->unit_box_mesh,
 					impl_->default_opaque_material,
 					view_aspect_ratio(view));
 			timing_stats.cpu_packet_build_us += elapsed_us_since(kPacketBuildStart);
