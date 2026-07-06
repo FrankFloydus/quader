@@ -8,6 +8,12 @@ workflow, build, architecture, tooling, task-board, verification, and maintenanc
 changes. Temporary smoke-test edits that are fully reverted before handoff do not
 need entries.
 
+## 2026-07-06
+
+- Reworked task #29 viewport grid parity after rejected visual review: matched the Windows reference ground-grid transparent material by using straight-alpha bgfx blending for the alpha-weighted grid shader output, added a focused GPU blend-state regression, and archived verified dev build `0.1.1-dev.20`.
+- Added task #29 reference viewport default parity: Crimson now uses the Windows reference `2/255` default environment clear channel, and focused frame/grid tests pin the packed background color, grid minor/major colors, axis alpha/colors, and grid line thickness defaults.
+- Completed task #28 current-code audit remediation: replaced public Crimson prototype viewport/frame names with production viewport frame contracts, made diagnostics refreshes preserve stable model topology through data updates, taught command history to honor merge hooks, split invalid mesh attribute IDs from type mismatches, made mesh upload cache state revision-aware, added an agent-safe `qt-mingw-debug-runtime` CTest preset that excludes style/static-analysis labels, and archived verified dev build `0.1.1-dev.14`.
+
 ## 2026-07-05
 
 - Reworked task #27 again after live viewport feedback: restored Box tool authored face-normal construction so Flip Faces remains visible, switched Crimson single-sided mesh culling to the side matching the current bgfx-facing projection, defaulted viewport tone mapping to linear with a shader branch that honors mapper selection, enabled `BGFX_RESET_MAXANISOTROPY` so the reference default albedo stays sharper at grazing angles, and archived verified dev build `0.1.1-dev.13`.

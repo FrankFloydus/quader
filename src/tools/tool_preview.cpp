@@ -12,7 +12,7 @@
 namespace quader::tools {
 
 bool ToolPreview::empty() const noexcept {
-	return !active && status_text.empty() && !view_index.has_value() && points.empty() && segments.empty() && world_points.empty() && world_segments.empty() && boxes.empty();
+	return !active && status_text.empty() && !view_index.has_value() && points.empty() && segments.empty() && world_points.empty() && world_segments.empty() && colored_world_segments.empty() && colored_world_triangles.empty() && boxes.empty();
 }
 
 void ToolPreview::clear() {
@@ -23,6 +23,8 @@ void ToolPreview::clear() {
 	segments.clear();
 	world_points.clear();
 	world_segments.clear();
+	colored_world_segments.clear();
+	colored_world_triangles.clear();
 	boxes.clear();
 	overlay_only = true;
 }

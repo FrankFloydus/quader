@@ -24,20 +24,20 @@ namespace {
 	return RendererDiagnostic{
 		.severity = RendererDiagnosticSeverity::Error,
 		.code = RendererDiagnosticCode::InvalidFrameSnapshot,
-		.message = "Crimson received an invalid prototype viewport frame.",
+		.message = "Crimson received an invalid viewport frame input.",
 		.detail = std::move(detail),
 		.subsystem = "frame",
-		.resource_name = "PrototypeViewportFrame",
+		.resource_name = "ViewportFrameInput",
 	};
 }
 
-[[nodiscard]] CameraProjection projection_from(PrototypeCameraProjection projection) noexcept {
-	return projection == PrototypeCameraProjection::Orthographic
+[[nodiscard]] CameraProjection projection_from(ViewportCameraProjection projection) noexcept {
+	return projection == ViewportCameraProjection::Orthographic
 			? CameraProjection::Orthographic
 			: CameraProjection::Perspective;
 }
 
-[[nodiscard]] RenderCamera render_camera_from(const PrototypeCamera &camera) noexcept {
+[[nodiscard]] RenderCamera render_camera_from(const ViewportCamera &camera) noexcept {
 	return RenderCamera{
 		.eye = camera.eye,
 		.target = camera.target,
@@ -51,30 +51,30 @@ namespace {
 
 } // namespace
 
-quader::foundation::Result<FrameSnapshot, RendererDiagnostic> FrameBuilder::build_prototype_snapshot(
-		const PrototypeViewportFrame &frame) const {
+quader::foundation::Result<FrameSnapshot, RendererDiagnostic> FrameBuilder::build_snapshot(
+		const ViewportFrameInput &frame) const {
 	if (!is_valid_extent(frame.target_extent)) {
 		return quader::foundation::Result<FrameSnapshot, RendererDiagnostic>::failure(
-				invalid_snapshot_diagnostic("Prototype frames require a valid target extent."));
+				invalid_snapshot_diagnostic("Viewport frame inputs require a valid target extent."));
 	}
 
 	if (frame.views.empty()) {
 		return quader::foundation::Result<FrameSnapshot, RendererDiagnostic>::failure(
-				invalid_snapshot_diagnostic("Prototype frames require at least one view."));
+				invalid_snapshot_diagnostic("Viewport frame inputs require at least one view."));
 	}
 
 	if (frame.cameras.empty()) {
 		return quader::foundation::Result<FrameSnapshot, RendererDiagnostic>::failure(
-				invalid_snapshot_diagnostic("Prototype frames require at least one camera."));
+				invalid_snapshot_diagnostic("Viewport frame inputs require at least one camera."));
 	}
 
 	std::vector<RenderView> views;
 	views.reserve(frame.views.size());
 	for (std::size_t index = 0; index < frame.views.size(); ++index) {
-		const PrototypeViewportView &source = frame.views[index];
-		if (!is_valid_prototype_view(source) || source.camera_index >= frame.cameras.size()) {
+		const ViewportFrameView &source = frame.views[index];
+		if (!is_valid_viewport_frame_view(source) || source.camera_index >= frame.cameras.size()) {
 			return quader::foundation::Result<FrameSnapshot, RendererDiagnostic>::failure(
-					invalid_snapshot_diagnostic("A prototype view has an invalid rectangle or camera index."));
+					invalid_snapshot_diagnostic("A viewport frame view has an invalid rectangle or camera index."));
 		}
 
 		const char *debug_name = source.debug_name == nullptr ? "Viewport" : source.debug_name;

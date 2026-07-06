@@ -21,14 +21,14 @@ void expect_true(bool condition, std::string_view message) {
 	EXPECT_TRUE(condition) << message;
 }
 
-TEST(RenderGraph, MinimalPrototypeGraphValidatesWithStablePassOrder) {
-	crimson::RenderGraph graph = crimson::make_minimal_prototype_render_graph(crimson::ViewportExtent{ 1280, 720, 1.0F });
+TEST(RenderGraph, MinimalViewportGraphValidatesWithStablePassOrder) {
+	crimson::RenderGraph graph = crimson::make_minimal_viewport_render_graph(crimson::ViewportExtent{ 1280, 720, 1.0F });
 
-	expect_true(graph.validate().has_value(), "minimal prototype render graph validates");
-	expect_true(graph.passes().size() == 5, "minimal prototype graph has five passes");
+	expect_true(graph.validate().has_value(), "minimal viewport render graph validates");
+	expect_true(graph.passes().size() == 5, "minimal viewport graph has five passes");
 	expect_true(graph.passes()[0].name == "FrameSetupPass", "frame setup pass is first");
 	expect_true(graph.passes()[1].name == "BackbufferClearPass", "backbuffer clear pass is second");
-	expect_true(graph.passes()[2].name == "PrototypeOpaquePass", "prototype opaque pass is third");
+	expect_true(graph.passes()[2].name == "ViewportOpaquePass", "viewport opaque pass is third");
 	expect_true(graph.passes()[3].name == "OverlayDepthTestedPass", "depth-tested overlay pass is fourth");
 	expect_true(graph.passes()[4].name == "PresentPass", "present pass is last");
 }
@@ -81,7 +81,7 @@ TEST(RenderGraph, ValidationRejectsMissingUnwrittenAndAmbiguousResources) {
 }
 
 TEST(RenderGraph, ResourceRegistryResizeUpdatesGenerations) {
-	crimson::RenderGraph graph = crimson::make_minimal_prototype_render_graph(crimson::ViewportExtent{ 640, 480, 1.0F });
+	crimson::RenderGraph graph = crimson::make_minimal_viewport_render_graph(crimson::ViewportExtent{ 640, 480, 1.0F });
 	const crimson::RenderResourceRecord *before = graph.resources().find("BackbufferColor");
 	expect_true(before != nullptr, "backbuffer color resource exists");
 	const std::uint64_t kGenerationBefore = before == nullptr ? 0 : before->generation;
@@ -95,7 +95,7 @@ TEST(RenderGraph, ResourceRegistryResizeUpdatesGenerations) {
 }
 
 TEST(RenderGraph, DebugDumpIsStableForMinimalGraph) {
-	const crimson::RenderGraph kGraph = crimson::make_minimal_prototype_render_graph(
+	const crimson::RenderGraph kGraph = crimson::make_minimal_viewport_render_graph(
 			crimson::ViewportExtent{ 320, 200, 1.0F });
 
 	const std::string kExpected =
@@ -106,7 +106,7 @@ TEST(RenderGraph, DebugDumpIsStableForMinimalGraph) {
 			"Passes:\n"
 			"  - FrameSetupPass resources=[]\n"
 			"  - BackbufferClearPass resources=[BackbufferColor:ReadWrite, BackbufferDepth:ReadWrite]\n"
-			"  - PrototypeOpaquePass resources=[BackbufferColor:ReadWrite, BackbufferDepth:ReadWrite]\n"
+			"  - ViewportOpaquePass resources=[BackbufferColor:ReadWrite, BackbufferDepth:ReadWrite]\n"
 			"  - OverlayDepthTestedPass resources=[BackbufferDepth:Read, BackbufferColor:ReadWrite]\n"
 			"  - PresentPass resources=[BackbufferColor:Read]\n";
 

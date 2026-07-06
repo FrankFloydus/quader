@@ -453,21 +453,47 @@ void append_unique_object_id(
 	}
 }
 
+[[nodiscard]] bool component_matches_selection_mode(
+		const quader::document::ComponentRef &component,
+		quader::document::SelectionMode mode) noexcept {
+	switch (mode) {
+		case quader::document::SelectionMode::Vertex:
+			return std::holds_alternative<quader::mesh::VertexId>(component.component);
+		case quader::document::SelectionMode::Edge:
+			return std::holds_alternative<quader::mesh::EdgeId>(component.component);
+		case quader::document::SelectionMode::Face:
+			return std::holds_alternative<quader::mesh::FaceId>(component.component);
+		case quader::document::SelectionMode::Object:
+			return false;
+	}
+	return false;
+}
+
 [[nodiscard]] std::vector<quader::document::ObjectId> component_pick_object_order(
 		const quader::document::Document &document,
-		const std::optional<FaceHitCandidate> &best_face) {
+		const std::optional<FaceHitCandidate> &best_face,
+		const std::optional<quader::tools::SurfaceHit> &current_hover) {
 	std::vector<quader::document::ObjectId> objects;
-	if (best_face.has_value()) {
-		append_unique_object_id(objects, best_face->object_id);
-	}
-
 	if (document.selection().mode() != quader::document::SelectionMode::Object) {
+		for (const auto &component : document.selection().selected_components()) {
+			if (component_matches_selection_mode(component, document.selection().mode())) {
+				append_unique_object_id(objects, component.object);
+			}
+		}
+		if (current_hover.has_value()) {
+			append_unique_object_id(objects, current_hover->document_object_id);
+		}
+		if (best_face.has_value()) {
+			append_unique_object_id(objects, best_face->object_id);
+		}
 		for (const auto &component : document.selection().selected_components()) {
 			append_unique_object_id(objects, component.object);
 		}
 		for (const quader::document::ObjectId object : document.selection().selected_objects()) {
 			append_unique_object_id(objects, object);
 		}
+	} else if (best_face.has_value()) {
+		append_unique_object_id(objects, best_face->object_id);
 	}
 
 	for (const quader::document::ObjectId object : document.object_ids()) {
@@ -577,17 +603,17 @@ bool ViewportController::quad_viewports_enabled() const noexcept {
 	return layout_.quad_enabled();
 }
 
-void ViewportController::set_prototype_animation_enabled(bool enabled) {
-	if (prototype_animation_enabled_ == enabled) {
+void ViewportController::set_scene_animation_enabled(bool enabled) {
+	if (scene_animation_enabled_ == enabled) {
 		return;
 	}
 
-	prototype_animation_enabled_ = enabled;
+	scene_animation_enabled_ = enabled;
 	request_frame();
 }
 
-bool ViewportController::prototype_animation_enabled() const noexcept {
-	return prototype_animation_enabled_;
+bool ViewportController::scene_animation_enabled() const noexcept {
+	return scene_animation_enabled_;
 }
 
 void ViewportController::set_shading_mode(ViewportShadingMode mode) {
@@ -609,6 +635,7 @@ void ViewportController::render_frame(double elapsed_seconds, float delta_second
 	}
 
 	cameras_.tick_fly_navigation(delta_seconds);
+	refresh_transform_tool_hover();
 
 	const ViewportPaneArray kPanes = layout_.panes_for(surface_size_);
 	const ViewportCameraSnapshotArray kCameras = cameras_.camera_snapshots();
@@ -620,7 +647,7 @@ void ViewportController::render_frame(double elapsed_seconds, float delta_second
 		.panes = std::span<const ViewportPane>(kPanes.data(), static_cast<std::size_t>(kPaneCount)),
 		.cameras = std::span<const ViewportCameraSnapshot>(kCameras.data(), kCameras.size()),
 		.shading_mode = shading_mode_,
-		.prototype_animation_enabled = prototype_animation_enabled_,
+		.scene_animation_enabled = scene_animation_enabled_,
 		.elapsed_seconds = elapsed_seconds,
 	};
 
@@ -658,6 +685,7 @@ bool ViewportController::handle_mouse_press(
 		ViewportPixelSize size,
 		bool control_modifier,
 		bool alt_modifier) {
+	remember_tool_pointer(point, size, button == ViewportMouseButton::Left);
 	const auto clear_hover = [this]() {
 		return tool_manager_ != nullptr && tool_manager_->clear_selection_hover();
 	};
@@ -708,6 +736,7 @@ bool ViewportController::handle_mouse_move(ViewportPoint point,
 		bool shift_modifier,
 		bool control_modifier,
 		bool alt_modifier) {
+	remember_tool_pointer(point, size, left_button_pressed);
 	if (cameras_.navigation_mode() != NavigationMode::None) {
 		cameras_.update_navigation(point, pane_size_for_camera(size, cameras_.active_camera_index()));
 		request_frame();
@@ -733,6 +762,7 @@ bool ViewportController::handle_mouse_release(ViewportMouseButton button,
 		bool shift_modifier,
 		bool control_modifier,
 		bool alt_modifier) {
+	remember_tool_pointer(point, size, false);
 	if (cameras_.navigation_mode() != NavigationMode::None) {
 		cameras_.end_navigation();
 		request_frame();
@@ -765,6 +795,7 @@ void ViewportController::handle_wheel(float wheel_steps, ViewportPoint point, Vi
 	if (std::abs(wheel_steps) <= 0.000001F) {
 		return;
 	}
+	remember_tool_pointer(point, size, false);
 
 	if (cameras_.navigation_mode() == NavigationMode::Fly) {
 		cameras_.adjust_fly_speed(wheel_steps);
@@ -955,7 +986,7 @@ std::optional<quader::tools::SurfaceHit> ViewportController::surface_hit_for_ray
 	}
 
 	const std::vector<quader::document::ObjectId> kComponentPickObjects =
-			component_pick_object_order(document, best_face);
+			component_pick_object_order(document, best_face, tool_manager_->selection_hover());
 	if (kSelectionToolActive && tool_manager_->selection_mode() == quader::tools::SelectionMode::Vertex) {
 		ScreenHandleHit best_handle;
 		std::optional<quader::tools::SurfaceHit> best_hit;
@@ -1038,8 +1069,10 @@ std::optional<quader::tools::SurfaceHit> ViewportController::surface_hit_for_ray
 						kProjectedStart->position,
 						kProjectedEnd->position,
 						segment_t);
-				const quader::math::Vec3 kWorldPosition = points->start + scale(points->end - points->start, segment_t);
-				const RayHandleHit kRayHandle = distance_to_ray_point(ray, kWorldPosition);
+				const RayHandleHit kRayHandle = distance_to_ray_segment(ray, points->start, points->end);
+				const quader::math::Vec3 kWorldPosition = kRayHandle.hit
+						? kRayHandle.position
+						: points->start + scale(points->end - points->start, segment_t);
 				const float kEdgePickRadiusWorld = pick_radius_world(kPickContext, kEdgePickRadiusPx, kWorldPosition);
 				const ScreenHandleHit kScreenHandle{
 					.hit = true,
@@ -1125,6 +1158,7 @@ bool ViewportController::dispatch_tool_pointer(ViewportMouseButton button,
 	if (tool_manager_ == nullptr || tool_manager_->active_tool() == nullptr) {
 		return false;
 	}
+	remember_tool_pointer(point, size, button == ViewportMouseButton::Left && pressed);
 
 	const auto kViewIndex = pane_array_index_at(layout_, size, point);
 	if (!kViewIndex.has_value()) {
@@ -1138,6 +1172,8 @@ bool ViewportController::dispatch_tool_pointer(ViewportMouseButton button,
 		static_cast<float>(point.y - pane.rect.y),
 	};
 	const auto kRay = ray_for_point(point, size);
+	const ViewportCameraSnapshotArray kSnapshots = cameras_.camera_snapshots();
+	const ViewportCameraSnapshot &camera = kSnapshots[static_cast<std::size_t>(std::clamp(pane.camera_index, 0, 3))];
 	quader::tools::PointerEvent event{
 		.position = kLocalPosition,
 		.button = button == ViewportMouseButton::Left ? quader::tools::PointerButton::Left
@@ -1152,6 +1188,21 @@ bool ViewportController::dispatch_tool_pointer(ViewportMouseButton button,
 		.snap_to_grid = true,
 		.grid_size = 1.0F,
 		.ray = kRay,
+		.camera = quader::tools::ViewportCameraInput{
+				.eye = camera.eye,
+				.target = camera.target,
+				.up = camera.up,
+				.forward = camera.forward,
+				.projection = camera.projection == CameraProjection::Orthographic
+						? quader::tools::ViewportCameraProjection::Orthographic
+						: quader::tools::ViewportCameraProjection::Perspective,
+				.fov_degrees = camera.fov_degrees,
+				.orthographic_size = camera.orthographic_size,
+				.viewport_size_pixels = {
+						static_cast<float>(std::max(1, pane.rect.width)),
+						static_cast<float>(std::max(1, pane.rect.height)),
+				},
+		},
 		.view_index = static_cast<std::uint32_t>(*kViewIndex),
 	};
 	if (kRay.has_value()) {
@@ -1163,6 +1214,89 @@ bool ViewportController::dispatch_tool_pointer(ViewportMouseButton button,
 		request_frame();
 	}
 	return kHandled;
+}
+
+void ViewportController::remember_tool_pointer(ViewportPoint point,
+		ViewportPixelSize size,
+		bool left_pressed) noexcept {
+	last_tool_pointer_point_ = point;
+	last_tool_pointer_size_ = safe_size(size);
+	tool_pointer_left_pressed_ = left_pressed;
+}
+
+void ViewportController::refresh_transform_tool_hover() {
+	if (tool_manager_ == nullptr || tool_pointer_left_pressed_) {
+		return;
+	}
+	const std::optional<quader::tools::ToolId> kActiveTool = tool_manager_->active_tool_id();
+	if (!kActiveTool.has_value() ||
+			(*kActiveTool != quader::tools::ToolId::Move &&
+					*kActiveTool != quader::tools::ToolId::Rotate &&
+					*kActiveTool != quader::tools::ToolId::Scale)) {
+		return;
+	}
+
+	const ViewportPixelSize kSize = last_tool_pointer_point_.has_value()
+			? last_tool_pointer_size_
+			: surface_size_;
+	ViewportPoint point = last_tool_pointer_point_.value_or(ViewportPoint{
+			static_cast<double>(std::max(1, kSize.width)) * 0.5,
+			static_cast<double>(std::max(1, kSize.height)) * 0.5,
+	});
+	const auto kViewIndex = pane_array_index_at(layout_, kSize, point);
+	const ViewportPaneArray kPanes = layout_.panes_for(kSize);
+	if (!kViewIndex.has_value()) {
+		const int kCameraIndex = cameras_.active_camera_index();
+		for (int index = 0; index < layout_.pane_count(); ++index) {
+			const ViewportPane &pane = kPanes[static_cast<std::size_t>(index)];
+			if (pane.camera_index != kCameraIndex) {
+				continue;
+			}
+			point = {
+				static_cast<double>(pane.rect.x) + static_cast<double>(pane.rect.width) * 0.5,
+				static_cast<double>(pane.rect.y) + static_cast<double>(pane.rect.height) * 0.5,
+			};
+			break;
+		}
+	}
+
+	const auto kRefreshViewIndex = pane_array_index_at(layout_, kSize, point);
+	if (!kRefreshViewIndex.has_value()) {
+		return;
+	}
+
+	const ViewportPane &pane = kPanes[*kRefreshViewIndex];
+	const quader::math::Vec2 kLocalPosition{
+		static_cast<float>(point.x - pane.rect.x),
+		static_cast<float>(point.y - pane.rect.y),
+	};
+	const auto kRay = ray_for_point(point, kSize);
+	const ViewportCameraSnapshotArray kSnapshots = cameras_.camera_snapshots();
+	const ViewportCameraSnapshot &camera = kSnapshots[static_cast<std::size_t>(std::clamp(pane.camera_index, 0, 3))];
+	quader::tools::PointerEvent event{
+		.position = kLocalPosition,
+		.phase = quader::tools::PointerPhase::Hover,
+		.snap_to_grid = true,
+		.grid_size = 1.0F,
+		.ray = kRay,
+		.camera = quader::tools::ViewportCameraInput{
+				.eye = camera.eye,
+				.target = camera.target,
+				.up = camera.up,
+				.forward = camera.forward,
+				.projection = camera.projection == CameraProjection::Orthographic
+						? quader::tools::ViewportCameraProjection::Orthographic
+						: quader::tools::ViewportCameraProjection::Perspective,
+				.fov_degrees = camera.fov_degrees,
+				.orthographic_size = camera.orthographic_size,
+				.viewport_size_pixels = {
+						static_cast<float>(std::max(1, pane.rect.width)),
+						static_cast<float>(std::max(1, pane.rect.height)),
+				},
+		},
+		.view_index = static_cast<std::uint32_t>(*kRefreshViewIndex),
+	};
+	(void)tool_manager_->dispatch_pointer_event(event);
 }
 
 ViewportPixelSize ViewportController::safe_size(ViewportPixelSize size) const noexcept {

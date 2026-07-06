@@ -19,6 +19,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace quader::commands {
 
@@ -120,6 +121,38 @@ private:
 	quader::document::ObjectId object_;
 	quader::document::Transform transform_;
 	std::optional<quader::document::Transform> previous_transform_;
+};
+
+/// One object transform replacement inside a batch transform command.
+struct ObjectTransformEdit {
+	/// Object whose transform is replaced.
+	quader::document::ObjectId object;
+	/// New transform for `object`.
+	quader::document::Transform transform;
+};
+
+/**
+ * Undoable command that replaces multiple object transforms atomically.
+ *
+ * All targets are validated before any document mutation, so stale ids,
+ * duplicate ids, invalid transforms, empty batches, and no-op batches reject
+ * without changing the document.
+ */
+class BatchSetObjectTransformsCommand final : public ICommand {
+public:
+	/// Construct a batch transform command.
+	explicit BatchSetObjectTransformsCommand(std::vector<ObjectTransformEdit> edits);
+
+	/// Return the command display name.
+	[[nodiscard]] std::string_view name() const noexcept override;
+	/// Apply all target transforms and capture previous transforms.
+	[[nodiscard]] CommandResult execute(quader::document::Document &document) override;
+	/// Restore all captured transforms.
+	[[nodiscard]] CommandResult undo(quader::document::Document &document) override;
+
+private:
+	std::vector<ObjectTransformEdit> edits_;
+	std::vector<ObjectTransformEdit> previous_edits_;
 };
 
 } // namespace quader::commands

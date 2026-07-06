@@ -10,7 +10,7 @@
 #pragma once
 
 #include "crimson/frame/frame_snapshot.hpp"
-#include "crimson/prototype_viewport.hpp"
+#include "crimson/viewport_frame.hpp"
 #include "crimson/renderer_diagnostics.hpp"
 #include "crimson/scene/render_world.hpp"
 #include "foundation/result.hpp"
@@ -21,13 +21,13 @@ namespace crimson {
 class FrameBuilder final {
 public:
 	/**
-	 * Build a renderer snapshot from a prototype viewport frame.
+	 * Build a renderer snapshot from a viewport frame input.
 	 *
 	 * @param frame Viewport frame data to validate and copy.
 	 * @return Snapshot ready for Crimson submission, or a renderer diagnostic.
 	 */
-	[[nodiscard]] quader::foundation::Result<FrameSnapshot, RendererDiagnostic> build_prototype_snapshot(
-			const PrototypeViewportFrame &frame) const;
+	[[nodiscard]] quader::foundation::Result<FrameSnapshot, RendererDiagnostic> build_snapshot(
+			const ViewportFrameInput &frame) const;
 };
 
 } // namespace crimson

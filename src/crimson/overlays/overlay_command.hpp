@@ -78,6 +78,10 @@ struct OverlayElementRef {
 	std::uint32_t edge_index = kInvalidOverlayElementIndex;
 	/// Vertex index when the primitive represents a vertex handle.
 	std::uint32_t vertex_index = kInvalidOverlayElementIndex;
+	/// First face incident to an edge primitive, when known.
+	std::uint32_t incident_face_index0 = kInvalidOverlayElementIndex;
+	/// Second face incident to an edge primitive, when known.
+	std::uint32_t incident_face_index1 = kInvalidOverlayElementIndex;
 };
 
 /// Renderer command describing one overlay draw payload.
@@ -224,7 +228,8 @@ struct PointOverlayPrimitive {
 [[nodiscard]] OverlaySourceKind effective_overlay_source_kind(
 		const OverlayCommand &command,
 		OverlaySourceKind payload_source_kind) noexcept;
-/// Resolve semantic overlay depth mode, keeping source wire on top and component handles depth-tested.
+/// Resolve semantic overlay draw bucket, keeping source wire and component
+/// handles in authored layer order while render state applies component depth.
 [[nodiscard]] OverlayDepthMode effective_overlay_depth_mode(
 		const OverlayCommand &command,
 		OverlaySemanticRole role,

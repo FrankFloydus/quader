@@ -15,6 +15,7 @@
 #include <QAbstractItemModelTester>
 #include <QApplication>
 #include <QModelIndex>
+#include <QSignalSpy>
 #include <QString>
 #include <QVariant>
 
@@ -182,6 +183,39 @@ TEST(UiDiagnosticsModel, CopyTextHelpersIncludeUsefulDiagnostics) {
 	EXPECT_TRUE(kAllCopy.contains(QStringLiteral("Render Passes")));
 	EXPECT_TRUE(kAllCopy.contains(QStringLiteral("uploaded_vertex_bytes")));
 	EXPECT_TRUE(kAllCopy.contains(QStringLiteral("Capture unsupported")));
+}
+
+TEST(UiDiagnosticsModel, StableTopologyRefreshUpdatesDataWithoutModelReset) {
+	FakeRenderHost host;
+	host.diagnostics = make_snapshot();
+	quader::ui::ViewportDiagnosticsService service;
+	service.attach_render_host(host);
+	quader::ui::DiagnosticsItemModel model(service);
+	QAbstractItemModelTester tester(&model, QAbstractItemModelTester::FailureReportingMode::Fatal);
+
+	service.refresh();
+	QSignalSpy reset_spy(&model, &QAbstractItemModel::modelReset);
+	QSignalSpy data_spy(&model, &QAbstractItemModel::dataChanged);
+
+	auto updated = make_snapshot();
+	updated.frame.fps = 61.24;
+	updated.counters[0].value = 256;
+	updated.diagnostics[0].detail = QStringLiteral("Readback path is still inactive");
+	host.diagnostics = updated;
+
+	service.refresh();
+
+	EXPECT_EQ(reset_spy.count(), 0);
+	EXPECT_GT(data_spy.count(), 0);
+	const QModelIndex kSummary = section(model, 0);
+	const QModelIndex kFpsValue = child(model, kSummary, 3, quader::ui::DiagnosticsItemColumn::Value);
+	EXPECT_EQ(kFpsValue.data(Qt::DisplayRole).toString(), QStringLiteral("61.2 fps"));
+	const QModelIndex kCounterValue = child(model, section(model, 2), 0, quader::ui::DiagnosticsItemColumn::Value);
+	EXPECT_EQ(kCounterValue.data(Qt::DisplayRole).toString(), QStringLiteral("256 Bytes"));
+	const QModelIndex kDiagnostic = child(model, section(model, 3), 0);
+	EXPECT_TRUE(kDiagnostic.data(quader::ui::diagnostics_item_roles::kCopyTextRole)
+					.toString()
+					.contains(QStringLiteral("Readback path is still inactive")));
 }
 
 } // namespace

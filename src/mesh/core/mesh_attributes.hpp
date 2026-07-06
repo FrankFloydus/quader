@@ -228,6 +228,12 @@ public:
 	template <class T>
 	[[nodiscard]] quader::foundation::Result<T *, MeshError> value(AttributeId id,
 			quader::foundation::IdIndex slot) {
+		if (!is_valid_attribute_id(id)) {
+			return quader::foundation::Result<T *, MeshError>::failure(
+					make_mesh_error(MeshErrorCode::InvalidAttribute,
+							"mesh attribute id does not resolve to a live attribute"));
+		}
+
 		auto *storage = typed_storage<T>(id);
 		if (storage == nullptr) {
 			return quader::foundation::Result<T *, MeshError>::failure(
@@ -254,6 +260,12 @@ public:
 	template <class T>
 	[[nodiscard]] quader::foundation::Result<const T *, MeshError> value(AttributeId id,
 			quader::foundation::IdIndex slot) const {
+		if (!is_valid_attribute_id(id)) {
+			return quader::foundation::Result<const T *, MeshError>::failure(
+					make_mesh_error(MeshErrorCode::InvalidAttribute,
+							"mesh attribute id does not resolve to a live attribute"));
+		}
+
 		const auto *storage = typed_storage<T>(id);
 		if (storage == nullptr) {
 			return quader::foundation::Result<const T *, MeshError>::failure(

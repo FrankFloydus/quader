@@ -40,20 +40,22 @@ constexpr std::array<std::pair<std::size_t, std::size_t>, 12> kBoxEdges{
 };
 
 constexpr crimson::ColorSrgb kSelectedObjectTopologyColorSrgb{ 1.0F, 211.0F / 255.0F, 31.0F / 255.0F, 1.0F };
-constexpr crimson::ColorSrgb kSourceWireColorSrgb{ 92.0F / 255.0F, 224.0F / 255.0F, 1.0F, 0.92F };
-constexpr crimson::ColorSrgb kSelectedComponentLineColorSrgb{ 92.0F / 255.0F, 224.0F / 255.0F, 1.0F, 1.0F };
+constexpr crimson::ColorSrgb kSourceWireColorSrgb{ 92.0F / 255.0F, 224.0F / 255.0F, 1.0F, 235.0F / 255.0F };
+constexpr crimson::ColorSrgb kSelectedComponentLineColorSrgb{ 1.0F, 211.0F / 255.0F, 31.0F / 255.0F, 1.0F };
 constexpr crimson::ColorSrgb kSelectedVertexColorSrgb{ 1.0F, 173.0F / 255.0F, 31.0F / 255.0F, 1.0F };
-constexpr crimson::ColorSrgb kSelectedFaceFillColorSrgb{ 1.0F, 0.66F, 0.10F, 0.16F };
+constexpr crimson::ColorSrgb kSelectedFaceFillColorSrgb{ 1.0F, 172.0F / 255.0F, 31.0F / 255.0F, 8.0F / 255.0F };
 constexpr crimson::ColorSrgb kHoverWireColorSrgb{ 81.0F / 255.0F, 1.0F, 0.0F, 1.0F };
-constexpr crimson::ColorSrgb kHoverFaceFillColorSrgb{ 102.0F / 255.0F, 1.0F, 31.0F / 255.0F, 0.12F };
+constexpr crimson::ColorSrgb kHoverFaceFillColorSrgb{ 102.0F / 255.0F, 1.0F, 31.0F / 255.0F, 22.0F / 255.0F };
 constexpr crimson::ColorSrgb kSourceVertexColorSrgb{ 107.0F / 255.0F, 230.0F / 255.0F, 1.0F, 1.0F };
 constexpr crimson::ColorSrgb kHoverVertexColorSrgb{ 0.0F, 1.0F, 56.0F / 255.0F, 1.0F };
-constexpr float kSelectedObjectTopologyThicknessPx = 3.0F;
+constexpr crimson::ColorSrgb kVertexOutlineColorSrgb{ 0.0F, 0.0F, 0.0F, 230.0F / 255.0F };
+constexpr float kSelectedObjectTopologyThicknessPx = 2.5F;
 constexpr float kSourceWireThicknessPx = 1.5F;
 constexpr float kSelectedComponentLineThicknessPx = 2.5F;
 constexpr float kSelectedVertexSizePx = 7.5F;
 constexpr float kSourceVertexSizePx = 7.0F;
 constexpr float kHoverVertexSizePx = 7.5F;
+constexpr float kVertexOutlineGrowthPx = 1.0F;
 
 constexpr float kPi = 3.14159265358979323846F;
 
@@ -133,6 +135,46 @@ struct EdgeWorldPoints {
 	}
 
 	return EdgeWorldPoints{ *start, *end };
+}
+
+[[nodiscard]] std::array<std::uint32_t, 2> edge_incident_face_indices(
+		const quader::mesh::Polyhedron &mesh,
+		quader::mesh::EdgeId edge) {
+	std::array<std::uint32_t, 2> result{
+		crimson::kInvalidOverlayElementIndex,
+		crimson::kInvalidOverlayElementIndex,
+	};
+	auto halfedges = mesh.edge_halfedges(edge);
+	if (!halfedges) {
+		return result;
+	}
+
+	std::size_t out = 0U;
+	for (const quader::mesh::HalfedgeId halfedge : halfedges.value()) {
+		auto boundary = mesh.is_boundary_halfedge(halfedge);
+		if (boundary && boundary.value()) {
+			continue;
+		}
+		auto face = mesh.halfedge_face(halfedge);
+		if (!face || out >= result.size()) {
+			continue;
+		}
+		result[out++] = face.value().index();
+	}
+	return result;
+}
+
+[[nodiscard]] crimson::OverlayElementRef edge_element_ref(
+		const quader::document::MeshObject &object,
+		quader::mesh::EdgeId edge) {
+	const std::array<std::uint32_t, 2> kIncidentFaces =
+			edge_incident_face_indices(object.mesh, edge);
+	return crimson::OverlayElementRef{
+		.object_id = render_object_id_for_document_object(object.id),
+		.edge_index = edge.index(),
+		.incident_face_index0 = kIncidentFaces[0],
+		.incident_face_index1 = kIncidentFaces[1],
+	};
 }
 
 [[nodiscard]] quader::document::ObjectId object_id_from_encoded_hit(std::uint64_t encoded) noexcept {
@@ -260,6 +302,62 @@ struct EdgeWorldPoints {
 	return quader::document::ObjectId::invalid();
 }
 
+[[nodiscard]] bool selection_has_current_mode_component(
+		const quader::document::Selection &selection) noexcept {
+	const quader::document::SelectionMode kMode = selection.mode();
+	if (kMode == quader::document::SelectionMode::Object) {
+		return false;
+	}
+
+	return std::any_of(selection.selected_components().begin(),
+			selection.selected_components().end(),
+			[kMode](const quader::document::ComponentRef &component) {
+				return mode_has_matching_component(component, kMode);
+			});
+}
+
+[[nodiscard]] bool hover_matches_face(
+		const quader::document::MeshObject &object,
+		quader::mesh::FaceId face,
+		const std::optional<quader::tools::SurfaceHit> &selection_hover) {
+	if (!selection_hover.has_value() ||
+			selection_hover->kind != quader::tools::SurfaceHitKind::Face ||
+			object_id_from_hit(*selection_hover) != object.id) {
+		return false;
+	}
+
+	const std::optional<quader::mesh::FaceId> kHoverFace = face_id_from_hit(object.mesh, *selection_hover);
+	return kHoverFace.has_value() && *kHoverFace == face;
+}
+
+[[nodiscard]] bool hover_matches_edge(
+		const quader::document::MeshObject &object,
+		quader::mesh::EdgeId edge,
+		const std::optional<quader::tools::SurfaceHit> &selection_hover) {
+	if (!selection_hover.has_value() ||
+			selection_hover->kind != quader::tools::SurfaceHitKind::Edge ||
+			object_id_from_hit(*selection_hover) != object.id) {
+		return false;
+	}
+
+	const std::optional<quader::mesh::EdgeId> kHoverEdge = edge_id_from_hit(object.mesh, *selection_hover);
+	return kHoverEdge.has_value() && *kHoverEdge == edge;
+}
+
+[[nodiscard]] bool hover_matches_vertex(
+		const quader::document::MeshObject &object,
+		quader::mesh::VertexId vertex,
+		const std::optional<quader::tools::SurfaceHit> &selection_hover) {
+	if (!selection_hover.has_value() ||
+			selection_hover->kind != quader::tools::SurfaceHitKind::Vertex ||
+			object_id_from_hit(*selection_hover) != object.id) {
+		return false;
+	}
+
+	const std::optional<quader::mesh::VertexId> kHoverVertex = vertex_id_from_hit(object.mesh, *selection_hover);
+	return kHoverVertex.has_value() && *kHoverVertex == vertex;
+}
+
 [[nodiscard]] std::vector<quader::math::Vec3> face_world_points(
 		const quader::document::MeshObject &object,
 		quader::mesh::FaceId face) {
@@ -319,7 +417,6 @@ void append_mesh_wire_payloads(
 		crimson::OverlaySemanticRole role,
 		crimson::OverlaySourceKind source,
 		std::vector<crimson::LineOverlaySegment> &line_payloads) {
-	const crimson::RenderObjectId kRenderObject = render_object_id_for_document_object(object.id);
 	for (const quader::mesh::EdgeId kEdge : object.mesh.edge_ids()) {
 		auto points = edge_world_points(object, kEdge);
 		if (!points) {
@@ -331,10 +428,7 @@ void append_mesh_wire_payloads(
 				.end = points->end,
 				.semantic_role = role,
 				.source_kind = source,
-				.element = crimson::OverlayElementRef{
-						.object_id = kRenderObject,
-						.edge_index = kEdge.index(),
-				},
+				.element = edge_element_ref(object, kEdge),
 		});
 	}
 }
@@ -424,23 +518,20 @@ void append_face_boundary_line_payloads(
 		return;
 	}
 
-	const crimson::RenderObjectId kRenderObject = render_object_id_for_document_object(object.id);
 	for (const quader::mesh::EdgeId kEdge : edges.value()) {
 		auto points = edge_world_points(object, kEdge);
 		if (!points) {
 			continue;
 		}
 
+		crimson::OverlayElementRef element = edge_element_ref(object, kEdge);
+		element.face_index = face.index();
 		line_payloads.push_back(crimson::LineOverlaySegment{
 				.start = points->start,
 				.end = points->end,
 				.semantic_role = role,
 				.source_kind = source,
-				.element = crimson::OverlayElementRef{
-						.object_id = kRenderObject,
-						.face_index = face.index(),
-						.edge_index = kEdge.index(),
-				},
+				.element = element,
 		});
 	}
 }
@@ -461,8 +552,10 @@ void append_object_selection_overlays(
 		const quader::document::Document &document,
 		std::size_t view_count,
 		std::vector<crimson::OverlayCommand> &overlays,
-		std::vector<crimson::LineOverlaySegment> &line_payloads) {
+		std::vector<crimson::LineOverlaySegment> &line_payloads,
+		std::vector<crimson::TriangleOverlayPrimitive> &triangle_payloads) {
 	const std::uint32_t kLineOffset = static_cast<std::uint32_t>(line_payloads.size());
+	const std::uint32_t kTriangleOffset = static_cast<std::uint32_t>(triangle_payloads.size());
 	for (const quader::document::ObjectId kObject : document.selection().selected_objects()) {
 		const auto *object = document.find_mesh_object(kObject);
 		if (object == nullptr) {
@@ -472,6 +565,13 @@ void append_object_selection_overlays(
 				crimson::OverlaySemanticRole::SelectedObjectTopology,
 				crimson::OverlaySourceKind::ObjectSelection,
 				line_payloads);
+		for (const quader::mesh::FaceId kFace : object->mesh.face_ids()) {
+			append_face_triangle_payloads(*object,
+					kFace,
+					crimson::OverlaySemanticRole::SelectedFaceFill,
+					crimson::OverlaySourceKind::ObjectSelection,
+					triangle_payloads);
+		}
 	}
 
 	const std::uint32_t kLineCount = static_cast<std::uint32_t>(line_payloads.size()) - kLineOffset;
@@ -486,6 +586,19 @@ void append_object_selection_overlays(
 			kSelectedObjectTopologyThicknessPx,
 			kLineOffset,
 			kLineCount);
+
+	const std::uint32_t kTriangleCount = static_cast<std::uint32_t>(triangle_payloads.size()) - kTriangleOffset;
+	append_overlay_command_for_views(view_count,
+			overlays,
+			crimson::OverlayPrimitive::SolidTriangles,
+			crimson::OverlayDepthMode::XRay,
+			crimson::OverlaySemanticRole::SelectedFaceFill,
+			crimson::OverlaySourceKind::ObjectSelection,
+			kSelectedFaceFillColorSrgb,
+			1.0F,
+			1.0F,
+			kTriangleOffset,
+			kTriangleCount);
 }
 
 void append_source_wire_overlays_for_object(
@@ -589,11 +702,13 @@ void append_selected_component_overlays(
 		std::vector<crimson::OverlayCommand> &overlays,
 		std::vector<crimson::LineOverlaySegment> &line_payloads,
 		std::vector<crimson::TriangleOverlayPrimitive> &triangle_payloads,
-		std::vector<crimson::PointOverlayPrimitive> &point_payloads) {
-	const std::uint32_t kFaceLineOffset = static_cast<std::uint32_t>(line_payloads.size());
+		std::vector<crimson::PointOverlayPrimitive> &point_payloads,
+		const std::optional<quader::tools::SurfaceHit> &selection_hover,
+		bool selection_hover_suppresses_selected) {
 	const std::uint32_t kFaceTriangleOffset = static_cast<std::uint32_t>(triangle_payloads.size());
-	const std::uint32_t kEdgeLineOffset = kFaceLineOffset;
-	const std::uint32_t kPointOffset = static_cast<std::uint32_t>(point_payloads.size());
+	std::vector<crimson::LineOverlaySegment> selected_face_lines;
+	std::vector<crimson::LineOverlaySegment> selected_edge_lines;
+	std::vector<crimson::PointOverlayPrimitive> selected_vertex_points;
 
 	for (const quader::document::ComponentRef &component : document.selection().selected_components()) {
 		const auto *object = document.find_mesh_object(component.object);
@@ -602,6 +717,9 @@ void append_selected_component_overlays(
 		}
 
 		if (const auto *face = std::get_if<quader::mesh::FaceId>(&component.component)) {
+			if (selection_hover_suppresses_selected && hover_matches_face(*object, *face, selection_hover)) {
+				continue;
+			}
 			append_face_triangle_payloads(*object,
 					*face,
 					crimson::OverlaySemanticRole::SelectedFaceFill,
@@ -611,36 +729,39 @@ void append_selected_component_overlays(
 					*face,
 					crimson::OverlaySemanticRole::SelectedFaceEdge,
 					crimson::OverlaySourceKind::ComponentSelection,
-					line_payloads);
+					selected_face_lines);
 			continue;
 		}
 
 		if (const auto *edge = std::get_if<quader::mesh::EdgeId>(&component.component)) {
+			if (selection_hover_suppresses_selected && hover_matches_edge(*object, *edge, selection_hover)) {
+				continue;
+			}
 			auto points = edge_world_points(*object, *edge);
 			if (!points) {
 				continue;
 			}
 
-			line_payloads.push_back(crimson::LineOverlaySegment{
+			selected_edge_lines.push_back(crimson::LineOverlaySegment{
 					.start = points->start,
 					.end = points->end,
 					.semantic_role = crimson::OverlaySemanticRole::SelectedEdge,
 					.source_kind = crimson::OverlaySourceKind::ComponentSelection,
-					.element = crimson::OverlayElementRef{
-							.object_id = render_object_id_for_document_object(object->id),
-							.edge_index = edge->index(),
-					},
+					.element = edge_element_ref(*object, *edge),
 			});
 			continue;
 		}
 
 		if (const auto *vertex = std::get_if<quader::mesh::VertexId>(&component.component)) {
+			if (selection_hover_suppresses_selected && hover_matches_vertex(*object, *vertex, selection_hover)) {
+				continue;
+			}
 			auto position = vertex_world_position(*object, *vertex);
 			if (!position) {
 				continue;
 			}
 
-			point_payloads.push_back(crimson::PointOverlayPrimitive{
+			selected_vertex_points.push_back(crimson::PointOverlayPrimitive{
 					.position = *position,
 					.size_px = kSelectedVertexSizePx,
 					.semantic_role = crimson::OverlaySemanticRole::SelectedVertex,
@@ -657,7 +778,7 @@ void append_selected_component_overlays(
 	append_overlay_command_for_views(view_count,
 			overlays,
 			crimson::OverlayPrimitive::SolidTriangles,
-			crimson::OverlayDepthMode::XRay,
+			crimson::OverlayDepthMode::DepthTested,
 			crimson::OverlaySemanticRole::SelectedFaceFill,
 			crimson::OverlaySourceKind::ComponentSelection,
 			kSelectedFaceFillColorSrgb,
@@ -666,7 +787,24 @@ void append_selected_component_overlays(
 			kFaceTriangleOffset,
 			kFaceTriangleCount);
 
-	const std::uint32_t kLineCount = static_cast<std::uint32_t>(line_payloads.size()) - kEdgeLineOffset;
+	const std::uint32_t kFaceLineOffset = static_cast<std::uint32_t>(line_payloads.size());
+	line_payloads.insert(line_payloads.end(), selected_face_lines.begin(), selected_face_lines.end());
+	const std::uint32_t kFaceLineCount = static_cast<std::uint32_t>(selected_face_lines.size());
+	append_overlay_command_for_views(view_count,
+			overlays,
+			crimson::OverlayPrimitive::LineList,
+			crimson::OverlayDepthMode::AlwaysOnTop,
+			crimson::OverlaySemanticRole::SelectedFaceEdge,
+			crimson::OverlaySourceKind::ComponentSelection,
+			kSelectedComponentLineColorSrgb,
+			1.0F,
+			kSelectedComponentLineThicknessPx,
+			kFaceLineOffset,
+			kFaceLineCount);
+
+	const std::uint32_t kEdgeLineOffset = static_cast<std::uint32_t>(line_payloads.size());
+	line_payloads.insert(line_payloads.end(), selected_edge_lines.begin(), selected_edge_lines.end());
+	const std::uint32_t kEdgeLineCount = static_cast<std::uint32_t>(selected_edge_lines.size());
 	append_overlay_command_for_views(view_count,
 			overlays,
 			crimson::OverlayPrimitive::LineList,
@@ -677,9 +815,28 @@ void append_selected_component_overlays(
 			1.0F,
 			kSelectedComponentLineThicknessPx,
 			kEdgeLineOffset,
-			kLineCount);
+			kEdgeLineCount);
 
-	const std::uint32_t kPointCount = static_cast<std::uint32_t>(point_payloads.size()) - kPointOffset;
+	const std::uint32_t kPointFillOffset = static_cast<std::uint32_t>(point_payloads.size());
+	point_payloads.insert(point_payloads.end(), selected_vertex_points.begin(), selected_vertex_points.end());
+	const std::uint32_t kPointFillCount = static_cast<std::uint32_t>(selected_vertex_points.size());
+	const std::uint32_t kPointOutlineOffset = static_cast<std::uint32_t>(point_payloads.size());
+	for (crimson::PointOverlayPrimitive outline : selected_vertex_points) {
+		outline.size_px += kVertexOutlineGrowthPx * 2.0F;
+		point_payloads.push_back(outline);
+	}
+	const std::uint32_t kPointOutlineCount = static_cast<std::uint32_t>(selected_vertex_points.size());
+	append_overlay_command_for_views(view_count,
+			overlays,
+			crimson::OverlayPrimitive::PointList,
+			crimson::OverlayDepthMode::AlwaysOnTop,
+			crimson::OverlaySemanticRole::SelectedVertex,
+			crimson::OverlaySourceKind::ComponentSelection,
+			kVertexOutlineColorSrgb,
+			1.0F,
+			kSelectedVertexSizePx + kVertexOutlineGrowthPx * 2.0F,
+			kPointOutlineOffset,
+			kPointOutlineCount);
 	append_overlay_command_for_views(view_count,
 			overlays,
 			crimson::OverlayPrimitive::PointList,
@@ -689,8 +846,8 @@ void append_selected_component_overlays(
 			kSelectedVertexColorSrgb,
 			1.0F,
 			kSelectedVertexSizePx,
-			kPointOffset,
-			kPointCount);
+			kPointFillOffset,
+			kPointFillCount);
 }
 
 void append_hover_component_overlays(
@@ -713,7 +870,7 @@ void append_hover_component_overlays(
 
 	const quader::document::ObjectId kCurrentSourceWireObject =
 			inferred_component_source_wire_object_id(document, selection_hover);
-	if (kCurrentSourceWireObject != kObjectId) {
+	if (kCurrentSourceWireObject != kObjectId && !selection_has_current_mode_component(document.selection())) {
 		append_source_wire_overlays_for_object(*object,
 				document.selection(),
 				document.selection().mode() == quader::document::SelectionMode::Vertex,
@@ -724,9 +881,10 @@ void append_hover_component_overlays(
 				point_payloads);
 	}
 
-	const std::uint32_t kLineOffset = static_cast<std::uint32_t>(line_payloads.size());
 	const std::uint32_t kTriangleOffset = static_cast<std::uint32_t>(triangle_payloads.size());
-	const std::uint32_t kPointOffset = static_cast<std::uint32_t>(point_payloads.size());
+	std::vector<crimson::LineOverlaySegment> hover_face_lines;
+	std::vector<crimson::LineOverlaySegment> hover_edge_lines;
+	std::vector<crimson::PointOverlayPrimitive> hover_vertex_points;
 
 	switch (selection_hover->kind) {
 		case quader::tools::SurfaceHitKind::Face: {
@@ -743,7 +901,7 @@ void append_hover_component_overlays(
 					*kFace,
 					crimson::OverlaySemanticRole::HoverFaceEdge,
 					crimson::OverlaySourceKind::ComponentHover,
-					line_payloads);
+					hover_face_lines);
 			break;
 		}
 		case quader::tools::SurfaceHitKind::Edge: {
@@ -755,15 +913,12 @@ void append_hover_component_overlays(
 			if (!points) {
 				return;
 			}
-			line_payloads.push_back(crimson::LineOverlaySegment{
+			hover_edge_lines.push_back(crimson::LineOverlaySegment{
 					.start = points->start,
 					.end = points->end,
 					.semantic_role = crimson::OverlaySemanticRole::HoverEdge,
 					.source_kind = crimson::OverlaySourceKind::ComponentHover,
-					.element = crimson::OverlayElementRef{
-							.object_id = render_object_id_for_document_object(object->id),
-							.edge_index = kEdge->index(),
-					},
+					.element = edge_element_ref(*object, *kEdge),
 			});
 			break;
 		}
@@ -776,7 +931,7 @@ void append_hover_component_overlays(
 			if (!position) {
 				return;
 			}
-			point_payloads.push_back(crimson::PointOverlayPrimitive{
+			hover_vertex_points.push_back(crimson::PointOverlayPrimitive{
 					.position = *position,
 					.size_px = kHoverVertexSizePx,
 					.semantic_role = crimson::OverlaySemanticRole::HoverVertex,
@@ -806,7 +961,24 @@ void append_hover_component_overlays(
 			kTriangleOffset,
 			kTriangleCount);
 
-	const std::uint32_t kLineCount = static_cast<std::uint32_t>(line_payloads.size()) - kLineOffset;
+	const std::uint32_t kFaceLineOffset = static_cast<std::uint32_t>(line_payloads.size());
+	line_payloads.insert(line_payloads.end(), hover_face_lines.begin(), hover_face_lines.end());
+	const std::uint32_t kFaceLineCount = static_cast<std::uint32_t>(hover_face_lines.size());
+	append_overlay_command_for_views(view_count,
+			overlays,
+			crimson::OverlayPrimitive::LineList,
+			crimson::OverlayDepthMode::AlwaysOnTop,
+			crimson::OverlaySemanticRole::HoverFaceEdge,
+			crimson::OverlaySourceKind::ComponentHover,
+			kHoverWireColorSrgb,
+			1.0F,
+			kSelectedComponentLineThicknessPx,
+			kFaceLineOffset,
+			kFaceLineCount);
+
+	const std::uint32_t kEdgeLineOffset = static_cast<std::uint32_t>(line_payloads.size());
+	line_payloads.insert(line_payloads.end(), hover_edge_lines.begin(), hover_edge_lines.end());
+	const std::uint32_t kEdgeLineCount = static_cast<std::uint32_t>(hover_edge_lines.size());
 	append_overlay_command_for_views(view_count,
 			overlays,
 			crimson::OverlayPrimitive::LineList,
@@ -816,10 +988,29 @@ void append_hover_component_overlays(
 			kHoverWireColorSrgb,
 			1.0F,
 			kSelectedComponentLineThicknessPx,
-			kLineOffset,
-			kLineCount);
+			kEdgeLineOffset,
+			kEdgeLineCount);
 
-	const std::uint32_t kPointCount = static_cast<std::uint32_t>(point_payloads.size()) - kPointOffset;
+	const std::uint32_t kPointFillOffset = static_cast<std::uint32_t>(point_payloads.size());
+	point_payloads.insert(point_payloads.end(), hover_vertex_points.begin(), hover_vertex_points.end());
+	const std::uint32_t kPointFillCount = static_cast<std::uint32_t>(hover_vertex_points.size());
+	const std::uint32_t kPointOutlineOffset = static_cast<std::uint32_t>(point_payloads.size());
+	for (crimson::PointOverlayPrimitive outline : hover_vertex_points) {
+		outline.size_px += kVertexOutlineGrowthPx * 2.0F;
+		point_payloads.push_back(outline);
+	}
+	const std::uint32_t kPointOutlineCount = static_cast<std::uint32_t>(hover_vertex_points.size());
+	append_overlay_command_for_views(view_count,
+			overlays,
+			crimson::OverlayPrimitive::PointList,
+			crimson::OverlayDepthMode::AlwaysOnTop,
+			crimson::OverlaySemanticRole::HoverVertex,
+			crimson::OverlaySourceKind::ComponentHover,
+			kVertexOutlineColorSrgb,
+			1.0F,
+			kHoverVertexSizePx + kVertexOutlineGrowthPx * 2.0F,
+			kPointOutlineOffset,
+			kPointOutlineCount);
 	append_overlay_command_for_views(view_count,
 			overlays,
 			crimson::OverlayPrimitive::PointList,
@@ -829,8 +1020,8 @@ void append_hover_component_overlays(
 			kHoverVertexColorSrgb,
 			1.0F,
 			kHoverVertexSizePx,
-			kPointOffset,
-			kPointCount);
+			kPointFillOffset,
+			kPointFillCount);
 }
 
 } // namespace
@@ -841,66 +1032,170 @@ crimson::RenderObjectId render_object_id_for_document_object(
 			static_cast<crimson::RenderObjectId>(id.index());
 }
 
+void append_tool_preview_overlays(
+		const quader::tools::ToolPreview &preview,
+		std::size_t view_count,
+		std::vector<crimson::OverlayCommand> &overlays,
+		std::vector<crimson::LineOverlaySegment> &line_payloads,
+		std::vector<crimson::TriangleOverlayPrimitive> &triangle_payloads) {
+	if (!preview.active || view_count == 0U) {
+		return;
+	}
+
+	for (const quader::tools::ToolPreviewColoredWorldTriangle &triangle : preview.colored_world_triangles) {
+		const std::uint32_t kPayloadOffset = static_cast<std::uint32_t>(triangle_payloads.size());
+		triangle_payloads.push_back(crimson::TriangleOverlayPrimitive{
+				.a = triangle.a,
+				.b = triangle.b,
+				.c = triangle.c,
+				.semantic_role = crimson::OverlaySemanticRole::ToolPreview,
+				.source_kind = crimson::OverlaySourceKind::ToolPreview,
+		});
+
+		const crimson::ColorSrgb kColor{
+			triangle.color_srgb.red,
+			triangle.color_srgb.green,
+			triangle.color_srgb.blue,
+			triangle.color_srgb.alpha,
+		};
+		auto append_overlay = [&](std::uint32_t view_index) {
+			overlays.push_back(crimson::OverlayCommand{
+					.view_index = view_index,
+					.primitive = crimson::OverlayPrimitive::SolidTriangles,
+					.depth_mode = crimson::OverlayDepthMode::AlwaysOnTop,
+					.semantic_role = crimson::OverlaySemanticRole::ToolPreview,
+					.source_kind = crimson::OverlaySourceKind::ToolPreview,
+					.base_shader = crimson::BaseShaderId::OverlayUnlit,
+					.color_srgb = kColor,
+					.opacity = 1.0F,
+					.thickness_px = 1.0F,
+					.payload_offset = kPayloadOffset,
+					.payload_count = 1,
+			});
+		};
+
+		if (preview.view_index.has_value()) {
+			if (*preview.view_index < view_count) {
+				append_overlay(*preview.view_index);
+			}
+			continue;
+		}
+
+		overlays.reserve(overlays.size() + view_count);
+		for (std::size_t index = 0; index < view_count; ++index) {
+			append_overlay(static_cast<std::uint32_t>(index));
+		}
+	}
+
+	if (!preview.world_segments.empty() || !preview.boxes.empty()) {
+		const std::uint32_t kPayloadOffset = static_cast<std::uint32_t>(line_payloads.size());
+		for (const quader::tools::ToolPreviewWorldSegment &segment : preview.world_segments) {
+			line_payloads.push_back(crimson::LineOverlaySegment{
+					.start = segment.start,
+					.end = segment.end,
+					.semantic_role = crimson::OverlaySemanticRole::ToolPreview,
+					.source_kind = crimson::OverlaySourceKind::ToolPreview,
+			});
+		}
+		for (const quader::tools::ToolPreviewBox &box : preview.boxes) {
+			if (!box.active) {
+				continue;
+			}
+			const std::size_t kFirstBoxEdge = preview.world_segments.empty() ? 0U : 4U;
+			for (std::size_t edge_index = kFirstBoxEdge; edge_index < kBoxEdges.size(); ++edge_index) {
+				const auto &[start_index, end_index] = kBoxEdges[edge_index];
+				line_payloads.push_back(crimson::LineOverlaySegment{
+						.start = box.corners[start_index],
+						.end = box.corners[end_index],
+						.semantic_role = crimson::OverlaySemanticRole::ToolPreview,
+						.source_kind = crimson::OverlaySourceKind::ToolPreview,
+				});
+			}
+		}
+
+		const std::uint32_t kPayloadCount = static_cast<std::uint32_t>(line_payloads.size()) - kPayloadOffset;
+		if (kPayloadCount != 0U) {
+			auto append_overlay = [&](std::uint32_t view_index) {
+				overlays.push_back(crimson::OverlayCommand{
+						.view_index = view_index,
+						.primitive = crimson::OverlayPrimitive::LineList,
+						.depth_mode = crimson::OverlayDepthMode::AlwaysOnTop,
+						.semantic_role = crimson::OverlaySemanticRole::ToolPreview,
+						.source_kind = crimson::OverlaySourceKind::ToolPreview,
+						.base_shader = crimson::BaseShaderId::OverlayUnlit,
+						.color_srgb = kBoxToolPreviewLineColorSrgb,
+						.opacity = kBoxToolPreviewLineOpacity,
+						.thickness_px = kBoxToolPreviewLineThicknessPx,
+						.payload_offset = kPayloadOffset,
+						.payload_count = kPayloadCount,
+				});
+			};
+
+			if (preview.view_index.has_value()) {
+				if (*preview.view_index < view_count) {
+					append_overlay(*preview.view_index);
+				}
+			} else {
+				overlays.reserve(overlays.size() + view_count);
+				for (std::size_t index = 0; index < view_count; ++index) {
+					append_overlay(static_cast<std::uint32_t>(index));
+				}
+			}
+		}
+	}
+
+	for (const quader::tools::ToolPreviewColoredWorldSegment &segment : preview.colored_world_segments) {
+		const std::uint32_t kPayloadOffset = static_cast<std::uint32_t>(line_payloads.size());
+		line_payloads.push_back(crimson::LineOverlaySegment{
+				.start = segment.start,
+				.end = segment.end,
+				.semantic_role = crimson::OverlaySemanticRole::ToolPreview,
+				.source_kind = crimson::OverlaySourceKind::ToolPreview,
+		});
+
+		const crimson::ColorSrgb kColor{
+			segment.color_srgb.red,
+			segment.color_srgb.green,
+			segment.color_srgb.blue,
+			segment.color_srgb.alpha,
+		};
+		auto append_overlay = [&](std::uint32_t view_index) {
+			overlays.push_back(crimson::OverlayCommand{
+					.view_index = view_index,
+					.primitive = crimson::OverlayPrimitive::LineList,
+					.depth_mode = crimson::OverlayDepthMode::AlwaysOnTop,
+					.semantic_role = crimson::OverlaySemanticRole::ToolPreview,
+					.source_kind = crimson::OverlaySourceKind::ToolPreview,
+					.base_shader = crimson::BaseShaderId::OverlayUnlit,
+					.color_srgb = kColor,
+					.opacity = 1.0F,
+					.thickness_px = segment.thickness_px,
+					.payload_offset = kPayloadOffset,
+					.payload_count = 1,
+			});
+		};
+
+		if (preview.view_index.has_value()) {
+			if (*preview.view_index < view_count) {
+				append_overlay(*preview.view_index);
+			}
+			continue;
+		}
+
+		overlays.reserve(overlays.size() + view_count);
+		for (std::size_t index = 0; index < view_count; ++index) {
+			append_overlay(static_cast<std::uint32_t>(index));
+		}
+	}
+}
+
 void append_tool_preview_line_overlays(
 		const quader::tools::ToolPreview &preview,
 		std::size_t view_count,
 		std::vector<crimson::OverlayCommand> &overlays,
 		std::vector<crimson::LineOverlaySegment> &line_payloads) {
-	if (!preview.active || (preview.world_segments.empty() && preview.boxes.empty())) {
-		return;
-	}
-
-	const std::uint32_t kPayloadOffset = static_cast<std::uint32_t>(line_payloads.size());
-	for (const quader::tools::ToolPreviewWorldSegment &segment : preview.world_segments) {
-		line_payloads.push_back(crimson::LineOverlaySegment{
-				.start = segment.start,
-				.end = segment.end,
-		});
-	}
-	for (const quader::tools::ToolPreviewBox &box : preview.boxes) {
-		if (!box.active) {
-			continue;
-		}
-		const std::size_t kFirstBoxEdge = preview.world_segments.empty() ? 0U : 4U;
-		for (std::size_t edge_index = kFirstBoxEdge; edge_index < kBoxEdges.size(); ++edge_index) {
-			const auto &[start_index, end_index] = kBoxEdges[edge_index];
-			line_payloads.push_back(crimson::LineOverlaySegment{
-					.start = box.corners[start_index],
-					.end = box.corners[end_index],
-			});
-		}
-	}
-
-	const std::uint32_t kPayloadCount = static_cast<std::uint32_t>(line_payloads.size()) - kPayloadOffset;
-	if (kPayloadCount == 0U) {
-		return;
-	}
-
-	auto append_overlay = [&](std::uint32_t view_index) {
-		overlays.push_back(crimson::OverlayCommand{
-				.view_index = view_index,
-				.primitive = crimson::OverlayPrimitive::LineList,
-				.depth_mode = crimson::OverlayDepthMode::AlwaysOnTop,
-				.base_shader = crimson::BaseShaderId::OverlayUnlit,
-				.color_srgb = kBoxToolPreviewLineColorSrgb,
-				.opacity = kBoxToolPreviewLineOpacity,
-				.thickness_px = kBoxToolPreviewLineThicknessPx,
-				.payload_offset = kPayloadOffset,
-				.payload_count = kPayloadCount,
-		});
-	};
-
-	if (preview.view_index.has_value()) {
-		if (*preview.view_index < view_count) {
-			append_overlay(*preview.view_index);
-		}
-		return;
-	}
-
-	overlays.reserve(overlays.size() + view_count);
-	for (std::size_t index = 0; index < view_count; ++index) {
-		append_overlay(static_cast<std::uint32_t>(index));
-	}
+	std::vector<crimson::TriangleOverlayPrimitive> unused_triangle_payloads;
+	append_tool_preview_overlays(preview, view_count, overlays, line_payloads, unused_triangle_payloads);
 }
 
 void append_document_selection_overlays(
@@ -910,7 +1205,8 @@ void append_document_selection_overlays(
 		std::vector<crimson::LineOverlaySegment> &line_payloads,
 		std::vector<crimson::TriangleOverlayPrimitive> &triangle_payloads,
 		std::vector<crimson::PointOverlayPrimitive> &point_payloads,
-		const std::optional<quader::tools::SurfaceHit> &selection_hover) {
+		const std::optional<quader::tools::SurfaceHit> &selection_hover,
+		bool selection_hover_suppresses_selected) {
 	if (view_count == 0U) {
 		return;
 	}
@@ -919,7 +1215,7 @@ void append_document_selection_overlays(
 		if (document.selection().empty()) {
 			return;
 		}
-		append_object_selection_overlays(document, view_count, overlays, line_payloads);
+		append_object_selection_overlays(document, view_count, overlays, line_payloads, triangle_payloads);
 		return;
 	}
 
@@ -935,7 +1231,9 @@ void append_document_selection_overlays(
 			overlays,
 			line_payloads,
 			triangle_payloads,
-			point_payloads);
+			point_payloads,
+			selection_hover,
+			selection_hover_suppresses_selected);
 	append_hover_component_overlays(document,
 			view_count,
 			overlays,

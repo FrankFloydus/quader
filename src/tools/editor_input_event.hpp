@@ -109,6 +109,34 @@ struct SurfaceHit {
 	SurfaceHitKind kind = SurfaceHitKind::Grid;
 };
 
+/// Toolkit-neutral camera projection used by tools that need screen-space math.
+enum class ViewportCameraProjection {
+	/// Perspective projection.
+	Perspective,
+	/// Orthographic projection.
+	Orthographic,
+};
+
+/// Toolkit-neutral viewport camera snapshot for analytic tool picking/dragging.
+struct ViewportCameraInput {
+	/// Camera eye position in world space.
+	quader::math::Vec3 eye{};
+	/// Camera target point in world space.
+	quader::math::Vec3 target{};
+	/// Camera up vector in world space.
+	quader::math::Vec3 up{ 0.0F, 1.0F, 0.0F };
+	/// Camera forward vector in world space.
+	quader::math::Vec3 forward{ 0.0F, 0.0F, -1.0F };
+	/// Projection mode.
+	ViewportCameraProjection projection = ViewportCameraProjection::Perspective;
+	/// Perspective field of view in degrees.
+	float fov_degrees = 60.0F;
+	/// Orthographic view height in world units.
+	float orthographic_size = 24.0F;
+	/// Viewport-local pane size in physical pixels.
+	quader::math::Vec2 viewport_size_pixels{ 1.0F, 1.0F };
+};
+
 /// Toolkit-neutral pointer event consumed by modeling tools.
 struct PointerEvent {
 	/// Viewport-local pointer position in physical pixels.
@@ -129,6 +157,8 @@ struct PointerEvent {
 	float grid_size = 1.0F;
 	/// Optional world ray for grid and document hit testing.
 	std::optional<ViewportRay> ray;
+	/// Optional camera/pane data for tools that need reference screen-space projection.
+	std::optional<ViewportCameraInput> camera;
 	/// Optional live surface hit; modal tools may ignore it after locking a construction plane.
 	std::optional<SurfaceHit> surface_hit;
 	/// View index that produced this event.

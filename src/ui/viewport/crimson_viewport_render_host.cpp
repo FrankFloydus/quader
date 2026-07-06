@@ -65,10 +65,10 @@ namespace {
 	}
 }
 
-[[nodiscard]] crimson::PrototypeCameraProjection projection_from(CameraProjection projection) noexcept {
+[[nodiscard]] crimson::ViewportCameraProjection projection_from(CameraProjection projection) noexcept {
 	return projection == CameraProjection::Orthographic
-			? crimson::PrototypeCameraProjection::Orthographic
-			: crimson::PrototypeCameraProjection::Perspective;
+			? crimson::ViewportCameraProjection::Orthographic
+			: crimson::ViewportCameraProjection::Perspective;
 }
 
 [[nodiscard]] ViewportPickElementKind viewport_kind_from(crimson::PickingElementKind kind) noexcept {
@@ -509,9 +509,9 @@ private:
 			double device_pixel_ratio) const;
 	[[nodiscard]] crimson::ViewportExtent make_extent(ViewportPixelSize size, double device_pixel_ratio) const;
 	[[nodiscard]] ViewportRenderResult result_from_diagnostic(const crimson::RendererDiagnostic &diagnostic) const;
-	[[nodiscard]] std::array<crimson::PrototypeCamera, 4> make_cameras(
+	[[nodiscard]] std::array<crimson::ViewportCamera, 4> make_cameras(
 			std::span<const ViewportCameraSnapshot> cameras) const;
-	[[nodiscard]] std::array<crimson::PrototypeViewportView, 4> make_views(
+	[[nodiscard]] std::array<crimson::ViewportFrameView, 4> make_views(
 			std::span<const ViewportPane> panes) const;
 	[[nodiscard]] std::vector<crimson::PickingRequest> make_picking_requests(
 			std::span<const ViewportPickRequest> requests) const;
@@ -522,7 +522,8 @@ private:
 	void append_tool_preview_overlays(
 			std::size_t view_count,
 			std::vector<crimson::OverlayCommand> &overlays,
-			std::vector<crimson::LineOverlaySegment> &line_payloads) const;
+			std::vector<crimson::LineOverlaySegment> &line_payloads,
+			std::vector<crimson::TriangleOverlayPrimitive> &triangle_payloads) const;
 	void append_document_selection_overlays(
 			std::size_t view_count,
 			std::vector<crimson::OverlayCommand> &overlays,
@@ -608,11 +609,14 @@ ViewportRenderResult CrimsonViewportRenderHost::render_frame(const ViewportRende
 			line_overlay_payloads,
 			triangle_overlay_payloads,
 			point_overlay_payloads);
-	append_tool_preview_overlays(request.panes.size(), overlays, line_overlay_payloads);
-	const auto kFrame = crimson::PrototypeViewportFrame{
+	append_tool_preview_overlays(request.panes.size(),
+			overlays,
+			line_overlay_payloads,
+			triangle_overlay_payloads);
+	const auto kFrame = crimson::ViewportFrameInput{
 		.target_extent = make_extent(request.surface_size, request.device_pixel_ratio),
-		.views = std::span<const crimson::PrototypeViewportView>(kViews.data(), request.panes.size()),
-		.cameras = std::span<const crimson::PrototypeCamera>(kCameras.data(), kCameras.size()),
+		.views = std::span<const crimson::ViewportFrameView>(kViews.data(), request.panes.size()),
+		.cameras = std::span<const crimson::ViewportCamera>(kCameras.data(), kCameras.size()),
 		.mesh_uploads = std::span<const crimson::RenderMeshUpload>(mesh_uploads.data(), mesh_uploads.size()),
 		.objects = std::span<const crimson::RenderObject>(objects.data(), objects.size()),
 		.overlays = std::span<const crimson::OverlayCommand>(overlays.data(), overlays.size()),
@@ -620,12 +624,12 @@ ViewportRenderResult CrimsonViewportRenderHost::render_frame(const ViewportRende
 		.triangle_overlay_payloads = std::span<const crimson::TriangleOverlayPrimitive>(triangle_overlay_payloads.data(), triangle_overlay_payloads.size()),
 		.point_overlay_payloads = std::span<const crimson::PointOverlayPrimitive>(point_overlay_payloads.data(), point_overlay_payloads.size()),
 		.picking_requests = std::span<const crimson::PickingRequest>(kPickingRequests.data(), kPickingRequests.size()),
-		.animation_enabled = request.prototype_animation_enabled,
+		.animation_enabled = request.scene_animation_enabled,
 		.elapsed_seconds = request.elapsed_seconds,
 	};
 
 	const crimson::FrameBuilder kFrameBuilder;
-	auto snapshot = kFrameBuilder.build_prototype_snapshot(kFrame);
+	auto snapshot = kFrameBuilder.build_snapshot(kFrame);
 	if (!snapshot) {
 		return result_from_diagnostic(snapshot.error());
 	}
@@ -705,12 +709,12 @@ ViewportRenderResult CrimsonViewportRenderHost::result_from_diagnostic(
 	return ViewportRenderResult::failure(summary, QString::fromStdString(diagnostic.detail));
 }
 
-std::array<crimson::PrototypeCamera, 4> CrimsonViewportRenderHost::make_cameras(
+std::array<crimson::ViewportCamera, 4> CrimsonViewportRenderHost::make_cameras(
 		std::span<const ViewportCameraSnapshot> cameras) const {
-	std::array<crimson::PrototypeCamera, 4> result{};
+	std::array<crimson::ViewportCamera, 4> result{};
 	for (std::size_t index = 0; index < result.size(); ++index) {
 		const ViewportCameraSnapshot &source = cameras[index < cameras.size() ? index : 0];
-		result[index] = crimson::PrototypeCamera{
+		result[index] = crimson::ViewportCamera{
 			.eye = source.eye,
 			.target = source.target,
 			.up = source.up,
@@ -723,13 +727,13 @@ std::array<crimson::PrototypeCamera, 4> CrimsonViewportRenderHost::make_cameras(
 	return result;
 }
 
-std::array<crimson::PrototypeViewportView, 4> CrimsonViewportRenderHost::make_views(
+std::array<crimson::ViewportFrameView, 4> CrimsonViewportRenderHost::make_views(
 		std::span<const ViewportPane> panes) const {
-	std::array<crimson::PrototypeViewportView, 4> result{};
+	std::array<crimson::ViewportFrameView, 4> result{};
 	for (std::size_t index = 0; index < result.size(); ++index) {
 		const ViewportPane &source = panes[index < panes.size() ? index : 0];
-		result[index] = crimson::PrototypeViewportView{
-			.rect = crimson::PrototypeViewportRect{
+		result[index] = crimson::ViewportFrameView{
+			.rect = crimson::ViewportFrameRect{
 					.x = coordinate_u16(source.rect.x),
 					.y = coordinate_u16(source.rect.y),
 					.width = positive_u16(source.rect.width),
@@ -806,13 +810,14 @@ void CrimsonViewportRenderHost::append_document_render_data(
 void CrimsonViewportRenderHost::append_tool_preview_overlays(
 		std::size_t view_count,
 		std::vector<crimson::OverlayCommand> &overlays,
-		std::vector<crimson::LineOverlaySegment> &line_payloads) const {
+		std::vector<crimson::LineOverlaySegment> &line_payloads,
+		std::vector<crimson::TriangleOverlayPrimitive> &triangle_payloads) const {
 	if (tool_manager_ == nullptr) {
 		return;
 	}
 
 	const quader::tools::ToolPreview kPreview = tool_manager_->preview();
-	append_tool_preview_line_overlays(kPreview, view_count, overlays, line_payloads);
+	quader::ui::append_tool_preview_overlays(kPreview, view_count, overlays, line_payloads, triangle_payloads);
 }
 
 void CrimsonViewportRenderHost::append_document_selection_overlays(
@@ -831,7 +836,8 @@ void CrimsonViewportRenderHost::append_document_selection_overlays(
 			line_payloads,
 			triangle_payloads,
 			point_payloads,
-			tool_manager_ != nullptr ? tool_manager_->selection_hover() : std::optional<quader::tools::SurfaceHit>{});
+			tool_manager_ != nullptr ? tool_manager_->selection_hover() : std::optional<quader::tools::SurfaceHit>{},
+			tool_manager_ != nullptr && tool_manager_->selection_hover_suppresses_selected());
 }
 
 std::unique_ptr<IViewportRenderHost> create_crimson_viewport_render_host() {

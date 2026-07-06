@@ -36,6 +36,10 @@ namespace {
 	return object_id_from_encoded_hit(hit.object_id);
 }
 
+[[nodiscard]] bool tool_uses_selection_fallback(ToolId id) noexcept {
+	return id == ToolId::Move || id == ToolId::Rotate || id == ToolId::Scale;
+}
+
 [[nodiscard]] std::optional<quader::mesh::FaceId> face_id_from_index(
 		const quader::mesh::Polyhedron &mesh,
 		std::uint32_t index) {
@@ -222,13 +226,12 @@ std::optional<SurfaceHit> ToolManager::selection_hover() const {
 	return selection_hover_;
 }
 
-bool ToolManager::clear_selection_hover() {
-	if (!selection_hover_.has_value()) {
-		return false;
-	}
+bool ToolManager::selection_hover_suppresses_selected() const noexcept {
+	return selection_hover_suppresses_selected_;
+}
 
-	selection_hover_ = std::nullopt;
-	return true;
+bool ToolManager::clear_selection_hover() {
+	return clear_selection_hover_state();
 }
 
 bool ToolManager::set_selection_mode(SelectionMode mode) noexcept {
@@ -237,7 +240,7 @@ bool ToolManager::set_selection_mode(SelectionMode mode) noexcept {
 	}
 
 	selection_mode_ = mode;
-	selection_hover_ = std::nullopt;
+	(void)clear_selection_hover_state();
 	return true;
 }
 
@@ -252,7 +255,7 @@ bool ToolManager::set_active_tool(ToolId id) {
 		return true;
 	}
 
-	selection_hover_ = std::nullopt;
+	(void)clear_selection_hover_state();
 	if (active_tool_ != nullptr) {
 		active_tool_->deactivate(context_);
 	}
@@ -268,7 +271,7 @@ void ToolManager::clear_active_tool() {
 		return;
 	}
 
-	selection_hover_ = std::nullopt;
+	(void)clear_selection_hover_state();
 	active_tool_->deactivate(context_);
 	active_tool_ = nullptr;
 	notify_active_tool_changed();
@@ -298,7 +301,7 @@ bool ToolManager::dispatch_pointer_event(const PointerEvent &event) {
 		return true;
 	}
 
-	if (active_tool_->id() != ToolId::Select) {
+	if (active_tool_->id() != ToolId::Select && !tool_uses_selection_fallback(active_tool_->id())) {
 		return false;
 	}
 
@@ -350,13 +353,14 @@ bool ToolManager::handle_select_pointer_event(const PointerEvent &event) {
 			return clear_selection_hover();
 		}
 
-		return set_selection_hover(*event.surface_hit);
+		return set_selection_hover(*event.surface_hit,
+				selected_modifier_hover_for_hit(*event.surface_hit, event.modifiers));
 	}
 
 	if (event.phase == PointerPhase::Press && event.button == PointerButton::Left && event.pressed && !event.surface_hit) {
-		selection_hover_ = std::nullopt;
+		const bool kHoverCleared = clear_selection_hover_state();
 		if (event.modifiers.shift || event.modifiers.control || context_.document().selection().empty()) {
-			return false;
+			return kHoverCleared;
 		}
 
 		quader::document::Selection selection;
@@ -443,17 +447,101 @@ bool ToolManager::handle_select_pointer_event(const PointerEvent &event) {
 		}
 	}
 
+	const bool kHoverInvalidated = suppress_selection_hover_after_click(*event.surface_hit);
 	const auto kResult = context_.execute_command(
 			std::make_unique<quader::commands::SetSelectionCommand>(std::move(selection)));
-	return kResult.is_applied();
+	return kResult.is_applied() || kHoverInvalidated;
 }
 
-bool ToolManager::set_selection_hover(SurfaceHit hit) {
-	if (selection_hover_.has_value() && same_hover_hit(*selection_hover_, hit)) {
+bool ToolManager::clear_selection_hover_state() noexcept {
+	const bool had_state = selection_hover_.has_value() ||
+			selection_hover_suppresses_selected_ ||
+			suppressed_selection_hover_.has_value();
+	selection_hover_ = std::nullopt;
+	selection_hover_suppresses_selected_ = false;
+	suppressed_selection_hover_ = std::nullopt;
+	return had_state;
+}
+
+bool ToolManager::clear_visible_selection_hover() noexcept {
+	const bool had_state = selection_hover_.has_value() || selection_hover_suppresses_selected_;
+	selection_hover_ = std::nullopt;
+	selection_hover_suppresses_selected_ = false;
+	return had_state;
+}
+
+bool ToolManager::suppress_selection_hover_after_click(const SurfaceHit &hit) {
+	const bool had_state = selection_hover_.has_value() ||
+			selection_hover_suppresses_selected_ ||
+			!suppressed_selection_hover_.has_value() ||
+			!same_hover_hit(*suppressed_selection_hover_, hit);
+	selection_hover_ = std::nullopt;
+	selection_hover_suppresses_selected_ = false;
+	suppressed_selection_hover_ = hit;
+	return had_state;
+}
+
+bool ToolManager::selected_modifier_hover_for_hit(
+		const SurfaceHit &hit,
+		const KeyboardModifiers &modifiers) const {
+	if (!modifiers.shift && !modifiers.control) {
+		return false;
+	}
+
+	const quader::document::ObjectId kObject = object_id_from_hit(hit);
+	if (!context_.document().validate_object_id(kObject)) {
+		return false;
+	}
+
+	const quader::document::Selection &selection = context_.document().selection();
+	if (selection_mode_ == SelectionMode::Object) {
+		return selection.mode() == quader::document::SelectionMode::Object &&
+				std::find(selection.selected_objects().begin(),
+						selection.selected_objects().end(),
+						kObject) != selection.selected_objects().end();
+	}
+
+	const quader::document::SelectionMode kDocumentMode = document_selection_mode_for(selection_mode_);
+	if (selection.mode() != kDocumentMode) {
+		return false;
+	}
+
+	const auto *object = context_.document().find_mesh_object(kObject);
+	if (object == nullptr) {
+		return false;
+	}
+
+	const std::optional<quader::document::ComponentRef> kComponent =
+			component_ref_from_hit(kObject, object->mesh, hit, selection_mode_);
+	if (!kComponent.has_value()) {
+		return false;
+	}
+
+	return std::find(selection.selected_components().begin(),
+				   selection.selected_components().end(),
+				   *kComponent) != selection.selected_components().end();
+}
+
+bool ToolManager::set_selection_hover(SurfaceHit hit, bool suppresses_selected) {
+	if (suppressed_selection_hover_.has_value()) {
+		if (same_hover_hit(*suppressed_selection_hover_, hit)) {
+			if (!suppresses_selected) {
+				return clear_visible_selection_hover();
+			}
+			suppressed_selection_hover_ = std::nullopt;
+		} else {
+			suppressed_selection_hover_ = std::nullopt;
+		}
+	}
+
+	if (selection_hover_.has_value() &&
+			same_hover_hit(*selection_hover_, hit) &&
+			selection_hover_suppresses_selected_ == suppresses_selected) {
 		return false;
 	}
 
 	selection_hover_ = hit;
+	selection_hover_suppresses_selected_ = suppresses_selected;
 	return true;
 }
 

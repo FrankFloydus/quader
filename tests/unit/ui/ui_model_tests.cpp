@@ -400,7 +400,9 @@ TEST(UiModel, SelectionAdapterComponentSelectionClearsObjectViewSelection) {
 					std::move(component_selection)),
 			quader::ui::CommandFeedback::Silent);
 	EXPECT_TRUE(result.is_applied());
-	EXPECT_TRUE(fixture.document.selection().selected_objects().empty());
+	EXPECT_EQ(fixture.document.selection().mode(), quader::document::SelectionMode::Vertex);
+	ASSERT_EQ(fixture.document.selection().selected_objects().size(), 1U);
+	EXPECT_EQ(fixture.document.selection().selected_objects().front(), kAdded.object);
 	EXPECT_EQ(fixture.document.selection().selected_components().size(), 1U);
 	EXPECT_TRUE(selection_model.selectedIndexes().empty());
 }

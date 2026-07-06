@@ -20,6 +20,7 @@
 #include <array>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -82,6 +83,59 @@ bool is_same_cyclic_vertex_order(const std::vector<quader::mesh::VertexId> &actu
 	}
 	return false;
 }
+
+class MergeableRenameCommand final : public quader::commands::ICommand {
+public:
+	MergeableRenameCommand(quader::document::ObjectId object, std::string next_name)
+			: object_(object), next_name_(std::move(next_name)) {
+	}
+
+	[[nodiscard]] std::string_view name() const noexcept override {
+		return "Mergeable Rename";
+	}
+
+	[[nodiscard]] quader::commands::CommandResult execute(quader::document::Document &document) override {
+		const auto *object = document.find_mesh_object(object_);
+		if (object == nullptr) {
+			return quader::commands::CommandResult::rejected("missing object");
+		}
+		if (!previous_name_.has_value()) {
+			previous_name_ = object->name;
+		}
+		auto renamed = document.rename_object(object_, next_name_);
+		return renamed ? quader::commands::CommandResult::applied()
+					   : quader::commands::CommandResult::rejected("rename failed");
+	}
+
+	[[nodiscard]] quader::commands::CommandResult undo(quader::document::Document &document) override {
+		if (!previous_name_.has_value()) {
+			return quader::commands::CommandResult::rejected("rename command was not executed");
+		}
+		auto renamed = document.rename_object(object_, *previous_name_);
+		return renamed ? quader::commands::CommandResult::applied()
+					   : quader::commands::CommandResult::rejected("rename undo failed");
+	}
+
+	[[nodiscard]] bool can_merge_with(const quader::commands::ICommand &next) const noexcept override {
+		const auto *rename = dynamic_cast<const MergeableRenameCommand *>(&next);
+		return rename != nullptr && rename->object_ == object_;
+	}
+
+	[[nodiscard]] quader::commands::CommandResult merge_with(std::unique_ptr<quader::commands::ICommand> next) override {
+		auto *rename = dynamic_cast<MergeableRenameCommand *>(next.get());
+		if (rename == nullptr || rename->object_ != object_) {
+			return quader::commands::CommandResult::not_mergeable();
+		}
+
+		next_name_ = std::move(rename->next_name_);
+		return quader::commands::CommandResult::applied();
+	}
+
+private:
+	quader::document::ObjectId object_;
+	std::string next_name_;
+	std::optional<std::string> previous_name_;
+};
 
 TEST(Command, CreateMeshObjectCommandExecutesUndoesAndRedoesSemanticState) {
 	quader::document::Document document;
@@ -282,6 +336,80 @@ TEST(Command, TransformCommandExecutesUndoesAndRedoesTransform) {
 	result = history.redo(fixture.document);
 	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
 	EXPECT_EQ(capture_command_state(fixture.document), kAfter);
+}
+
+TEST(Command, BatchTransformCommandExecutesUndoesAndRedoesMultipleObjects) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	auto second_mesh = quader::tests::document_fixtures::make_triangle_mesh();
+	const auto kSecond = fixture.document.create_mesh_object("Second", std::move(second_mesh.mesh));
+	ASSERT_TRUE(kSecond);
+	fixture.document.clear_dirty();
+	discard_pending_changes(fixture.document);
+
+	quader::commands::CommandHistory history;
+	const auto kBefore = capture_command_state(fixture.document);
+	quader::document::Transform first_transform;
+	first_transform.translation = { 1.0F, 0.0F, 0.0F };
+	quader::document::Transform second_transform;
+	second_transform.scale = { 2.0F, 2.0F, 2.0F };
+
+	auto result = history.execute(std::make_unique<quader::commands::BatchSetObjectTransformsCommand>(
+										  std::vector<quader::commands::ObjectTransformEdit>{
+												  { fixture.object, first_transform },
+												  { kSecond.value(), second_transform },
+										  }),
+			fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	EXPECT_EQ(history.undo_name(), std::string_view("Transform Objects"));
+
+	const auto kAfter = capture_command_state(fixture.document);
+	ASSERT_EQ(kAfter.objects.size(), 2U);
+	EXPECT_TRUE(kAfter.objects[0].transform == first_transform);
+	EXPECT_TRUE(kAfter.objects[1].transform == second_transform);
+
+	result = history.undo(fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	EXPECT_EQ(capture_command_state(fixture.document), kBefore);
+
+	result = history.redo(fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	EXPECT_EQ(capture_command_state(fixture.document), kAfter);
+}
+
+TEST(Command, BatchTransformCommandRejectsInvalidOrNoopBatchesWithoutMutation) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	fixture.document.clear_dirty();
+	discard_pending_changes(fixture.document);
+	const auto kBefore = capture_command_state(fixture.document);
+
+	quader::commands::CommandHistory history;
+	auto result = history.execute(std::make_unique<quader::commands::BatchSetObjectTransformsCommand>(
+										  std::vector<quader::commands::ObjectTransformEdit>{}),
+			fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Rejected);
+	EXPECT_EQ(capture_command_state(fixture.document), kBefore);
+
+	quader::document::Transform invalid_transform;
+	invalid_transform.translation.x = std::numeric_limits<float>::infinity();
+	result = history.execute(std::make_unique<quader::commands::BatchSetObjectTransformsCommand>(
+									 std::vector<quader::commands::ObjectTransformEdit>{
+											 { fixture.object, invalid_transform },
+									 }),
+			fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Rejected);
+	EXPECT_EQ(capture_command_state(fixture.document), kBefore);
+
+	quader::document::Transform changed;
+	changed.translation = { 1.0F, 0.0F, 0.0F };
+	result = history.execute(std::make_unique<quader::commands::BatchSetObjectTransformsCommand>(
+									 std::vector<quader::commands::ObjectTransformEdit>{
+											 { fixture.object, changed },
+											 { fixture.object, changed },
+									 }),
+			fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Rejected);
+	EXPECT_EQ(capture_command_state(fixture.document), kBefore);
+	EXPECT_FALSE(history.can_undo());
 }
 
 TEST(Command, SetSelectionCommandExecutesUndoesAndRedoesSelection) {
@@ -668,6 +796,39 @@ TEST(Command, HistoryTruncatesRedoAfterNewCommandAndReportsAvailability) {
 	history.clear();
 	EXPECT_FALSE(history.can_undo());
 	EXPECT_FALSE(history.can_redo());
+}
+
+TEST(Command, HistoryMergesExecutedCommandIntoPreviousUndoEntry) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	fixture.document.clear_dirty();
+	discard_pending_changes(fixture.document);
+	const auto kOriginal = capture_command_state(fixture.document);
+
+	quader::commands::CommandHistory history;
+	auto result = history.execute(std::make_unique<MergeableRenameCommand>(fixture.object, "First"),
+			fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	result = history.execute(std::make_unique<MergeableRenameCommand>(fixture.object, "Second"),
+			fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+
+	auto *object = fixture.document.find_mesh_object(fixture.object);
+	ASSERT_TRUE(object != nullptr);
+	EXPECT_EQ(object->name, std::string("Second"));
+	EXPECT_TRUE(history.can_undo());
+	EXPECT_EQ(history.undo_name(), std::string_view("Mergeable Rename"));
+
+	result = history.undo(fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	EXPECT_EQ(capture_command_state(fixture.document), kOriginal);
+	EXPECT_FALSE(history.can_undo());
+	EXPECT_TRUE(history.can_redo());
+
+	result = history.redo(fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	object = fixture.document.find_mesh_object(fixture.object);
+	ASSERT_TRUE(object != nullptr);
+	EXPECT_EQ(object->name, std::string("Second"));
 }
 
 TEST(Command, CommandMergeHooksDefaultToNotMergeable) {

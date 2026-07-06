@@ -24,6 +24,15 @@ CommandResult CommandHistory::execute(std::unique_ptr<ICommand> command,
 		return result;
 	}
 
+	if (!undo_stack_.empty() && undo_stack_.back()->can_merge_with(*command)) {
+		auto merge_result = undo_stack_.back()->merge_with(std::move(command));
+		if (merge_result.is_applied()) {
+			redo_stack_.clear();
+			return merge_result;
+		}
+		return merge_result;
+	}
+
 	undo_stack_.push_back(std::move(command));
 	redo_stack_.clear();
 	return result;

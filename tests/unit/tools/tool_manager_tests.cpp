@@ -18,9 +18,11 @@
 #include "mesh/core/mesh_validation.hpp"
 #include "tools/box_tool.hpp"
 #include "tools/tool_manager.hpp"
+#include "tools/transform_gizmo_tool.hpp"
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -182,6 +184,149 @@ quader::tools::ViewportRay downward_ray_to(quader::math::Vec3 point_on_y_plane) 
 		.origin = point_on_y_plane + quader::math::Vec3{ 0.0F, 10.0F, 0.0F },
 		.direction = { 0.0F, -1.0F, 0.0F },
 	};
+}
+
+quader::tools::ViewportRay front_ray_to(quader::math::Vec3 point) {
+	return quader::tools::ViewportRay{
+		.origin = point + quader::math::Vec3{ 0.0F, 0.0F, 10.0F },
+		.direction = { 0.0F, 0.0F, -1.0F },
+	};
+}
+
+quader::tools::PointerEvent gizmo_event(quader::math::Vec3 point,
+		quader::math::Vec2 screen,
+		quader::tools::PointerPhase phase,
+		quader::tools::PointerButton button = quader::tools::PointerButton::None,
+		bool pressed = false) {
+	return quader::tools::PointerEvent{
+		.position = screen,
+		.button = button,
+		.pressed = pressed,
+		.phase = phase,
+		.snap_to_grid = true,
+		.grid_size = 1.0F,
+		.ray = front_ray_to(point),
+	};
+}
+
+quader::tools::ViewportCameraInput reference_gizmo_camera() {
+	return quader::tools::ViewportCameraInput{
+		.eye = { 8.0F, 7.0F, 10.0F },
+		.target = { 0.5F, 0.5F, 0.0F },
+		.up = { 0.0F, 1.0F, 0.0F },
+		.forward = quader::math::normalized(quader::math::Vec3{ 0.5F, 0.5F, 0.0F } - quader::math::Vec3{ 8.0F, 7.0F, 10.0F }),
+		.projection = quader::tools::ViewportCameraProjection::Perspective,
+		.fov_degrees = 60.0F,
+		.orthographic_size = 48.0F,
+		.viewport_size_pixels = { 640.0F, 480.0F },
+	};
+}
+
+quader::tools::PointerEvent reference_gizmo_hover_event(quader::math::Vec2 screen) {
+	const quader::tools::ViewportCameraInput kCamera = reference_gizmo_camera();
+	return quader::tools::PointerEvent{
+		.position = screen,
+		.phase = quader::tools::PointerPhase::Hover,
+		.snap_to_grid = true,
+		.grid_size = 1.0F,
+		.ray = quader::tools::ViewportRay{
+				.origin = kCamera.eye,
+				.direction = quader::math::normalized(kCamera.target - kCamera.eye),
+		},
+		.camera = kCamera,
+	};
+}
+
+quader::tools::ViewportCameraInput front_gizmo_camera() {
+	return quader::tools::ViewportCameraInput{
+		.eye = { 0.5F, 0.5F, 10.0F },
+		.target = { 0.5F, 0.5F, 0.0F },
+		.up = { 0.0F, 1.0F, 0.0F },
+		.forward = { 0.0F, 0.0F, -1.0F },
+		.projection = quader::tools::ViewportCameraProjection::Orthographic,
+		.fov_degrees = 60.0F,
+		.orthographic_size = 48.0F,
+		.viewport_size_pixels = { 640.0F, 480.0F },
+	};
+}
+
+quader::tools::ViewportRay front_gizmo_ray_from_screen(quader::math::Vec2 screen) {
+	const quader::tools::ViewportCameraInput kCamera = front_gizmo_camera();
+	const float kWidth = kCamera.viewport_size_pixels.x;
+	const float kHeight = kCamera.viewport_size_pixels.y;
+	const float kAspect = kWidth / kHeight;
+	const float kHalfHeight = kCamera.orthographic_size * 0.5F;
+	const float kHalfWidth = kHalfHeight * kAspect;
+	const float kNdcX = (screen.x / kWidth) * 2.0F - 1.0F;
+	const float kNdcY = 1.0F - (screen.y / kHeight) * 2.0F;
+	const quader::math::Vec3 kRight{ -1.0F, 0.0F, 0.0F };
+	const quader::math::Vec3 kUp{ 0.0F, 1.0F, 0.0F };
+	return quader::tools::ViewportRay{
+		.origin = kCamera.eye + kRight * (kNdcX * kHalfWidth) + kUp * (kNdcY * kHalfHeight),
+		.direction = { 0.0F, 0.0F, -1.0F },
+	};
+}
+
+quader::tools::PointerEvent front_gizmo_event(quader::math::Vec2 screen,
+		quader::tools::PointerPhase phase,
+		quader::tools::PointerButton button = quader::tools::PointerButton::None,
+		bool pressed = false,
+		bool snap_to_grid = true) {
+	return quader::tools::PointerEvent{
+		.position = screen,
+		.button = button,
+		.pressed = pressed,
+		.phase = phase,
+		.snap_to_grid = snap_to_grid,
+		.grid_size = 1.0F,
+		.ray = front_gizmo_ray_from_screen(screen),
+		.camera = front_gizmo_camera(),
+	};
+}
+
+bool preview_color_nearly_equal(quader::tools::ToolPreviewColorSrgb left,
+		quader::tools::ToolPreviewColorSrgb right) {
+	constexpr float kEpsilon = 0.0001F;
+	return std::abs(left.red - right.red) <= kEpsilon &&
+			std::abs(left.green - right.green) <= kEpsilon &&
+			std::abs(left.blue - right.blue) <= kEpsilon &&
+			std::abs(left.alpha - right.alpha) <= kEpsilon;
+}
+
+std::size_t count_preview_triangles_with_color(const quader::tools::ToolPreview &preview,
+		quader::tools::ToolPreviewColorSrgb color) {
+	return static_cast<std::size_t>(std::count_if(preview.colored_world_triangles.begin(),
+			preview.colored_world_triangles.end(),
+			[color](const quader::tools::ToolPreviewColoredWorldTriangle &triangle) {
+				return preview_color_nearly_equal(triangle.color_srgb, color);
+			}));
+}
+
+std::size_t count_preview_segments_with_color(const quader::tools::ToolPreview &preview,
+		quader::tools::ToolPreviewColorSrgb color) {
+	return static_cast<std::size_t>(std::count_if(preview.colored_world_segments.begin(),
+			preview.colored_world_segments.end(),
+			[color](const quader::tools::ToolPreviewColoredWorldSegment &segment) {
+				return preview_color_nearly_equal(segment.color_srgb, color);
+			}));
+}
+
+std::size_t count_preview_segments_with_thickness(const quader::tools::ToolPreview &preview,
+		float thickness_px) {
+	return static_cast<std::size_t>(std::count_if(preview.colored_world_segments.begin(),
+			preview.colored_world_segments.end(),
+			[thickness_px](const quader::tools::ToolPreviewColoredWorldSegment &segment) {
+				return std::abs(segment.thickness_px - thickness_px) <= 0.0001F;
+			}));
+}
+
+void select_object(quader::document::Document &document,
+		quader::document::ObjectId object) {
+	quader::document::Selection selection;
+	ASSERT_TRUE(selection.set_objects({ object }));
+	ASSERT_TRUE(document.set_selection(std::move(selection)));
+	document.clear_dirty();
+	discard_pending_changes(document);
 }
 
 class RecordingTool final : public quader::tools::ITool {
@@ -408,6 +553,63 @@ TEST(ToolManager, SelectHoverStoresHitWithoutMutatingSelectionOrHistory) {
 	EXPECT_TRUE(fixture.document.selection().empty());
 	EXPECT_FALSE(history.can_undo());
 	EXPECT_EQ(capture_tool_state(fixture.document), kBefore);
+}
+
+TEST(ToolManager, SelectClickClearsAndSuppressesSameComponentHover) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	quader::document::Selection selection;
+	ASSERT_TRUE(selection.set_component_selection(quader::document::SelectionMode::Face,
+			{ fixture.object },
+			{ quader::document::ComponentRef{ fixture.object, fixture.face } }));
+	ASSERT_TRUE(fixture.document.set_selection(std::move(selection)));
+	fixture.document.clear_dirty();
+	discard_pending_changes(fixture.document);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<PassiveTool>()));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Select));
+	EXPECT_TRUE(manager.set_selection_mode(quader::tools::SelectionMode::Face));
+
+	auto event = surface_event({ 0.0F, 0.0F, 0.0F },
+			{ 0.0F, 1.0F, 0.0F },
+			{ 10.0F, 12.0F },
+			quader::tools::PointerPhase::Hover);
+	event.surface_hit->object_id = encoded_object_id(fixture.object);
+	event.surface_hit->document_object_id = fixture.object;
+	event.surface_hit->component_index = fixture.face.index();
+	event.surface_hit->component = fixture.face;
+	event.surface_hit->kind = quader::tools::SurfaceHitKind::Face;
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(event));
+	ASSERT_TRUE(manager.selection_hover().has_value());
+	EXPECT_FALSE(manager.selection_hover_suppresses_selected());
+
+	event.phase = quader::tools::PointerPhase::Press;
+	event.button = quader::tools::PointerButton::Left;
+	event.pressed = true;
+	EXPECT_TRUE(manager.dispatch_pointer_event(event));
+	EXPECT_FALSE(manager.selection_hover().has_value());
+	EXPECT_FALSE(manager.selection_hover_suppresses_selected());
+	EXPECT_FALSE(history.can_undo());
+	ASSERT_EQ(fixture.document.selection().selected_components().size(), 1U);
+	EXPECT_EQ(fixture.document.selection().selected_components().front().object, fixture.object);
+	ASSERT_TRUE(std::holds_alternative<quader::mesh::FaceId>(
+			fixture.document.selection().selected_components().front().component));
+	EXPECT_EQ(std::get<quader::mesh::FaceId>(
+					  fixture.document.selection().selected_components().front().component),
+			fixture.face);
+
+	event.phase = quader::tools::PointerPhase::Hover;
+	event.button = quader::tools::PointerButton::None;
+	event.pressed = false;
+	EXPECT_FALSE(manager.dispatch_pointer_event(event));
+	EXPECT_FALSE(manager.selection_hover().has_value());
+
+	event.modifiers.shift = true;
+	EXPECT_TRUE(manager.dispatch_pointer_event(event));
+	ASSERT_TRUE(manager.selection_hover().has_value());
+	EXPECT_TRUE(manager.selection_hover_suppresses_selected());
 }
 
 TEST(ToolManager, SelectEmptyObjectModeClickClearsSelectionThroughHistory) {
@@ -762,6 +964,301 @@ TEST(ToolManager, SwitchingAndCancelSemanticsAreExplicit) {
 	manager.clear_active_tool();
 	EXPECT_EQ(move->deactivations, 1);
 	EXPECT_FALSE(manager.dispatch_key_event(quader::tools::KeyEvent{ 27, true, false }));
+}
+
+TEST(TransformGizmoTool, MoveHoverShowsGodotStyleAxisPreviewForSelection) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	select_object(fixture.document, fixture.object);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::TransformGizmoTool>(
+			quader::tools::ToolId::Move)));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Move));
+
+	const quader::math::Vec3 kPivot{ 0.5F, 0.5F, 0.0F };
+	(void)kPivot;
+	EXPECT_TRUE(manager.dispatch_pointer_event(front_gizmo_event({ 180.0F, 240.0F },
+			quader::tools::PointerPhase::Hover)));
+
+	const auto *tool = static_cast<const quader::tools::TransformGizmoTool *>(manager.active_tool());
+	ASSERT_TRUE(tool != nullptr);
+	EXPECT_EQ(tool->state().target_count, 1U);
+	EXPECT_EQ(tool->state().hover_handle.kind, quader::tools::TransformGizmoHandleKind::Axis);
+	EXPECT_EQ(tool->state().hover_handle.axis, quader::tools::TransformGizmoAxis::X);
+	const quader::tools::ToolPreview kPreview = manager.preview();
+	EXPECT_TRUE(kPreview.active);
+	EXPECT_TRUE(kPreview.overlay_only);
+	EXPECT_FALSE(kPreview.colored_world_segments.empty());
+	EXPECT_EQ(fixture.document.find_mesh_object(fixture.object)->transform.translation.x, 0.0F);
+	EXPECT_FALSE(history.can_undo());
+}
+
+TEST(TransformGizmoTool, MovePreviewUsesWindowsReferenceGizmoTopologyAndColors) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	select_object(fixture.document, fixture.object);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::TransformGizmoTool>(
+			quader::tools::ToolId::Move)));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Move));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(reference_gizmo_hover_event({ -1000.0F, -1000.0F })));
+	const quader::tools::ToolPreview kPreview = manager.preview();
+	EXPECT_TRUE(kPreview.active);
+	EXPECT_EQ(kPreview.colored_world_triangles.size(), 102U);
+	EXPECT_EQ(kPreview.colored_world_segments.size(), 15U);
+	EXPECT_EQ(count_preview_segments_with_thickness(kPreview, 1.6F), 3U);
+	EXPECT_EQ(count_preview_segments_with_thickness(kPreview, 1.2F), 12U);
+
+	const quader::tools::ToolPreviewColorSrgb kX{ 245.0F / 255.0F, 51.0F / 255.0F, 82.0F / 255.0F, 230.0F / 255.0F };
+	const quader::tools::ToolPreviewColorSrgb kY{ 135.0F / 255.0F, 214.0F / 255.0F, 3.0F / 255.0F, 230.0F / 255.0F };
+	const quader::tools::ToolPreviewColorSrgb kZ{ 41.0F / 255.0F, 140.0F / 255.0F, 245.0F / 255.0F, 230.0F / 255.0F };
+	EXPECT_EQ(count_preview_triangles_with_color(kPreview, kX), 34U);
+	EXPECT_EQ(count_preview_triangles_with_color(kPreview, kY), 34U);
+	EXPECT_EQ(count_preview_triangles_with_color(kPreview, kZ), 34U);
+	EXPECT_EQ(count_preview_segments_with_color(kPreview, kX), 5U);
+	EXPECT_EQ(count_preview_segments_with_color(kPreview, kY), 5U);
+	EXPECT_EQ(count_preview_segments_with_color(kPreview, kZ), 5U);
+	EXPECT_FALSE(history.can_undo());
+}
+
+TEST(TransformGizmoTool, ScalePreviewUsesReferencePrismsAndHoverOnlyCenterCube) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	select_object(fixture.document, fixture.object);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::TransformGizmoTool>(
+			quader::tools::ToolId::Scale)));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Scale));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(reference_gizmo_hover_event({ -1000.0F, -1000.0F })));
+	quader::tools::ToolPreview preview = manager.preview();
+	EXPECT_EQ(preview.colored_world_triangles.size(), 42U);
+	EXPECT_EQ(preview.colored_world_segments.size(), 15U);
+	EXPECT_EQ(count_preview_segments_with_thickness(preview, 1.6F), 3U);
+	EXPECT_EQ(count_preview_segments_with_thickness(preview, 1.2F), 12U);
+
+	const quader::tools::ToolPreviewColorSrgb kX{ 245.0F / 255.0F, 51.0F / 255.0F, 82.0F / 255.0F, 230.0F / 255.0F };
+	const quader::tools::ToolPreviewColorSrgb kY{ 135.0F / 255.0F, 214.0F / 255.0F, 3.0F / 255.0F, 230.0F / 255.0F };
+	const quader::tools::ToolPreviewColorSrgb kZ{ 41.0F / 255.0F, 140.0F / 255.0F, 245.0F / 255.0F, 230.0F / 255.0F };
+	EXPECT_EQ(count_preview_triangles_with_color(preview, kX), 14U);
+	EXPECT_EQ(count_preview_triangles_with_color(preview, kY), 14U);
+	EXPECT_EQ(count_preview_triangles_with_color(preview, kZ), 14U);
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(reference_gizmo_hover_event({ 320.0F, 240.0F })));
+	const auto *tool = static_cast<const quader::tools::TransformGizmoTool *>(manager.active_tool());
+	ASSERT_TRUE(tool != nullptr);
+	EXPECT_EQ(tool->state().hover_handle.kind, quader::tools::TransformGizmoHandleKind::Center);
+	preview = manager.preview();
+	EXPECT_GT(preview.colored_world_triangles.size(), 42U);
+	const quader::tools::ToolPreviewColorSrgb kCubeOutline{ 255.0F / 255.0F, 246.0F / 255.0F, 128.0F / 255.0F, 180.0F / 255.0F };
+	EXPECT_GT(count_preview_segments_with_color(preview, kCubeOutline), 0U);
+}
+
+TEST(TransformGizmoTool, RotatePreviewUsesReferenceTrackballAndFrontFacingRings) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	select_object(fixture.document, fixture.object);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::TransformGizmoTool>(
+			quader::tools::ToolId::Rotate)));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Rotate));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(reference_gizmo_hover_event({ -1000.0F, -1000.0F })));
+	const quader::tools::ToolPreview kPreview = manager.preview();
+	EXPECT_TRUE(kPreview.colored_world_triangles.empty());
+	const quader::tools::ToolPreviewColorSrgb kTrackball{ 210.0F / 255.0F, 214.0F / 255.0F, 219.0F / 255.0F, 138.0F / 255.0F };
+	EXPECT_EQ(count_preview_segments_with_color(kPreview, kTrackball), 64U);
+	EXPECT_GT(count_preview_segments_with_thickness(kPreview, 3.0F), 0U);
+	EXPECT_LT(count_preview_segments_with_thickness(kPreview, 3.0F), 192U);
+	EXPECT_EQ(count_preview_segments_with_thickness(kPreview, 2.25F), 64U);
+}
+
+TEST(TransformGizmoTool, MoveAxisDragCommitsBatchTransformAndUndo) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	select_object(fixture.document, fixture.object);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	int preview_callback_count = 0;
+	manager.context().set_after_preview_mutation_applied([&preview_callback_count]() {
+		++preview_callback_count;
+	});
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::TransformGizmoTool>(
+			quader::tools::ToolId::Move)));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Move));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(front_gizmo_event({ 180.0F, 240.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true,
+			false)));
+	EXPECT_TRUE(manager.dispatch_pointer_event(front_gizmo_event({ 170.0F, 240.0F },
+			quader::tools::PointerPhase::Move,
+			quader::tools::PointerButton::None,
+			false,
+			false)));
+	const quader::tools::ToolPreview kDragPreview = manager.preview();
+	EXPECT_FALSE(kDragPreview.empty());
+	const auto *object_before_release = fixture.document.find_mesh_object(fixture.object);
+	ASSERT_TRUE(object_before_release != nullptr);
+	EXPECT_TRUE(quader::math::nearly_equal(object_before_release->transform.translation,
+			quader::math::Vec3{ 1.0F, 0.0F, 0.0F }));
+	EXPECT_FALSE(history.can_undo());
+	EXPECT_FALSE(fixture.document.is_dirty());
+	EXPECT_EQ(preview_callback_count, 1);
+	EXPECT_TRUE(manager.dispatch_pointer_event(front_gizmo_event({ 170.0F, 240.0F },
+			quader::tools::PointerPhase::Release,
+			quader::tools::PointerButton::Left,
+			false,
+			false)));
+
+	const auto *object = fixture.document.find_mesh_object(fixture.object);
+	ASSERT_TRUE(object != nullptr);
+	EXPECT_TRUE(quader::math::nearly_equal(object->transform.translation,
+			quader::math::Vec3{ 1.0F, 0.0F, 0.0F }));
+	EXPECT_TRUE(history.can_undo());
+	EXPECT_EQ(history.undo_name(), std::string_view("Transform Objects"));
+	EXPECT_TRUE(fixture.document.is_dirty());
+	EXPECT_GE(preview_callback_count, 2);
+
+	auto result = history.undo(fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	object = fixture.document.find_mesh_object(fixture.object);
+	ASSERT_TRUE(object != nullptr);
+	EXPECT_TRUE(quader::math::nearly_equal(object->transform.translation,
+			quader::math::Vec3{}));
+}
+
+TEST(TransformGizmoTool, EmptyClickFallsBackToSelectionClearWhileMoveToolIsActive) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	select_object(fixture.document, fixture.object);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::TransformGizmoTool>(
+			quader::tools::ToolId::Move)));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Move));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(quader::tools::PointerEvent{
+			.position = { 10.0F, 12.0F },
+			.button = quader::tools::PointerButton::Left,
+			.pressed = true,
+			.phase = quader::tools::PointerPhase::Press,
+	}));
+	EXPECT_TRUE(fixture.document.selection().empty());
+	EXPECT_TRUE(history.can_undo());
+	EXPECT_EQ(history.undo_name(), std::string_view("Set Selection"));
+
+	auto result = history.undo(fixture.document);
+	EXPECT_EQ((result).status, quader::commands::CommandStatus::Applied);
+	ASSERT_EQ(fixture.document.selection().selected_objects().size(), 1U);
+	EXPECT_EQ(fixture.document.selection().selected_objects().front(), fixture.object);
+}
+
+TEST(TransformGizmoTool, ScaleCenterCubeUniformlyScalesSelection) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	select_object(fixture.document, fixture.object);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::TransformGizmoTool>(
+			quader::tools::ToolId::Scale)));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Scale));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(front_gizmo_event({ 320.0F, 240.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true)));
+	EXPECT_TRUE(manager.dispatch_pointer_event(front_gizmo_event({ 416.0F, 240.0F },
+			quader::tools::PointerPhase::Move)));
+	EXPECT_TRUE(manager.dispatch_pointer_event(front_gizmo_event({ 416.0F, 240.0F },
+			quader::tools::PointerPhase::Release,
+			quader::tools::PointerButton::Left,
+			false)));
+
+	const auto *object = fixture.document.find_mesh_object(fixture.object);
+	ASSERT_TRUE(object != nullptr);
+	EXPECT_TRUE(quader::math::nearly_equal(object->transform.scale,
+			quader::math::Vec3{ 2.0F, 2.0F, 2.0F },
+			0.0001F));
+	EXPECT_TRUE(history.can_undo());
+}
+
+TEST(TransformGizmoTool, RotateZRingCommitsSnappedAngle) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	select_object(fixture.document, fixture.object);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::TransformGizmoTool>(
+			quader::tools::ToolId::Rotate)));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Rotate));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(front_gizmo_event({ 382.0F, 178.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true)));
+	EXPECT_TRUE(manager.dispatch_pointer_event(front_gizmo_event({ 258.0F, 178.0F },
+			quader::tools::PointerPhase::Move)));
+	const quader::tools::ToolPreview kRotatePreview = manager.preview();
+	const quader::tools::ToolPreviewColorSrgb kOldPreviewBoundsCyan{ 0.0F, 1.0F, 1.0F, 0.95F };
+	EXPECT_EQ(count_preview_segments_with_color(kRotatePreview, kOldPreviewBoundsCyan), 0U);
+	const auto *object_before_release = fixture.document.find_mesh_object(fixture.object);
+	ASSERT_TRUE(object_before_release != nullptr);
+	EXPECT_TRUE(quader::math::nearly_equal(object_before_release->transform.rotation_euler.z, -90.0F, 0.0001F));
+	EXPECT_FALSE(history.can_undo());
+	EXPECT_FALSE(fixture.document.is_dirty());
+	EXPECT_TRUE(manager.dispatch_pointer_event(front_gizmo_event({ 258.0F, 178.0F },
+			quader::tools::PointerPhase::Release,
+			quader::tools::PointerButton::Left,
+			false)));
+
+	const auto *object = fixture.document.find_mesh_object(fixture.object);
+	ASSERT_TRUE(object != nullptr);
+	EXPECT_TRUE(quader::math::nearly_equal(object->transform.rotation_euler.z, -90.0F, 0.0001F));
+	EXPECT_TRUE(history.can_undo());
+}
+
+TEST(TransformGizmoTool, EscapeCancelsDragWithoutMutatingDocument) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	select_object(fixture.document, fixture.object);
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager manager{ quader::tools::ToolContext{ fixture.document, history } };
+	EXPECT_TRUE(manager.register_tool(std::make_unique<quader::tools::TransformGizmoTool>(
+			quader::tools::ToolId::Move)));
+	EXPECT_TRUE(manager.set_active_tool(quader::tools::ToolId::Move));
+
+	EXPECT_TRUE(manager.dispatch_pointer_event(front_gizmo_event({ 180.0F, 240.0F },
+			quader::tools::PointerPhase::Press,
+			quader::tools::PointerButton::Left,
+			true,
+			false)));
+	EXPECT_TRUE(manager.dispatch_pointer_event(front_gizmo_event({ 170.0F, 240.0F },
+			quader::tools::PointerPhase::Move,
+			quader::tools::PointerButton::None,
+			false,
+			false)));
+	EXPECT_FALSE(manager.preview().empty());
+	const auto *preview_object = fixture.document.find_mesh_object(fixture.object);
+	ASSERT_TRUE(preview_object != nullptr);
+	EXPECT_TRUE(quader::math::nearly_equal(preview_object->transform.translation,
+			quader::math::Vec3{ 1.0F, 0.0F, 0.0F }));
+	EXPECT_FALSE(fixture.document.is_dirty());
+	EXPECT_TRUE(manager.dispatch_key_event(quader::tools::KeyEvent{ 27, true, false }));
+
+	const auto *object = fixture.document.find_mesh_object(fixture.object);
+	ASSERT_TRUE(object != nullptr);
+	EXPECT_TRUE(quader::math::nearly_equal(object->transform.translation,
+			quader::math::Vec3{}));
+	EXPECT_TRUE(manager.preview().empty());
+	EXPECT_FALSE(history.can_undo());
+	EXPECT_FALSE(fixture.document.is_dirty());
 }
 
 TEST(BoxTool, HoverShowsSnappedFootprintInSourceView) {

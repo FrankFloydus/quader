@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -30,6 +31,15 @@ void expect_true(bool condition, std::string_view message) {
 
 [[nodiscard]] bool near(float left, float right, float tolerance = 0.001F) noexcept {
 	return std::fabs(left - right) <= tolerance;
+}
+
+void expect_color_near(const crimson::ColorSrgb &actual, const crimson::ColorSrgb &expected, std::string_view message) {
+	expect_true(
+			near(actual.r, expected.r) &&
+					near(actual.g, expected.g) &&
+					near(actual.b, expected.b) &&
+					near(actual.a, expected.a),
+			message);
 }
 
 [[nodiscard]] const crimson::RenderPass *find_pass(const crimson::RenderGraph &graph, std::string_view name) {
@@ -50,51 +60,51 @@ void expect_true(bool condition, std::string_view message) {
 	return false;
 }
 
-[[nodiscard]] crimson::PrototypeCamera make_camera() {
-	return crimson::PrototypeCamera{
+[[nodiscard]] crimson::ViewportCamera make_camera() {
+	return crimson::ViewportCamera{
 		.eye = { 0.0F, 4.0F, 8.0F },
 		.target = { 0.0F, 0.0F, 0.0F },
 		.up = { 0.0F, 1.0F, 0.0F },
 		.forward = { 0.0F, -0.4F, -1.0F },
-		.projection = crimson::PrototypeCameraProjection::Perspective,
+		.projection = crimson::ViewportCameraProjection::Perspective,
 	};
 }
 
-TEST(Overlay, PrototypeGridIsOverlayCommandNotLitObject) {
-	const std::array<crimson::PrototypeCamera, 1> kCameras = { make_camera() };
-	const std::array<crimson::PrototypeViewportView, 1> kViews = {
-		crimson::PrototypeViewportView{
-				.rect = crimson::PrototypeViewportRect{ 0, 0, 320, 240 },
+TEST(Overlay, ViewportGridIsOverlayCommandNotLitObject) {
+	const std::array<crimson::ViewportCamera, 1> kCameras = { make_camera() };
+	const std::array<crimson::ViewportFrameView, 1> kViews = {
+		crimson::ViewportFrameView{
+				.rect = crimson::ViewportFrameRect{ 0, 0, 320, 240 },
 				.camera_index = 0,
 				.debug_name = "Perspective",
 		},
 	};
-	const crimson::PrototypeViewportFrame kFrame{
+	const crimson::ViewportFrameInput kFrame{
 		.target_extent = crimson::ViewportExtent{ 640, 480, 1.0F },
 		.views = kViews,
 		.cameras = kCameras,
 	};
 
 	const crimson::FrameBuilder kBuilder;
-	auto built = kBuilder.build_prototype_snapshot(kFrame);
-	expect_true(built.has_value(), "valid prototype frame builds for overlay tests");
+	auto built = kBuilder.build_snapshot(kFrame);
+	expect_true(built.has_value(), "valid viewport frame builds for overlay tests");
 	if (!built) {
 		return;
 	}
 
 	const crimson::FrameSnapshot kSnapshot = std::move(built).value();
 	expect_true(kSnapshot.objects().empty(), "empty document viewport has no default lit render object");
-	expect_true(kSnapshot.overlays().size() == 1, "prototype grid is emitted through overlay commands");
-	expect_true(kSnapshot.grid_overlay_payloads().size() == 1, "prototype grid payload is snapshot-owned");
+	expect_true(kSnapshot.overlays().size() == 1, "viewport grid is emitted through overlay commands");
+	expect_true(kSnapshot.grid_overlay_payloads().size() == 1, "viewport grid payload is snapshot-owned");
 	expect_true(kSnapshot.line_overlay_payloads().empty(), "empty document viewport has no preview line payload");
 	expect_true(kSnapshot.triangle_overlay_payloads().empty(), "empty document viewport has no triangle overlay payload");
 	expect_true(kSnapshot.point_overlay_payloads().empty(), "empty document viewport has no point overlay payload");
 	expect_true(
 			kSnapshot.overlays()[0].primitive == crimson::OverlayPrimitive::Grid,
-			"prototype overlay command is a grid primitive");
+			"viewport overlay command is a grid primitive");
 	expect_true(
 			kSnapshot.overlays()[0].base_shader == crimson::BaseShaderId::OverlayUnlit,
-			"prototype grid uses OverlayUnlit schema");
+			"viewport grid uses OverlayUnlit schema");
 	for (const crimson::RenderObject &object : kSnapshot.objects()) {
 		expect_true(
 				object.queue != crimson::RenderQueue::OverlayDepthTested && object.queue != crimson::RenderQueue::OverlayXRay && object.queue != crimson::RenderQueue::OverlayAlwaysOnTop,
@@ -138,6 +148,67 @@ TEST(Overlay, GridDepthModeFollowsProjectionAndUsesReferenceOffset) {
 	expect_true(
 			kOrthographicCommand.depth_mode == crimson::OverlayDepthMode::DepthTested,
 			"orthographic grid remains depth-tested");
+}
+
+TEST(Overlay, GridDefaultsMatchReferenceViewportSettings) {
+	crimson::RenderView view;
+	view.rect = crimson::RenderViewportRect{ 0, 0, 640, 480 };
+	view.camera = crimson::RenderCamera{
+		.eye = { 4.0F, 4.0F, 4.0F },
+		.target = { 0.0F, 0.0F, 0.0F },
+		.up = { 0.0F, 1.0F, 0.0F },
+		.forward = { -1.0F, -1.0F, -1.0F },
+		.projection = crimson::CameraProjection::Perspective,
+		.orthographic_height_m = 12.0F,
+	};
+
+	const crimson::GridOverlayCommand kDefaultGrid = crimson::make_grid_overlay_for_view(view);
+	expect_color_near(
+			kDefaultGrid.minor_color,
+			crimson::ColorSrgb{ 150.0F / 255.0F, 150.0F / 255.0F, 150.0F / 255.0F, 1.0F },
+			"minor grid color matches the reference viewport default");
+	expect_color_near(
+			kDefaultGrid.major_color,
+			crimson::ColorSrgb{ 210.0F / 255.0F, 210.0F / 255.0F, 210.0F / 255.0F, 1.0F },
+			"major grid color matches the reference viewport default");
+	expect_color_near(
+			kDefaultGrid.axis_u_color,
+			crimson::ColorSrgb{ 1.0F, 0.239F, 0.0F, 0.72F },
+			"X axis grid color matches the reference viewport default");
+	expect_color_near(
+			kDefaultGrid.axis_v_color,
+			crimson::ColorSrgb{ 0.059F, 0.612F, 1.0F, 0.72F },
+			"Z axis grid color matches the reference viewport default");
+	expect_true(near(kDefaultGrid.minor_line_scale, 0.325F), "minor grid thickness matches the reference viewport default");
+	expect_true(near(kDefaultGrid.major_line_scale, 0.250F), "major grid thickness matches the reference viewport default");
+	expect_true(near(kDefaultGrid.axis_line_scale, 1.0F), "axis grid thickness matches the reference viewport default");
+
+	view.camera.projection = crimson::CameraProjection::Orthographic;
+	view.camera.eye = { 16.0F, 0.0F, 0.0F };
+	view.camera.target = { 0.0F, 0.0F, 0.0F };
+	view.camera.forward = { -1.0F, 0.0F, 0.0F };
+	const crimson::GridOverlayCommand kYzGrid = crimson::make_grid_overlay_for_view(view);
+	expect_color_near(
+			kYzGrid.axis_u_color,
+			crimson::ColorSrgb{ 0.059F, 0.612F, 1.0F, 0.72F },
+			"YZ grid U axis uses the reference Z axis color");
+	expect_color_near(
+			kYzGrid.axis_v_color,
+			crimson::ColorSrgb{ 0.29F, 0.58F, 0.0F, 0.0F },
+			"YZ grid V axis uses the reference hidden Y axis color");
+
+	view.camera.eye = { 0.0F, 0.0F, 16.0F };
+	view.camera.target = { 0.0F, 0.0F, 0.0F };
+	view.camera.forward = { 0.0F, 0.0F, -1.0F };
+	const crimson::GridOverlayCommand kXyGrid = crimson::make_grid_overlay_for_view(view);
+	expect_color_near(
+			kXyGrid.axis_u_color,
+			crimson::ColorSrgb{ 1.0F, 0.239F, 0.0F, 0.72F },
+			"XY grid U axis uses the reference X axis color");
+	expect_color_near(
+			kXyGrid.axis_v_color,
+			crimson::ColorSrgb{ 0.29F, 0.58F, 0.0F, 0.0F },
+			"XY grid V axis uses the reference hidden Y axis color");
 }
 
 TEST(Overlay, OverlaySystemBucketsGridCommandsByDepthMode) {
@@ -207,6 +278,26 @@ TEST(Overlay, OverlaySystemBucketsLineCommandsByDepthMode) {
 	expect_true(kLists.command_count() == 2, "line draw lists retain command and line payload records");
 }
 
+TEST(Overlay, XrayLineBatchesDrawOnTopWithoutDepthTest) {
+	std::array<crimson::LineOverlaySegment, 1> lines = {
+		crimson::LineOverlaySegment{ .start = { 0.0F, 0.0F, 0.0F }, .end = { 1.0F, 0.0F, 0.0F } },
+	};
+	std::array<crimson::OverlayCommand, 1> commands = {
+		crimson::OverlayCommand{
+				.view_index = 0,
+				.primitive = crimson::OverlayPrimitive::LineList,
+				.depth_mode = crimson::OverlayDepthMode::XRay,
+				.payload_offset = 0,
+				.payload_count = 1,
+		},
+	};
+
+	const crimson::OverlayDrawLists kLists = crimson::OverlaySystem{}.prepare(commands, {}, lines);
+	ASSERT_EQ(kLists.xray.line_commands.size(), 1U);
+	EXPECT_FALSE(kLists.xray.line_commands[0].render_state.depth_test_enabled);
+	EXPECT_FALSE(kLists.xray.line_commands[0].render_state.depth_write_enabled);
+}
+
 TEST(Overlay, SourceWireDepthStampIsMetadataOnly) {
 	std::array<crimson::TriangleOverlayPrimitive, 1> triangles = {
 		crimson::TriangleOverlayPrimitive{
@@ -237,6 +328,8 @@ TEST(Overlay, SourceWireDepthStampIsMetadataOnly) {
 	expect_true(kLists.source_wire_depth_stamp_count() == 1, "source-wire depth stamp metadata is retained");
 	expect_true(kLists.source_wire_depth_stamps[0].view_index == 3, "depth-stamp metadata keeps the view index");
 	expect_true(kLists.source_wire_depth_stamps[0].element.object_id == 42, "depth-stamp metadata keeps topology reference");
+	expect_true(kLists.source_wire_depth_stamps[0].triangle.element.face_index == 7, "depth-stamp metadata keeps triangle topology");
+	expect_true(kLists.source_wire_depth_stamps[0].triangle.b.x == 1.0F, "depth-stamp metadata keeps triangle geometry");
 }
 
 TEST(Overlay, SourceWireStaysAlwaysOnTopDespiteCommandDepth) {
@@ -269,7 +362,7 @@ TEST(Overlay, SourceWireStaysAlwaysOnTopDespiteCommandDepth) {
 			"source wire disables depth testing");
 }
 
-TEST(Overlay, ComponentLineHandlesBatchBySourceAndDepthMode) {
+TEST(Overlay, ComponentLineHandlesPreserveLayerOrderAndDepthState) {
 	std::array<crimson::LineOverlaySegment, 2> lines = {
 		crimson::LineOverlaySegment{
 				.start = { 0.0F, 0.0F, 0.0F },
@@ -296,13 +389,20 @@ TEST(Overlay, ComponentLineHandlesBatchBySourceAndDepthMode) {
 	};
 
 	const crimson::OverlayDrawLists kLists = crimson::OverlaySystem{}.prepare(commands, {}, lines);
-	expect_true(kLists.always_on_top.line_commands.size() == 1, "source wire forms its own always-on-top batch");
-	expect_true(kLists.depth_tested.line_commands.size() == 1, "component selected edge forms a depth-tested batch");
+	ASSERT_EQ(kLists.always_on_top.line_commands.size(), 2U);
+	expect_true(kLists.depth_tested.line_commands.empty(), "component selected edge stays in layer-order bucket");
 	expect_true(
-			kLists.depth_tested.line_commands[0].source_kind == crimson::OverlaySourceKind::ComponentSelection,
+			kLists.always_on_top.line_commands[0].semantic_role == crimson::OverlaySemanticRole::SourceWire &&
+					!kLists.always_on_top.line_commands[0].render_state.depth_test_enabled,
+			"source wire draws first without depth testing");
+	expect_true(
+			kLists.always_on_top.line_commands[1].source_kind == crimson::OverlaySourceKind::ComponentSelection,
 			"component edge batch keeps component selection source");
 	expect_true(
-			kLists.depth_tested.line_commands[0].segments[0].element.edge_index == 12,
+			kLists.always_on_top.line_commands[1].render_state.depth_test_enabled,
+			"component edge keeps depth-tested render state");
+	expect_true(
+			kLists.always_on_top.line_commands[1].segments[0].element.edge_index == 12,
 			"component edge batch keeps semantic edge reference");
 }
 
@@ -377,11 +477,12 @@ TEST(Overlay, VertexPointHandlesDepthTestWhenSourcedFromComponents) {
 			std::span<const crimson::LineOverlaySegment>{},
 			std::span<const crimson::TriangleOverlayPrimitive>{},
 			points);
-	expect_true(kLists.always_on_top.point_commands.empty(), "component vertex does not use always-on-top point batch");
-	ASSERT_EQ(kLists.depth_tested.point_commands.size(), 1U);
-	expect_true(kLists.depth_tested.point_commands[0].size_px == 7.0F, "point handle size is preserved");
+	expect_true(kLists.depth_tested.point_commands.empty(), "component vertex stays in layer-order point bucket");
+	ASSERT_EQ(kLists.always_on_top.point_commands.size(), 1U);
+	expect_true(kLists.always_on_top.point_commands[0].render_state.depth_test_enabled, "component vertex keeps depth-tested render state");
+	expect_true(kLists.always_on_top.point_commands[0].size_px == 7.0F, "point handle size is preserved");
 	expect_true(
-			kLists.depth_tested.point_commands[0].points[0].element.vertex_index == 5,
+			kLists.always_on_top.point_commands[0].points[0].element.vertex_index == 5,
 			"point handle keeps semantic vertex reference");
 }
 

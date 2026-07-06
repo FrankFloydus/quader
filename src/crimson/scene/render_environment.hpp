@@ -19,7 +19,7 @@ struct RenderEnvironment {
 	/// Optional environment resource handle.
 	RenderEnvironmentHandle environment;
 	/// Linear clear color used when no sky/environment is rendered.
-	quader::math::Vec3 clear_color_linear{ 0.02F, 0.02F, 0.02F };
+	quader::math::Vec3 clear_color_linear{ 2.0F / 255.0F, 2.0F / 255.0F, 2.0F / 255.0F };
 	/// Environment intensity multiplier.
 	float intensity = 1.0F;
 };

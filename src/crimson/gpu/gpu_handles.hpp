@@ -10,6 +10,7 @@
 #pragma once
 
 #include "crimson/gpu/gpu_resources.hpp"
+#include "crimson/mesh/render_mesh.hpp"
 
 #include <bgfx/bgfx.h>
 
@@ -221,6 +222,8 @@ using UniqueFrameBufferHandle = UniqueGpuHandle<bgfx::FrameBufferHandle, FrameBu
 
 /// GPU vertex/index buffer resource.
 struct GpuMeshResource {
+	/// Source mesh revision uploaded into the owned buffers.
+	RenderMeshRevision uploaded_revision;
 	/// bgfx vertex layout used by the vertex buffer.
 	bgfx::VertexLayout vertex_layout{};
 	/// Owned vertex buffer.

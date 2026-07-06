@@ -47,7 +47,7 @@ Never hand-edit `project_board.md` or `project_board_archive.md`.
 cmake --preset qt-mingw-debug
 cmake --build --preset qt-mingw-debug --parallel 20
 cmake --build --preset qt-mingw-debug-tests --parallel 20
-ctest --preset qt-mingw-debug
+ctest --preset qt-mingw-debug-runtime
 cmake --build --preset qt-mingw-debug-deploy --parallel 20
 .\build\qt-mingw-debug\quader.exe
 python tools/project_board.py validate

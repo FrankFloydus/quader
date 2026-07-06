@@ -166,6 +166,30 @@ quader::foundation::Result<void, DocumentError> Document::set_transform(ObjectId
 	return quader::foundation::Result<void, DocumentError>::success();
 }
 
+quader::foundation::Result<void, DocumentError> Document::set_preview_transform(ObjectId id,
+		Transform transform) {
+	auto *object = find_mesh_object(id);
+	if (object == nullptr) {
+		return quader::foundation::Result<void, DocumentError>::failure(
+				make_document_error(DocumentErrorCode::InvalidObject,
+						"cannot preview-transform an unknown mesh object id"));
+	}
+
+	if (!is_finite(transform)) {
+		return quader::foundation::Result<void, DocumentError>::failure(
+				make_document_error(DocumentErrorCode::InvalidTransform,
+						"cannot apply a non-finite preview object transform"));
+	}
+
+	if (object->transform == transform) {
+		return quader::foundation::Result<void, DocumentError>::success();
+	}
+
+	object->transform = transform;
+	emit_change(DocumentChangeKind::TransformChanged, id);
+	return quader::foundation::Result<void, DocumentError>::success();
+}
+
 MeshObject *Document::find_mesh_object(ObjectId id) noexcept {
 	return objects_.find_mesh_object(id);
 }

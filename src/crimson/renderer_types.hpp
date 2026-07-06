@@ -114,10 +114,10 @@ constexpr bool is_valid_extent(const ViewportExtent &extent) noexcept {
 
 /// Shader program identifiers known to the compiled shader manifest.
 enum class ShaderProgramId : std::uint16_t {
-	/// Legacy prototype lit cube program.
-	PrototypeLitCube,
-	/// Legacy prototype grid overlay program.
-	PrototypeGridOverlay,
+	/// Viewport lit cube fallback program.
+	ViewportLitCube,
+	/// Viewport grid overlay program.
+	ViewportGridOverlay,
 	/// Opaque PBR surface program.
 	OpaquePbr,
 	/// Alpha-cutout PBR surface program.
@@ -146,10 +146,10 @@ enum class ShaderProgramId : std::uint16_t {
  */
 constexpr std::string_view shader_program_id_name(ShaderProgramId id) noexcept {
 	switch (id) {
-		case ShaderProgramId::PrototypeLitCube:
-			return "PrototypeLitCube";
-		case ShaderProgramId::PrototypeGridOverlay:
-			return "PrototypeGridOverlay";
+		case ShaderProgramId::ViewportLitCube:
+			return "ViewportLitCube";
+		case ShaderProgramId::ViewportGridOverlay:
+			return "ViewportGridOverlay";
 		case ShaderProgramId::OpaquePbr:
 			return "OpaquePbr";
 		case ShaderProgramId::AlphaCutoutPbr:
@@ -249,8 +249,8 @@ constexpr std::string_view render_domain_name(RenderDomain domain) noexcept {
 
 /// Queue used for sorting and routing draw packets.
 enum class RenderQueue : std::uint8_t {
-	/// Legacy prototype opaque queue.
-	PrototypeOpaque,
+	/// Viewport opaque queue normalized into the opaque surface queue.
+	ViewportOpaque,
 	/// Opaque surface queue.
 	Opaque,
 	/// Alpha-tested surface queue.
@@ -275,8 +275,8 @@ enum class RenderQueue : std::uint8_t {
  */
 constexpr std::string_view render_queue_name(RenderQueue queue) noexcept {
 	switch (queue) {
-		case RenderQueue::PrototypeOpaque:
-			return "PrototypeOpaque";
+		case RenderQueue::ViewportOpaque:
+			return "ViewportOpaque";
 		case RenderQueue::Opaque:
 			return "Opaque";
 		case RenderQueue::AlphaCutout:

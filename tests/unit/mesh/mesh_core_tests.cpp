@@ -403,6 +403,15 @@ TEST(MeshCore, AttributeStorageHooksAreTypedAndResetReusedSlots) {
 	EXPECT_FALSE(wrong_type);
 	EXPECT_EQ(wrong_type.error().code, quader::mesh::MeshErrorCode::AttributeTypeMismatch);
 
+	auto invalid_attribute = mesh.vertex_attribute<float>(quader::mesh::AttributeId{ 42U }, kVertex);
+	EXPECT_FALSE(invalid_attribute);
+	EXPECT_EQ(invalid_attribute.error().code, quader::mesh::MeshErrorCode::InvalidAttribute);
+
+	const auto &const_mesh = mesh;
+	auto invalid_const_attribute = const_mesh.vertex_attribute<float>(quader::mesh::AttributeId{ 42U }, kVertex);
+	EXPECT_FALSE(invalid_const_attribute);
+	EXPECT_EQ(invalid_const_attribute.error().code, quader::mesh::MeshErrorCode::InvalidAttribute);
+
 	EXPECT_TRUE(mesh.delete_vertex(kVertex));
 	const auto kReusedVertex = mesh.create_vertex(quader::math::Vec3{ 1.0F, 0.0F, 0.0F });
 	EXPECT_EQ(kReusedVertex.index(), kVertex.index());

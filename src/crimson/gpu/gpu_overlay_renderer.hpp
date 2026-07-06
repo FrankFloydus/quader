@@ -14,12 +14,52 @@
 #include "crimson/overlays/overlay_system.hpp"
 #include "crimson/renderer_diagnostics.hpp"
 
+#include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <span>
 
 #include <bgfx/bgfx.h>
 
 namespace crimson::gpu {
+
+/// Return the bgfx submit state used for the reference-style ground grid.
+[[nodiscard]] std::uint64_t grid_overlay_submit_state(OverlayDepthMode depth_mode) noexcept;
+
+/// Expanded overlay quad corners in world space, ready for the overlay shader path.
+struct OverlayScreenSpaceQuad {
+	/// Quad corners ordered for the shared overlay index pattern.
+	std::array<quader::math::Vec3, 4> corners;
+};
+
+/// Build a reference-style screen-space line quad while preserving the existing world-position shader path.
+[[nodiscard]] std::optional<OverlayScreenSpaceQuad> make_overlay_line_screen_space_quad(
+		const RenderView &view,
+		const LineOverlaySegment &segment,
+		float width_px,
+		float depth_bias_units,
+		bool homogeneous_depth) noexcept;
+
+/// Build a reference-style screen-space point quad while preserving the existing world-position shader path.
+[[nodiscard]] std::optional<OverlayScreenSpaceQuad> make_overlay_point_screen_space_quad(
+		const RenderView &view,
+		quader::math::Vec3 position,
+		float size_px,
+		float depth_bias_units,
+		bool homogeneous_depth) noexcept;
+
+/// Return a copy of a source-wire line command with hidden same-mesh segments culled by depth stamps.
+[[nodiscard]] PreparedLineOverlayCommand make_source_wire_visibility_filtered_line_command(
+		const RenderView &view,
+		const PreparedLineOverlayCommand &lines,
+		std::span<const SourceWireDepthStampMetadata> source_wire_depth_stamps);
+
+/// Return a copy of a point command with hidden source/component handles culled by depth stamps.
+[[nodiscard]] PreparedPointOverlayCommand make_source_wire_visibility_filtered_point_command(
+		const RenderView &view,
+		const PreparedPointOverlayCommand &points,
+		std::span<const SourceWireDepthStampMetadata> source_wire_depth_stamps);
 
 /// Owns GPU state needed to submit unlit overlay grid, line, triangle, and point primitives.
 class GpuOverlayRenderer final {

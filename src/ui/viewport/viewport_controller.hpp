@@ -10,6 +10,7 @@
 #pragma once
 
 #include "tools/editor_input_event.hpp"
+#include "tools/tool_id.hpp"
 #include "ui/viewport/viewport_camera_controller.hpp"
 #include "ui/viewport/viewport_layout_state.hpp"
 #include "ui/viewport/viewport_render_host.hpp"
@@ -61,10 +62,10 @@ public:
 	/// Return true when quad viewport layout is active.
 	[[nodiscard]] bool quad_viewports_enabled() const noexcept;
 
-	/// Enable or disable prototype animation in render requests.
-	void set_prototype_animation_enabled(bool enabled);
-	/// Return true when prototype animation is enabled.
-	[[nodiscard]] bool prototype_animation_enabled() const noexcept;
+	/// Enable or disable scene animation in render requests.
+	void set_scene_animation_enabled(bool enabled);
+	/// Return true when scene animation is enabled.
+	[[nodiscard]] bool scene_animation_enabled() const noexcept;
 	/// Set the viewport mesh surface shading mode.
 	void set_shading_mode(ViewportShadingMode mode);
 	/// Return the viewport mesh surface shading mode.
@@ -138,6 +139,8 @@ private:
 			quader::tools::PointerPhase phase,
 			bool pressed,
 			quader::tools::KeyboardModifiers modifiers = {});
+	void remember_tool_pointer(ViewportPoint point, ViewportPixelSize size, bool left_pressed) noexcept;
+	void refresh_transform_tool_hover();
 	void emit_result_error(const ViewportRenderResult &result);
 
 	IViewportRenderHost &render_host_;
@@ -145,9 +148,12 @@ private:
 	ViewportLayoutState layout_;
 	ViewportCameraController cameras_;
 	ViewportPixelSize surface_size_;
+	std::optional<ViewportPoint> last_tool_pointer_point_;
+	ViewportPixelSize last_tool_pointer_size_;
+	bool tool_pointer_left_pressed_ = false;
 	double device_pixel_ratio_ = 1.0;
 	ViewportShadingMode shading_mode_ = ViewportShadingMode::Shaded;
-	bool prototype_animation_enabled_ = true;
+	bool scene_animation_enabled_ = true;
 	bool surface_initialized_ = false;
 };
 

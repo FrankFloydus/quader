@@ -28,10 +28,12 @@
 #include "tools/tool.hpp"
 #include "tools/box_tool.hpp"
 #include "tools/tool_manager.hpp"
+#include "tools/transform_gizmo_tool.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <limits>
@@ -80,7 +82,7 @@ struct FakeRenderHost final : quader::ui::IViewportRenderHost {
 		last_layout = request.layout_mode;
 		last_pane_count = request.panes.size();
 		last_camera_count = request.cameras.size();
-		last_animation_enabled = request.prototype_animation_enabled;
+		last_animation_enabled = request.scene_animation_enabled;
 		stats = quader::ui::ViewportFrameStats{
 			request.surface_size.width,
 			request.surface_size.height,
@@ -506,7 +508,7 @@ TEST(Viewport, ControllerForwardsSurfaceResizeAndQuadRenderRequests) {
 	EXPECT_EQ(host.last_camera_count, 4U);
 	EXPECT_TRUE(host.last_animation_enabled);
 
-	controller.set_prototype_animation_enabled(false);
+	controller.set_scene_animation_enabled(false);
 	controller.render_frame(2.0, 0.016F);
 	EXPECT_FALSE(host.last_animation_enabled);
 }
@@ -731,6 +733,40 @@ TEST(Viewport, ControllerDispatchesPaneLocalPointerAndViewIndexInQuadLayout) {
 	EXPECT_FLOAT_EQ(kLastPointer.position.x, 178.0F);
 	EXPECT_FLOAT_EQ(kLastPointer.position.y, 100.0F);
 	EXPECT_TRUE(kLastPointer.ray.has_value());
+	ASSERT_TRUE(kLastPointer.camera.has_value());
+	EXPECT_FLOAT_EQ(kLastPointer.camera->viewport_size_pixels.x, 318.0F);
+	EXPECT_FLOAT_EQ(kLastPointer.camera->viewport_size_pixels.y, 238.0F);
+	EXPECT_EQ(kLastPointer.camera->projection, quader::tools::ViewportCameraProjection::Orthographic);
+}
+
+TEST(Viewport, TransformGizmoRefreshesOnToolSwitchAndCameraZoomWithoutMouseMove) {
+	FakeRenderHost host;
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	quader::document::Selection selection;
+	ASSERT_TRUE(selection.set_objects({ fixture.object }));
+	ASSERT_TRUE(fixture.document.set_selection(std::move(selection)));
+
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager tools{ quader::tools::ToolContext{ fixture.document, history } };
+	ASSERT_TRUE(tools.register_tool(std::make_unique<quader::tools::TransformGizmoTool>(
+			quader::tools::ToolId::Move)));
+
+	quader::ui::ViewportController controller(host, tools);
+	controller.initialize_surface(quader::ui::NativeViewportSurface{}, { 640, 480 }, 1.0);
+	EXPECT_FALSE(controller.handle_mouse_move({ 320.0, 240.0 }, { 640, 480 }));
+	ASSERT_TRUE(tools.set_active_tool(quader::tools::ToolId::Move));
+	EXPECT_TRUE(tools.preview().empty());
+
+	controller.render_frame(0.0, 0.0F);
+	EXPECT_FALSE(tools.preview().empty());
+	const auto *tool = static_cast<const quader::tools::TransformGizmoTool *>(tools.active_tool());
+	ASSERT_TRUE(tool != nullptr);
+	const float kInitialScale = tool->state().gizmo_scale;
+
+	controller.handle_wheel(1.0F, { 320.0, 240.0 }, { 640, 480 });
+	controller.render_frame(0.016, 0.016F);
+	EXPECT_FALSE(tools.preview().empty());
+	EXPECT_NE(tool->state().gizmo_scale, kInitialScale);
 }
 
 TEST(Viewport, ToolPreviewOverlayAdapterUsesReferenceStyleAndActiveViewOnly) {
@@ -759,6 +795,66 @@ TEST(Viewport, ToolPreviewOverlayAdapterUsesReferenceStyleAndActiveViewOnly) {
 	EXPECT_FLOAT_EQ(overlays.front().thickness_px, 2.0F);
 	EXPECT_EQ(overlays.front().payload_offset, 0U);
 	EXPECT_EQ(overlays.front().payload_count, 1U);
+}
+
+TEST(Viewport, ToolPreviewOverlayAdapterPreservesColoredGizmoSegments) {
+	quader::tools::ToolPreview preview;
+	preview.active = true;
+	preview.view_index = 1U;
+	preview.colored_world_segments.push_back(quader::tools::ToolPreviewColoredWorldSegment{
+			.start = { 0.0F, 0.0F, 0.0F },
+			.end = { 1.0F, 0.0F, 0.0F },
+			.color_srgb = { 0.1F, 0.2F, 0.3F, 0.4F },
+			.thickness_px = 5.0F,
+	});
+
+	std::vector<crimson::OverlayCommand> overlays;
+	std::vector<crimson::LineOverlaySegment> line_payloads;
+	quader::ui::append_tool_preview_line_overlays(preview, 4U, overlays, line_payloads);
+
+	ASSERT_EQ(overlays.size(), 1U);
+	ASSERT_EQ(line_payloads.size(), 1U);
+	EXPECT_EQ(overlays.front().view_index, 1U);
+	EXPECT_EQ(overlays.front().semantic_role, crimson::OverlaySemanticRole::ToolPreview);
+	EXPECT_EQ(overlays.front().source_kind, crimson::OverlaySourceKind::ToolPreview);
+	EXPECT_FLOAT_EQ(overlays.front().color_srgb.r, 0.1F);
+	EXPECT_FLOAT_EQ(overlays.front().color_srgb.g, 0.2F);
+	EXPECT_FLOAT_EQ(overlays.front().color_srgb.b, 0.3F);
+	EXPECT_FLOAT_EQ(overlays.front().color_srgb.a, 0.4F);
+	EXPECT_FLOAT_EQ(overlays.front().thickness_px, 5.0F);
+	EXPECT_EQ(line_payloads.front().semantic_role, crimson::OverlaySemanticRole::ToolPreview);
+	EXPECT_EQ(line_payloads.front().source_kind, crimson::OverlaySourceKind::ToolPreview);
+}
+
+TEST(Viewport, ToolPreviewOverlayAdapterPreservesColoredGizmoTriangles) {
+	quader::tools::ToolPreview preview;
+	preview.active = true;
+	preview.view_index = 1U;
+	preview.colored_world_triangles.push_back(quader::tools::ToolPreviewColoredWorldTriangle{
+			.a = { 0.0F, 0.0F, 0.0F },
+			.b = { 1.0F, 0.0F, 0.0F },
+			.c = { 0.0F, 1.0F, 0.0F },
+			.color_srgb = { 0.1F, 0.2F, 0.3F, 0.4F },
+	});
+
+	std::vector<crimson::OverlayCommand> overlays;
+	std::vector<crimson::LineOverlaySegment> line_payloads;
+	std::vector<crimson::TriangleOverlayPrimitive> triangle_payloads;
+	quader::ui::append_tool_preview_overlays(preview, 4U, overlays, line_payloads, triangle_payloads);
+
+	ASSERT_EQ(overlays.size(), 1U);
+	ASSERT_TRUE(line_payloads.empty());
+	ASSERT_EQ(triangle_payloads.size(), 1U);
+	EXPECT_EQ(overlays.front().view_index, 1U);
+	EXPECT_EQ(overlays.front().primitive, crimson::OverlayPrimitive::SolidTriangles);
+	EXPECT_EQ(overlays.front().semantic_role, crimson::OverlaySemanticRole::ToolPreview);
+	EXPECT_EQ(overlays.front().source_kind, crimson::OverlaySourceKind::ToolPreview);
+	EXPECT_FLOAT_EQ(overlays.front().color_srgb.r, 0.1F);
+	EXPECT_FLOAT_EQ(overlays.front().color_srgb.g, 0.2F);
+	EXPECT_FLOAT_EQ(overlays.front().color_srgb.b, 0.3F);
+	EXPECT_FLOAT_EQ(overlays.front().color_srgb.a, 0.4F);
+	EXPECT_EQ(triangle_payloads.front().semantic_role, crimson::OverlaySemanticRole::ToolPreview);
+	EXPECT_EQ(triangle_payloads.front().source_kind, crimson::OverlaySourceKind::ToolPreview);
 }
 
 TEST(Viewport, ToolPreviewOverlayAdapterConvertsBoxPreviewToLineVolume) {
@@ -806,9 +902,9 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsSelectedObjectTopology) {
 			triangle_payloads,
 			point_payloads);
 
-	ASSERT_EQ(overlays.size(), 2U);
+	ASSERT_EQ(overlays.size(), 4U);
 	ASSERT_EQ(line_payloads.size(), 3U);
-	EXPECT_TRUE(triangle_payloads.empty());
+	ASSERT_EQ(triangle_payloads.size(), 1U);
 	EXPECT_TRUE(point_payloads.empty());
 	EXPECT_EQ(overlays.front().primitive, crimson::OverlayPrimitive::LineList);
 	EXPECT_EQ(overlays.front().semantic_role, crimson::OverlaySemanticRole::SelectedObjectTopology);
@@ -816,13 +912,62 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsSelectedObjectTopology) {
 	EXPECT_FLOAT_EQ(overlays.front().color_srgb.r, 1.0F);
 	EXPECT_FLOAT_EQ(overlays.front().color_srgb.g, 211.0F / 255.0F);
 	EXPECT_FLOAT_EQ(overlays.front().color_srgb.b, 31.0F / 255.0F);
-	EXPECT_FLOAT_EQ(overlays.front().thickness_px, 3.0F);
+	EXPECT_FLOAT_EQ(overlays.front().thickness_px, 2.5F);
 	EXPECT_EQ(overlays.front().payload_count, 3U);
+	const auto kFaceFillCommand = std::find_if(overlays.begin(), overlays.end(), [](const crimson::OverlayCommand &command) {
+		return command.primitive == crimson::OverlayPrimitive::SolidTriangles &&
+				command.semantic_role == crimson::OverlaySemanticRole::SelectedFaceFill &&
+				command.source_kind == crimson::OverlaySourceKind::ObjectSelection;
+	});
+	ASSERT_TRUE(kFaceFillCommand != overlays.end());
+	EXPECT_FLOAT_EQ(kFaceFillCommand->color_srgb.r, 1.0F);
+	EXPECT_FLOAT_EQ(kFaceFillCommand->color_srgb.g, 172.0F / 255.0F);
+	EXPECT_FLOAT_EQ(kFaceFillCommand->color_srgb.b, 31.0F / 255.0F);
+	EXPECT_FLOAT_EQ(kFaceFillCommand->color_srgb.a, 8.0F / 255.0F);
 	for (const crimson::LineOverlaySegment &line : line_payloads) {
 		EXPECT_EQ(line.semantic_role, crimson::OverlaySemanticRole::SelectedObjectTopology);
 		EXPECT_EQ(line.source_kind, crimson::OverlaySourceKind::ObjectSelection);
 		EXPECT_EQ(line.element.object_id, quader::ui::render_object_id_for_document_object(fixture.object));
 		EXPECT_NE(line.element.edge_index, crimson::kInvalidOverlayElementIndex);
+	}
+	EXPECT_EQ(triangle_payloads.front().semantic_role, crimson::OverlaySemanticRole::SelectedFaceFill);
+	EXPECT_EQ(triangle_payloads.front().source_kind, crimson::OverlaySourceKind::ObjectSelection);
+	EXPECT_EQ(triangle_payloads.front().element.object_id, quader::ui::render_object_id_for_document_object(fixture.object));
+	EXPECT_NE(triangle_payloads.front().element.face_index, crimson::kInvalidOverlayElementIndex);
+}
+
+TEST(Viewport, DocumentSelectionOverlayAdapterUsesPreviewObjectTransform) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	quader::document::Selection selection;
+	ASSERT_TRUE(selection.set_objects({ fixture.object }));
+	ASSERT_TRUE(fixture.document.set_selection(std::move(selection)));
+	fixture.document.clear_dirty();
+	(void)fixture.document.take_pending_changes();
+
+	auto *object = fixture.document.find_mesh_object(fixture.object);
+	ASSERT_TRUE(object != nullptr);
+	quader::document::Transform preview_transform = object->transform;
+	preview_transform.translation = { 3.0F, 0.0F, 0.0F };
+	ASSERT_TRUE(fixture.document.set_preview_transform(fixture.object, preview_transform));
+	EXPECT_FALSE(fixture.document.is_dirty());
+
+	std::vector<crimson::OverlayCommand> overlays;
+	std::vector<crimson::LineOverlaySegment> line_payloads;
+	std::vector<crimson::TriangleOverlayPrimitive> triangle_payloads;
+	std::vector<crimson::PointOverlayPrimitive> point_payloads;
+	quader::ui::append_document_selection_overlays(fixture.document,
+			1U,
+			overlays,
+			line_payloads,
+			triangle_payloads,
+			point_payloads);
+
+	ASSERT_EQ(line_payloads.size(), 3U);
+	for (const crimson::LineOverlaySegment &line : line_payloads) {
+		EXPECT_GE(line.start.x, 3.0F);
+		EXPECT_LE(line.start.x, 4.0F);
+		EXPECT_GE(line.end.x, 3.0F);
+		EXPECT_LE(line.end.x, 4.0F);
 	}
 }
 
@@ -866,6 +1011,34 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsComponentSourceWireAndSelecte
 		return triangle.semantic_role == crimson::OverlaySemanticRole::SelectedFaceFill &&
 				triangle.source_kind == crimson::OverlaySourceKind::ComponentSelection &&
 				triangle.element.face_index != crimson::kInvalidOverlayElementIndex;
+	}));
+	const auto kSelectedLineCommand = std::find_if(overlays.begin(), overlays.end(), [](const crimson::OverlayCommand &command) {
+		return command.primitive == crimson::OverlayPrimitive::LineList &&
+				command.semantic_role == crimson::OverlaySemanticRole::SelectedFaceEdge &&
+				command.source_kind == crimson::OverlaySourceKind::ComponentSelection;
+	});
+	ASSERT_TRUE(kSelectedLineCommand != overlays.end());
+	EXPECT_FLOAT_EQ(kSelectedLineCommand->color_srgb.r, 1.0F);
+	EXPECT_FLOAT_EQ(kSelectedLineCommand->color_srgb.g, 211.0F / 255.0F);
+	EXPECT_FLOAT_EQ(kSelectedLineCommand->color_srgb.b, 31.0F / 255.0F);
+	const auto kSourceLineCommand = std::find_if(overlays.begin(), overlays.end(), [](const crimson::OverlayCommand &command) {
+		return command.primitive == crimson::OverlayPrimitive::LineList &&
+				command.semantic_role == crimson::OverlaySemanticRole::SourceWire &&
+				command.source_kind == crimson::OverlaySourceKind::SourceWire;
+	});
+	ASSERT_TRUE(kSourceLineCommand != overlays.end());
+	EXPECT_LT(std::distance(overlays.begin(), kSourceLineCommand), std::distance(overlays.begin(), kSelectedLineCommand));
+	const auto kSelectedFillCommand = std::find_if(overlays.begin(), overlays.end(), [](const crimson::OverlayCommand &command) {
+		return command.primitive == crimson::OverlayPrimitive::SolidTriangles &&
+				command.semantic_role == crimson::OverlaySemanticRole::SelectedFaceFill &&
+				command.source_kind == crimson::OverlaySourceKind::ComponentSelection;
+	});
+	ASSERT_TRUE(kSelectedFillCommand != overlays.end());
+	EXPECT_FLOAT_EQ(kSelectedFillCommand->color_srgb.a, 8.0F / 255.0F);
+	EXPECT_EQ(kSelectedFillCommand->depth_mode, crimson::OverlayDepthMode::DepthTested);
+	EXPECT_FALSE(std::any_of(overlays.begin(), overlays.end(), [](const crimson::OverlayCommand &command) {
+		return command.semantic_role == crimson::OverlaySemanticRole::SelectedFaceFill &&
+				command.source_kind == crimson::OverlaySourceKind::ObjectSelection;
 	}));
 }
 
@@ -914,6 +1087,119 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsHoverComponentOverlays) {
 		return triangle.semantic_role == crimson::OverlaySemanticRole::HoverFaceFill &&
 				triangle.source_kind == crimson::OverlaySourceKind::ComponentHover &&
 				triangle.element.face_index != crimson::kInvalidOverlayElementIndex;
+	}));
+	const auto kHoverFillCommand = std::find_if(overlays.begin(), overlays.end(), [](const crimson::OverlayCommand &command) {
+		return command.primitive == crimson::OverlayPrimitive::SolidTriangles &&
+				command.semantic_role == crimson::OverlaySemanticRole::HoverFaceFill &&
+				command.source_kind == crimson::OverlaySourceKind::ComponentHover;
+	});
+	ASSERT_TRUE(kHoverFillCommand != overlays.end());
+	EXPECT_FLOAT_EQ(kHoverFillCommand->color_srgb.a, 22.0F / 255.0F);
+	const auto kHoverLineCommand = std::find_if(overlays.begin(), overlays.end(), [](const crimson::OverlayCommand &command) {
+		return command.primitive == crimson::OverlayPrimitive::LineList &&
+				command.semantic_role == crimson::OverlaySemanticRole::HoverFaceEdge &&
+				command.source_kind == crimson::OverlaySourceKind::ComponentHover;
+	});
+	ASSERT_TRUE(kHoverLineCommand != overlays.end());
+	EXPECT_FLOAT_EQ(kHoverLineCommand->color_srgb.r, 81.0F / 255.0F);
+	EXPECT_FLOAT_EQ(kHoverLineCommand->color_srgb.g, 1.0F);
+	EXPECT_FLOAT_EQ(kHoverLineCommand->color_srgb.b, 0.0F);
+}
+
+TEST(Viewport, DocumentSelectionOverlayAdapterKeepsSelectedFaceUnderNormalHover) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	quader::document::Selection selection;
+	ASSERT_TRUE(selection.set_component_selection(quader::document::SelectionMode::Face,
+			{ fixture.object },
+			{ quader::document::ComponentRef{ fixture.object, fixture.face } }));
+	ASSERT_TRUE(fixture.document.set_selection(std::move(selection)));
+
+	const quader::tools::SurfaceHit kHover{
+		.position = { 0.0F, 0.0F, 0.0F },
+		.normal = { 0.0F, 1.0F, 0.0F },
+		.object_id = quader::ui::render_object_id_for_document_object(fixture.object),
+		.component_index = fixture.face.index(),
+		.document_object_id = fixture.object,
+		.component = fixture.face,
+		.kind = quader::tools::SurfaceHitKind::Face,
+	};
+
+	std::vector<crimson::OverlayCommand> overlays;
+	std::vector<crimson::LineOverlaySegment> line_payloads;
+	std::vector<crimson::TriangleOverlayPrimitive> triangle_payloads;
+	std::vector<crimson::PointOverlayPrimitive> point_payloads;
+	quader::ui::append_document_selection_overlays(fixture.document,
+			1U,
+			overlays,
+			line_payloads,
+			triangle_payloads,
+			point_payloads,
+			kHover);
+
+	EXPECT_TRUE(std::any_of(line_payloads.begin(), line_payloads.end(), [](const crimson::LineOverlaySegment &line) {
+		return line.semantic_role == crimson::OverlaySemanticRole::SelectedFaceEdge &&
+				line.source_kind == crimson::OverlaySourceKind::ComponentSelection;
+	}));
+	EXPECT_TRUE(std::any_of(triangle_payloads.begin(), triangle_payloads.end(), [](const crimson::TriangleOverlayPrimitive &triangle) {
+		return triangle.semantic_role == crimson::OverlaySemanticRole::SelectedFaceFill &&
+				triangle.source_kind == crimson::OverlaySourceKind::ComponentSelection;
+	}));
+	EXPECT_TRUE(std::any_of(line_payloads.begin(), line_payloads.end(), [](const crimson::LineOverlaySegment &line) {
+		return line.semantic_role == crimson::OverlaySemanticRole::HoverFaceEdge &&
+				line.source_kind == crimson::OverlaySourceKind::ComponentHover;
+	}));
+	EXPECT_TRUE(std::any_of(triangle_payloads.begin(), triangle_payloads.end(), [](const crimson::TriangleOverlayPrimitive &triangle) {
+		return triangle.semantic_role == crimson::OverlaySemanticRole::HoverFaceFill &&
+				triangle.source_kind == crimson::OverlaySourceKind::ComponentHover;
+	}));
+}
+
+TEST(Viewport, DocumentSelectionOverlayAdapterSuppressesSelectedFaceOnlyForModifierHover) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	quader::document::Selection selection;
+	ASSERT_TRUE(selection.set_component_selection(quader::document::SelectionMode::Face,
+			{ fixture.object },
+			{ quader::document::ComponentRef{ fixture.object, fixture.face } }));
+	ASSERT_TRUE(fixture.document.set_selection(std::move(selection)));
+
+	const quader::tools::SurfaceHit kHover{
+		.position = { 0.0F, 0.0F, 0.0F },
+		.normal = { 0.0F, 1.0F, 0.0F },
+		.object_id = quader::ui::render_object_id_for_document_object(fixture.object),
+		.component_index = fixture.face.index(),
+		.document_object_id = fixture.object,
+		.component = fixture.face,
+		.kind = quader::tools::SurfaceHitKind::Face,
+	};
+
+	std::vector<crimson::OverlayCommand> overlays;
+	std::vector<crimson::LineOverlaySegment> line_payloads;
+	std::vector<crimson::TriangleOverlayPrimitive> triangle_payloads;
+	std::vector<crimson::PointOverlayPrimitive> point_payloads;
+	quader::ui::append_document_selection_overlays(fixture.document,
+			1U,
+			overlays,
+			line_payloads,
+			triangle_payloads,
+			point_payloads,
+			kHover,
+			true);
+
+	EXPECT_FALSE(std::any_of(line_payloads.begin(), line_payloads.end(), [](const crimson::LineOverlaySegment &line) {
+		return line.semantic_role == crimson::OverlaySemanticRole::SelectedFaceEdge &&
+				line.source_kind == crimson::OverlaySourceKind::ComponentSelection;
+	}));
+	EXPECT_FALSE(std::any_of(triangle_payloads.begin(), triangle_payloads.end(), [](const crimson::TriangleOverlayPrimitive &triangle) {
+		return triangle.semantic_role == crimson::OverlaySemanticRole::SelectedFaceFill &&
+				triangle.source_kind == crimson::OverlaySourceKind::ComponentSelection;
+	}));
+	EXPECT_TRUE(std::any_of(line_payloads.begin(), line_payloads.end(), [](const crimson::LineOverlaySegment &line) {
+		return line.semantic_role == crimson::OverlaySemanticRole::HoverFaceEdge &&
+				line.source_kind == crimson::OverlaySourceKind::ComponentHover;
+	}));
+	EXPECT_TRUE(std::any_of(triangle_payloads.begin(), triangle_payloads.end(), [](const crimson::TriangleOverlayPrimitive &triangle) {
+		return triangle.semantic_role == crimson::OverlaySemanticRole::HoverFaceFill &&
+				triangle.source_kind == crimson::OverlaySourceKind::ComponentHover;
 	}));
 }
 
@@ -987,7 +1273,7 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsEdgeAndVertexComponentHandles
 	EXPECT_LT(std::distance(overlays.begin(), kSourceCommandIt), std::distance(overlays.begin(), kSelectedCommandIt));
 }
 
-TEST(Viewport, DocumentSelectionOverlayAdapterEmitsHoverSourceWireForDifferentMesh) {
+TEST(Viewport, DocumentSelectionOverlayAdapterKeepsSelectedSourceWireForDifferentHoverMesh) {
 	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
 	auto second_mesh = quader::tests::document_fixtures::make_triangle_mesh();
 	auto second_object = fixture.document.create_mesh_object("Second", std::move(second_mesh.mesh));
@@ -1032,11 +1318,129 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsHoverSourceWireForDifferentMe
 				line.element.object_id == quader::ui::render_object_id_for_document_object(second_object.value());
 	});
 	EXPECT_EQ(kSelectedObjectWireCount, 3);
-	EXPECT_EQ(kHoverObjectWireCount, 3);
+	EXPECT_EQ(kHoverObjectWireCount, 0);
 	EXPECT_TRUE(std::any_of(line_payloads.begin(), line_payloads.end(), [&fixture](const crimson::LineOverlaySegment &line) {
 		return line.semantic_role == crimson::OverlaySemanticRole::SelectedFaceEdge &&
 				line.source_kind == crimson::OverlaySourceKind::ComponentSelection &&
 				line.element.object_id == quader::ui::render_object_id_for_document_object(fixture.object);
+	}));
+	EXPECT_TRUE(std::any_of(line_payloads.begin(), line_payloads.end(), [second_object](const crimson::LineOverlaySegment &line) {
+		return line.semantic_role == crimson::OverlaySemanticRole::HoverFaceEdge &&
+				line.source_kind == crimson::OverlaySourceKind::ComponentHover &&
+				line.element.object_id == quader::ui::render_object_id_for_document_object(second_object.value());
+	}));
+}
+
+TEST(Viewport, DocumentSelectionOverlayAdapterKeepsStickySourceWireForSameMeshHover) {
+	quader::document::Document document;
+	const quader::document::ObjectId object_id = add_box_object(
+			document,
+			"Box",
+			{ 0.0F, 0.0F, 0.0F },
+			{ 1.0F, 1.0F, 1.0F });
+	ASSERT_TRUE(object_id.is_valid());
+	const auto *object = document.find_mesh_object(object_id);
+	ASSERT_TRUE(object != nullptr);
+	const std::vector<quader::mesh::FaceId> kFaces = object->mesh.face_ids();
+	ASSERT_GE(kFaces.size(), 2U);
+
+	quader::document::Selection selection;
+	ASSERT_TRUE(selection.set_component_selection(quader::document::SelectionMode::Face,
+			{ object_id },
+			{ quader::document::ComponentRef{ object_id, kFaces[0] } }));
+	ASSERT_TRUE(document.set_selection(std::move(selection)));
+
+	const quader::tools::SurfaceHit kHover{
+		.position = { 0.5F, 0.5F, 1.0F },
+		.normal = { 0.0F, 0.0F, 1.0F },
+		.object_id = quader::ui::render_object_id_for_document_object(object_id),
+		.component_index = kFaces[1].index(),
+		.document_object_id = object_id,
+		.component = kFaces[1],
+		.kind = quader::tools::SurfaceHitKind::Face,
+	};
+
+	std::vector<crimson::OverlayCommand> overlays;
+	std::vector<crimson::LineOverlaySegment> line_payloads;
+	std::vector<crimson::TriangleOverlayPrimitive> triangle_payloads;
+	std::vector<crimson::PointOverlayPrimitive> point_payloads;
+	quader::ui::append_document_selection_overlays(document,
+			1U,
+			overlays,
+			line_payloads,
+			triangle_payloads,
+			point_payloads,
+			kHover);
+
+	const auto kSourceWireCount = std::count_if(line_payloads.begin(), line_payloads.end(), [object_id](const crimson::LineOverlaySegment &line) {
+		return line.semantic_role == crimson::OverlaySemanticRole::SourceWire &&
+				line.source_kind == crimson::OverlaySourceKind::SourceWire &&
+				line.element.object_id == quader::ui::render_object_id_for_document_object(object_id);
+	});
+	EXPECT_EQ(kSourceWireCount, static_cast<std::ptrdiff_t>(object->mesh.edge_count()));
+	EXPECT_TRUE(std::any_of(line_payloads.begin(), line_payloads.end(), [object_id](const crimson::LineOverlaySegment &line) {
+		return line.semantic_role == crimson::OverlaySemanticRole::SelectedFaceEdge &&
+				line.source_kind == crimson::OverlaySourceKind::ComponentSelection &&
+				line.element.object_id == quader::ui::render_object_id_for_document_object(object_id);
+	}));
+	EXPECT_TRUE(std::any_of(line_payloads.begin(), line_payloads.end(), [object_id](const crimson::LineOverlaySegment &line) {
+		return line.semantic_role == crimson::OverlaySemanticRole::HoverFaceEdge &&
+				line.source_kind == crimson::OverlaySourceKind::ComponentHover &&
+				line.element.object_id == quader::ui::render_object_id_for_document_object(object_id);
+	}));
+}
+
+TEST(Viewport, DocumentSelectionOverlayAdapterUsesHoverSourceWireWhenNoCurrentModeComponentSelected) {
+	auto fixture = quader::tests::document_fixtures::make_document_with_triangle_object();
+	auto second_mesh = quader::tests::document_fixtures::make_triangle_mesh();
+	const quader::mesh::FaceId kSecondFace = second_mesh.face;
+	auto second_object = fixture.document.create_mesh_object("Second", std::move(second_mesh.mesh));
+	ASSERT_TRUE(second_object);
+
+	quader::document::Selection selection;
+	ASSERT_TRUE(selection.set_component_selection(quader::document::SelectionMode::Face,
+			{ fixture.object },
+			{}));
+	ASSERT_TRUE(fixture.document.set_selection(std::move(selection)));
+
+	const quader::tools::SurfaceHit kHover{
+		.position = { 0.0F, 0.0F, 0.0F },
+		.normal = { 0.0F, 1.0F, 0.0F },
+		.object_id = quader::ui::render_object_id_for_document_object(second_object.value()),
+		.component_index = kSecondFace.index(),
+		.document_object_id = second_object.value(),
+		.component = kSecondFace,
+		.kind = quader::tools::SurfaceHitKind::Face,
+	};
+
+	std::vector<crimson::OverlayCommand> overlays;
+	std::vector<crimson::LineOverlaySegment> line_payloads;
+	std::vector<crimson::TriangleOverlayPrimitive> triangle_payloads;
+	std::vector<crimson::PointOverlayPrimitive> point_payloads;
+	quader::ui::append_document_selection_overlays(fixture.document,
+			1U,
+			overlays,
+			line_payloads,
+			triangle_payloads,
+			point_payloads,
+			kHover);
+
+	const auto kFallbackObjectWireCount = std::count_if(line_payloads.begin(), line_payloads.end(), [&fixture](const crimson::LineOverlaySegment &line) {
+		return line.semantic_role == crimson::OverlaySemanticRole::SourceWire &&
+				line.source_kind == crimson::OverlaySourceKind::SourceWire &&
+				line.element.object_id == quader::ui::render_object_id_for_document_object(fixture.object);
+	});
+	const auto kHoverObjectWireCount = std::count_if(line_payloads.begin(), line_payloads.end(), [second_object](const crimson::LineOverlaySegment &line) {
+		return line.semantic_role == crimson::OverlaySemanticRole::SourceWire &&
+				line.source_kind == crimson::OverlaySourceKind::SourceWire &&
+				line.element.object_id == quader::ui::render_object_id_for_document_object(second_object.value());
+	});
+	EXPECT_EQ(kFallbackObjectWireCount, 0);
+	EXPECT_EQ(kHoverObjectWireCount, 3);
+	EXPECT_TRUE(std::any_of(line_payloads.begin(), line_payloads.end(), [second_object](const crimson::LineOverlaySegment &line) {
+		return line.semantic_role == crimson::OverlaySemanticRole::HoverFaceEdge &&
+				line.source_kind == crimson::OverlaySourceKind::ComponentHover &&
+				line.element.object_id == quader::ui::render_object_id_for_document_object(second_object.value());
 	}));
 }
 

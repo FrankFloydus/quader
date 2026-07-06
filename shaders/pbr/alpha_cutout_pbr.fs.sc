@@ -11,7 +11,7 @@ SAMPLER2D(s_pbrBaseColorTexture, 0);
 
 void main()
 {
-    vec2 uv0 = vec2(v_texcoord0.x, 1.0 - v_texcoord0.y) * u_pbrUvTransform0.xy + u_pbrUvTransform0.zw;
+    vec2 uv0 = v_texcoord0 * u_pbrUvTransform0.xy + u_pbrUvTransform0.zw;
     vec4 baseColorTex = texture2D(s_pbrBaseColorTexture, uv0);
     vec4 baseColor = u_pbrBaseColor * baseColorTex;
     if (baseColor.a < u_pbrFactors.w) {

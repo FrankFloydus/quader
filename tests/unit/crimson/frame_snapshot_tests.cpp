@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cmath>
 #include <iostream>
 #include <string_view>
 
@@ -22,44 +23,48 @@ void expect_true(bool condition, std::string_view message) {
 	EXPECT_TRUE(condition) << message;
 }
 
-[[nodiscard]] crimson::PrototypeCamera make_camera() {
-	return crimson::PrototypeCamera{
+[[nodiscard]] bool near(float left, float right, float tolerance = 0.001F) noexcept {
+	return std::fabs(left - right) <= tolerance;
+}
+
+[[nodiscard]] crimson::ViewportCamera make_camera() {
+	return crimson::ViewportCamera{
 		.eye = { 0.0F, 4.0F, 8.0F },
 		.target = { 0.0F, 0.0F, 0.0F },
 		.up = { 0.0F, 1.0F, 0.0F },
 		.forward = { 0.0F, -0.4F, -1.0F },
-		.projection = crimson::PrototypeCameraProjection::Perspective,
+		.projection = crimson::ViewportCameraProjection::Perspective,
 	};
 }
 
 TEST(FrameSnapshot, BuilderRejectsInvalidViews) {
-	const std::array<crimson::PrototypeCamera, 1> kCameras = { make_camera() };
-	const std::array<crimson::PrototypeViewportView, 1> kViews = {
-		crimson::PrototypeViewportView{
-				.rect = crimson::PrototypeViewportRect{ 0, 0, 0, 100 },
+	const std::array<crimson::ViewportCamera, 1> kCameras = { make_camera() };
+	const std::array<crimson::ViewportFrameView, 1> kViews = {
+		crimson::ViewportFrameView{
+				.rect = crimson::ViewportFrameRect{ 0, 0, 0, 100 },
 				.camera_index = 0,
 				.debug_name = "Invalid",
 		},
 	};
-	const crimson::PrototypeViewportFrame kFrame{
+	const crimson::ViewportFrameInput kFrame{
 		.target_extent = crimson::ViewportExtent{ 100, 100, 1.0F },
 		.views = kViews,
 		.cameras = kCameras,
 	};
 
 	const crimson::FrameBuilder kBuilder;
-	const auto kSnapshot = kBuilder.build_prototype_snapshot(kFrame);
+	const auto kSnapshot = kBuilder.build_snapshot(kFrame);
 	expect_true(!kSnapshot, "builder rejects a zero-width view");
 	expect_true(
 			!kSnapshot && kSnapshot.error().code == crimson::RendererDiagnosticCode::InvalidFrameSnapshot,
 			"invalid view failure reports InvalidFrameSnapshot");
 }
 
-TEST(FrameSnapshot, BuilderFreezesPrototypeFrameIntoImmutableSnapshot) {
-	std::array<crimson::PrototypeCamera, 1> cameras = { make_camera() };
-	std::array<crimson::PrototypeViewportView, 1> views = {
-		crimson::PrototypeViewportView{
-				.rect = crimson::PrototypeViewportRect{ 4, 8, 320, 200 },
+TEST(FrameSnapshot, BuilderFreezesViewportFrameIntoImmutableSnapshot) {
+	std::array<crimson::ViewportCamera, 1> cameras = { make_camera() };
+	std::array<crimson::ViewportFrameView, 1> views = {
+		crimson::ViewportFrameView{
+				.rect = crimson::ViewportFrameRect{ 4, 8, 320, 200 },
 				.camera_index = 0,
 				.debug_name = "Perspective",
 		},
@@ -67,7 +72,7 @@ TEST(FrameSnapshot, BuilderFreezesPrototypeFrameIntoImmutableSnapshot) {
 	std::array<crimson::PickingRequest, 1> picking_requests = {
 		crimson::PickingRequest{ .request_id = 77, .view_index = 0, .x_px = 12, .y_px = 24 },
 	};
-	crimson::PrototypeViewportFrame frame{
+	crimson::ViewportFrameInput frame{
 		.target_extent = crimson::ViewportExtent{ 640, 480, 1.0F },
 		.views = views,
 		.cameras = cameras,
@@ -77,8 +82,8 @@ TEST(FrameSnapshot, BuilderFreezesPrototypeFrameIntoImmutableSnapshot) {
 	};
 
 	const crimson::FrameBuilder kBuilder;
-	auto built = kBuilder.build_prototype_snapshot(frame);
-	expect_true(built.has_value(), "valid prototype frame builds a snapshot");
+	auto built = kBuilder.build_snapshot(frame);
+	expect_true(built.has_value(), "valid viewport frame builds a snapshot");
 	if (!built) {
 		return;
 	}
@@ -94,34 +99,43 @@ TEST(FrameSnapshot, BuilderFreezesPrototypeFrameIntoImmutableSnapshot) {
 	expect_true(snapshot.views()[0].rect.width == 320, "snapshot view rect is immutable from source changes");
 	expect_true(snapshot.views()[0].camera.eye.x == 0.0F, "snapshot camera is immutable from source changes");
 	expect_true(snapshot.elapsed_seconds() == 2.0, "snapshot keeps copied elapsed seconds");
-	expect_true(snapshot.objects().empty(), "empty prototype frame has no default render object");
-	expect_true(snapshot.mesh_uploads().empty(), "empty prototype frame has no mesh uploads");
-	expect_true(snapshot.overlays().size() == 1, "prototype snapshot contains one overlay command");
-	expect_true(snapshot.grid_overlay_payloads().size() == 1, "prototype snapshot contains one grid overlay payload");
-	expect_true(snapshot.line_overlay_payloads().empty(), "empty prototype frame has no line overlay payload");
-	expect_true(snapshot.triangle_overlay_payloads().empty(), "empty prototype frame has no triangle overlay payload");
-	expect_true(snapshot.point_overlay_payloads().empty(), "empty prototype frame has no point overlay payload");
-	expect_true(snapshot.picking_requests().size() == 1, "prototype snapshot copies picking requests");
+	expect_true(snapshot.objects().empty(), "empty viewport frame has no default render object");
+	expect_true(snapshot.mesh_uploads().empty(), "empty viewport frame has no mesh uploads");
+	expect_true(snapshot.overlays().size() == 1, "viewport snapshot contains one overlay command");
+	expect_true(snapshot.grid_overlay_payloads().size() == 1, "viewport snapshot contains one grid overlay payload");
+	expect_true(snapshot.line_overlay_payloads().empty(), "empty viewport frame has no line overlay payload");
+	expect_true(snapshot.triangle_overlay_payloads().empty(), "empty viewport frame has no triangle overlay payload");
+	expect_true(snapshot.point_overlay_payloads().empty(), "empty viewport frame has no point overlay payload");
+	expect_true(snapshot.picking_requests().size() == 1, "viewport snapshot copies picking requests");
 	expect_true(snapshot.picking_requests()[0].x_px == 12, "picking request is immutable from source changes");
 	expect_true(
 			snapshot.viewport_settings().exposure_ev100 == 0.0F,
-			"prototype snapshot preserves non-physical exposure until fixture lighting is physical");
+			"viewport snapshot preserves non-physical exposure until fixture lighting is physical");
 	expect_true(
 			snapshot.viewport_settings().tone_mapper == crimson::ToneMapper::Linear,
-			"prototype viewport defaults to linear tone mapping like the reference app's post-processing-disabled view");
+			"viewport defaults to linear tone mapping like the reference app's post-processing-disabled view");
+	expect_true(
+			snapshot.viewport_settings().clear_color_rgba8 == 0x020202ff,
+			"viewport packed background color matches the reference app default 2/255 clear color");
+	constexpr float kReferenceClearChannel = 2.0F / 255.0F;
+	expect_true(
+			near(snapshot.environment().clear_color_linear.x, kReferenceClearChannel) &&
+					near(snapshot.environment().clear_color_linear.y, kReferenceClearChannel) &&
+					near(snapshot.environment().clear_color_linear.z, kReferenceClearChannel),
+			"viewport environment background color matches the reference app default 2/255 clear color");
 	expect_true(
 			snapshot.overlays()[0].primitive == crimson::OverlayPrimitive::Grid && snapshot.overlays()[0].base_shader == crimson::BaseShaderId::OverlayUnlit,
-			"prototype grid is emitted as an OverlayUnlit grid command");
+			"viewport grid is emitted as an OverlayUnlit grid command");
 	expect_true(
 			snapshot.overlays()[0].payload_offset == 0 && snapshot.overlays()[0].payload_count == 1,
 			"grid overlay command points at immutable grid payload data");
 }
 
 TEST(FrameSnapshot, BuilderCopiesCallerRenderObjectsAndOverlayPayloads) {
-	std::array<crimson::PrototypeCamera, 1> cameras = { make_camera() };
-	std::array<crimson::PrototypeViewportView, 1> views = {
-		crimson::PrototypeViewportView{
-				.rect = crimson::PrototypeViewportRect{ 0, 0, 320, 200 },
+	std::array<crimson::ViewportCamera, 1> cameras = { make_camera() };
+	std::array<crimson::ViewportFrameView, 1> views = {
+		crimson::ViewportFrameView{
+				.rect = crimson::ViewportFrameRect{ 0, 0, 320, 200 },
 				.camera_index = 0,
 				.debug_name = "Perspective",
 		},
@@ -194,7 +208,7 @@ TEST(FrameSnapshot, BuilderCopiesCallerRenderObjectsAndOverlayPayloads) {
 				.payload_count = 1,
 		},
 	};
-	crimson::PrototypeViewportFrame frame{
+	crimson::ViewportFrameInput frame{
 		.target_extent = crimson::ViewportExtent{ 640, 480, 1.0F },
 		.views = views,
 		.cameras = cameras,
@@ -207,7 +221,7 @@ TEST(FrameSnapshot, BuilderCopiesCallerRenderObjectsAndOverlayPayloads) {
 	};
 
 	const crimson::FrameBuilder kBuilder;
-	auto built = kBuilder.build_prototype_snapshot(frame);
+	auto built = kBuilder.build_snapshot(frame);
 	expect_true(built.has_value(), "valid frame with caller render data builds");
 	if (!built) {
 		return;

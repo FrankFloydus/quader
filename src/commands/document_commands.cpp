@@ -9,6 +9,7 @@
  */
 #include "commands/document_commands.hpp"
 
+#include <algorithm>
 #include <utility>
 
 namespace quader::commands {
@@ -232,6 +233,84 @@ CommandResult SetObjectTransformCommand::undo(quader::document::Document &docume
 	auto transformed = document.set_transform(object_, *previous_transform_);
 	if (!transformed) {
 		return rejected_from_document_error(std::move(transformed).error());
+	}
+
+	return CommandResult::applied();
+}
+
+BatchSetObjectTransformsCommand::BatchSetObjectTransformsCommand(
+		std::vector<ObjectTransformEdit> edits) : edits_(std::move(edits)) {
+}
+
+std::string_view BatchSetObjectTransformsCommand::name() const noexcept {
+	return "Transform Objects";
+}
+
+CommandResult BatchSetObjectTransformsCommand::execute(quader::document::Document &document) {
+	if (edits_.empty()) {
+		return CommandResult::rejected("transform batch has no object edits");
+	}
+
+	std::vector<quader::document::ObjectId> seen;
+	seen.reserve(edits_.size());
+	bool changes_any_transform = false;
+	std::vector<ObjectTransformEdit> captured_previous;
+	captured_previous.reserve(edits_.size());
+
+	for (const ObjectTransformEdit &edit : edits_) {
+		if (!edit.object.is_valid()) {
+			return CommandResult::rejected("transform batch contains an invalid object id");
+		}
+		if (!quader::document::is_finite(edit.transform)) {
+			return CommandResult::rejected("transform batch contains a non-finite transform");
+		}
+		if (std::find(seen.begin(), seen.end(), edit.object) != seen.end()) {
+			return CommandResult::rejected("transform batch contains duplicate object ids");
+		}
+		seen.push_back(edit.object);
+
+		const auto *object = document.find_mesh_object(edit.object);
+		if (object == nullptr) {
+			return CommandResult::rejected("transform batch references an unknown object");
+		}
+
+		if (!(object->transform == edit.transform)) {
+			changes_any_transform = true;
+		}
+		captured_previous.push_back(ObjectTransformEdit{
+				.object = edit.object,
+				.transform = object->transform,
+		});
+	}
+
+	if (!changes_any_transform) {
+		return CommandResult::rejected("transform batch would not change any object transform");
+	}
+
+	if (previous_edits_.empty()) {
+		previous_edits_ = captured_previous;
+	}
+
+	for (const ObjectTransformEdit &edit : edits_) {
+		auto transformed = document.set_transform(edit.object, edit.transform);
+		if (!transformed) {
+			return rejected_from_document_error(std::move(transformed).error());
+		}
+	}
+
+	return CommandResult::applied();
+}
+
+CommandResult BatchSetObjectTransformsCommand::undo(quader::document::Document &document) {
+	if (previous_edits_.empty()) {
+		return CommandResult::rejected("transform batch has no previous transforms");
+	}
+
+	for (const ObjectTransformEdit &edit : previous_edits_) {
+		auto transformed = document.set_transform(edit.object, edit.transform);
+		if (!transformed) {
+			return rejected_from_document_error(std::move(transformed).error());
+		}
 	}
 
 	return CommandResult::applied();

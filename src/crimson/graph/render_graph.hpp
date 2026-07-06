@@ -84,12 +84,12 @@ private:
 };
 
 /**
- * Create the legacy prototype render graph.
+ * Create the minimal viewport render graph.
  *
  * @param extent Viewport extent used by resize-dependent resources.
- * @return Render graph configured for the prototype path.
+ * @return Render graph configured for the viewport path.
  */
-[[nodiscard]] RenderGraph make_minimal_prototype_render_graph(ViewportExtent extent);
+[[nodiscard]] RenderGraph make_minimal_viewport_render_graph(ViewportExtent extent);
 /**
  * Create the V1 correctness render graph.
  *

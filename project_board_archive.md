@@ -6,6 +6,31 @@ Entries are grouped newest-first by archive date and internal dev version.
 
 ## 2026-07-06
 
+
+### 0.1.1-dev.14
+
+
+#28 [priority:high][type:enhancement][area:architecture] Implement current-code audit remediation - Address the actionable findings from the 2026-07-06 audit/beautify pass.
+  Archived: [at:2026-07-06T00:39:59+02:00][dev-version:0.1.1-dev.14][from:In Review][status:completed] Workflow-authorized archive.
+  Created: 2026-07-06T00:19:02+02:00
+  Brief: Implement the accepted remediation slice from agents/plans/audit_20260706_current_code_master.md. Scope: migrate public prototype-era viewport/frame contracts to production-named Crimson viewport/frame submission DTOs; make live document mesh upload handling revision-aware so unchanged meshes are not rebuilt/reuploaded every frame; resolve diagnostics model refresh flicker using precise model updates, coordinating with active bug #20; fix command merge semantics by either implementing history merge or removing the public hook, with implementation preferred; return InvalidAttribute separately from AttributeTypeMismatch in MeshAttributes; add an agent-safe runtime CTest preset or documented test path that excludes clang-format/clang-tidy style gates. Likely files: src/crimson/prototype_viewport.hpp or successor, src/crimson/frame/frame_builder.*, src/crimson/graph/render_graph.*, src/crimson/renderer_types.hpp, src/ui/viewport/crimson_viewport_render_host.*, src/crimson/gpu/gpu_mesh_cache.*, src/crimson/gpu/gpu_device.cpp, src/crimson/mesh/render_mesh_upload.*, src/ui/models/diagnostics_item_model.*, src/ui/services/viewport_diagnostics_service.*, src/commands/command.*, src/commands/command_history.*, src/mesh/core/mesh_attributes.hpp, CMakePresets.json, CMakeLists.txt, tests, dev-changelog.md. Risks: broad renderer API rename churn, active in-review renderer/selection work, diagnostics topology changes, GPU resource lifetime, undo/redo stack behavior, and test preset policy. Verification: targeted unit/render/UI tests; cmake --build --preset qt-mingw-debug --parallel 20; cmake --build --preset qt-mingw-debug-tests --parallel 20 if tests changed; architecture check; deploy/dev-build checkpoint for runtime-facing changes; python tools/project_board.py validate. Do not run clang-format, clang-tidy, static-analysis targets, or broad CTest presets containing them without immediate explicit permission.
+  Freshness: [status:fresh][checked:2026-07-05T22:19:15Z] Revalidated immediately after intake against current audit artifact, active board, and source tree.
+  Final owner: cross-domain: Crimson renderer, UI diagnostics, command stack, mesh core, build workflow, and docs/changelog
+
+
+
+
+
+#20 [priority:high][type:bug][area:ui] Fix diagnostics panel tree expansion flicker - The dockable Diagnostics panel tree cannot keep sections expanded because routine viewport diagnostics refreshes reset the model while rendering.
+  Archived: [at:2026-07-06T00:38:22+02:00][dev-version:0.1.1-dev.14][from:Bugs][status:fixed] Workflow-authorized archive.
+  Resolution: Fixed by task #28. DiagnosticsItemModel now preserves stable diagnostics topology and emits dataChanged instead of model reset for routine frame-stat refreshes; ui_diagnostics_model_tests covers same-topology refresh without modelReset; ctest --preset qt-mingw-debug-runtime passes.
+  Created: 2026-07-05T07:27:28+02:00
+  Brief: Source: Final Task Intake Report for diagnostics panel tree expansion flicker. UI follow-up from #11 diagnostics panel/status presentation, not a duplicate of #19. Likely cause is high-frequency frame_stats_changed -> ViewportDiagnosticsService::refresh() -> diagnostics_changed() -> DiagnosticsItemModel::reload_from_service() using beginResetModel(), which wipes QTreeView expansion state. Likely files: src/ui/panels/diagnostics_panel.*, src/ui/models/diagnostics_item_model.*, src/ui/services/viewport_diagnostics_service.*, src/ui/qt_app/main_window.cpp, viewport cadence context in src/ui/viewport/viewport_controller.cpp and viewport_widget.cpp. Intended fix: preserve expansion/selection during routine updates; reduce unnecessary diagnostics_changed emissions and/or update existing rows with dataChanged() when topology is unchanged; reserve full reset for topology changes. Keep status updates frequent if needed, keep copy selected/all behavior, do not move logic into Crimson, do not scrape widgets, and do not replace the model/view architecture with QTreeWidget. Risks: per-frame counters, legitimate topology changes, visible panel state, UI diagnostics must remain free of Crimson GPU/runtime includes. Tests-policy applies; agents/tests-policy.md is required for any test planning, modification, or review. Suggested tests: expand a diagnostics tree section, trigger repeated stable diagnostics refreshes, assert expansion remains and no reset-driven flicker occurs. Verification: cmake --build --preset qt-mingw-debug; ctest --preset qt-mingw-debug -R ui_diagnostics_model_tests|ui_viewport_diagnostics_service_tests|ui_shell_tests; ctest --preset qt-mingw-debug; cmake --build --preset qt-mingw-debug --target check_architecture; cmake --build --preset qt-mingw-debug --target deploy; python tools/project_board.py validate. Manual: launch quader.exe, open View > Panels > Diagnostics, expand/collapse Summary, Render Passes, Counters, and Diagnostics while viewport renders; sections should stay chosen without flicker.
+  Freshness: [status:needs-refresh][checked:never] Awaiting start-gate revalidation.
+  Final owner: UI owner: diagnostics panel, diagnostics item model, viewport diagnostics service, MainWindow diagnostics refresh wiring, and UI diagnostics regression tests
+  Plans: agents/plans/audit_20260704_full_architecture_master.md
+
+
 ### 0.1.1-dev.13
 
 #27 [priority:critical][type:bug][area:renderer] Fix viewport placement, grid depth, and default texture regressions - Box placement, vertical-plane creation, grid depth/color, and default texture quality regressed together.

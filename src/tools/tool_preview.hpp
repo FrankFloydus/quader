@@ -36,6 +36,42 @@ struct ToolPreviewWorldSegment {
 	quader::math::Vec3 end;
 };
 
+/// Tool-authored sRGB color for preview overlays.
+struct ToolPreviewColorSrgb {
+	/// Red channel.
+	float red = 1.0F;
+	/// Green channel.
+	float green = 1.0F;
+	/// Blue channel.
+	float blue = 1.0F;
+	/// Alpha channel.
+	float alpha = 1.0F;
+};
+
+/// World-space preview line segment with explicit overlay styling.
+struct ToolPreviewColoredWorldSegment {
+	/// Segment start in world coordinates.
+	quader::math::Vec3 start;
+	/// Segment end in world coordinates.
+	quader::math::Vec3 end;
+	/// Segment color in sRGB UI space.
+	ToolPreviewColorSrgb color_srgb;
+	/// Line thickness in physical pixels.
+	float thickness_px = 2.0F;
+};
+
+/// World-space preview triangle with explicit overlay styling.
+struct ToolPreviewColoredWorldTriangle {
+	/// First triangle vertex in world coordinates.
+	quader::math::Vec3 a;
+	/// Second triangle vertex in world coordinates.
+	quader::math::Vec3 b;
+	/// Third triangle vertex in world coordinates.
+	quader::math::Vec3 c;
+	/// Triangle fill color in sRGB UI space.
+	ToolPreviewColorSrgb color_srgb;
+};
+
 /// World-space box preview volume emitted by editor tools.
 struct ToolPreviewBox {
 	/// Eight box corners in tool-defined order.
@@ -60,6 +96,10 @@ struct ToolPreview {
 	std::vector<quader::math::Vec3> world_points;
 	/// World-space preview segments.
 	std::vector<ToolPreviewWorldSegment> world_segments;
+	/// World-space preview segments with tool-authored colors and thickness.
+	std::vector<ToolPreviewColoredWorldSegment> colored_world_segments;
+	/// World-space preview triangles with tool-authored fill colors.
+	std::vector<ToolPreviewColoredWorldTriangle> colored_world_triangles;
 	/// World-space box preview volumes.
 	std::vector<ToolPreviewBox> boxes;
 	/// True when preview geometry must stay out of committed/lit scene queues.

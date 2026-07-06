@@ -69,8 +69,8 @@ TEST(RendererPublicTypes, ExtentAndNativeSurfaceValidationRejectInvalidSurfaces)
 
 TEST(RendererPublicTypes, NamesAreStableForPublicDiagnosticsAndConfig) {
 	expect_true(
-			crimson::shader_program_id_name(crimson::ShaderProgramId::PrototypeLitCube) == "PrototypeLitCube",
-			"prototype cube program name is stable");
+			crimson::shader_program_id_name(crimson::ShaderProgramId::ViewportLitCube) == "ViewportLitCube",
+			"viewport cube program name is stable");
 	expect_true(
 			crimson::shader_program_id_name(crimson::ShaderProgramId::ToneMap) == "ToneMap",
 			"tone-map program name is stable");

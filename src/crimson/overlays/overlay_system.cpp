@@ -61,6 +61,7 @@ namespace {
 [[nodiscard]] PreparedOverlayRenderState make_render_state(
 		OverlayDepthMode depth_mode,
 		OverlaySemanticRole role,
+		OverlaySourceKind source_kind,
 		PreparedOverlayPassKind pass_kind) noexcept {
 	PreparedOverlayRenderState state;
 	state.depth_mode = depth_mode;
@@ -85,7 +86,8 @@ namespace {
 
 	state.color_write_enabled = true;
 	state.depth_write_enabled = false;
-	state.depth_test_enabled = depth_mode != OverlayDepthMode::AlwaysOnTop;
+	state.depth_test_enabled = depth_mode == OverlayDepthMode::DepthTested ||
+			(overlay_source_kind_is_component(source_kind) && overlay_role_is_component_handle(role));
 	state.equal_depth_test_enabled = false;
 	return state;
 }
@@ -147,7 +149,7 @@ void append_grid_payloads(
 	batch.command = command_for_prepared_batch(command, depth_mode, role, source_kind, 0);
 	batch.semantic_role = role;
 	batch.source_kind = source_kind;
-	batch.render_state = make_render_state(depth_mode, role, PreparedOverlayPassKind::Color);
+	batch.render_state = make_render_state(depth_mode, role, source_kind, PreparedOverlayPassKind::Color);
 	batch.color_linear_sdr = to_linear_sdr_array(command.color_srgb, command.opacity);
 	bucket.line_commands.push_back(std::move(batch));
 	return bucket.line_commands.back();
@@ -192,7 +194,7 @@ void append_line_payloads(
 	batch.command = command_for_prepared_batch(command, depth_mode, role, source_kind, 0);
 	batch.semantic_role = role;
 	batch.source_kind = source_kind;
-	batch.render_state = make_render_state(depth_mode, role, pass_kind);
+	batch.render_state = make_render_state(depth_mode, role, source_kind, pass_kind);
 	batch.color_linear_sdr = to_linear_sdr_array(command.color_srgb, command.opacity);
 	bucket.triangle_commands.push_back(std::move(batch));
 	return bucket.triangle_commands.back();
@@ -207,6 +209,7 @@ void append_source_wire_depth_stamp_metadata(
 	lists.source_wire_depth_stamps.push_back(SourceWireDepthStampMetadata{
 			.view_index = command.view_index,
 			.source_kind = source_kind,
+			.triangle = triangle,
 			.payload_offset = static_cast<std::uint32_t>(payload_index),
 			.payload_count = 1,
 			.element = triangle.element,
@@ -287,7 +290,7 @@ void append_triangle_payloads(
 	batch.command = command_for_prepared_batch(command, depth_mode, role, source_kind, 0);
 	batch.semantic_role = role;
 	batch.source_kind = source_kind;
-	batch.render_state = make_render_state(depth_mode, role, PreparedOverlayPassKind::Color);
+	batch.render_state = make_render_state(depth_mode, role, source_kind, PreparedOverlayPassKind::Color);
 	batch.color_linear_sdr = to_linear_sdr_array(command.color_srgb, command.opacity);
 	batch.size_px = size_px;
 	bucket.point_commands.push_back(std::move(batch));
@@ -376,9 +379,6 @@ OverlayDepthMode effective_overlay_depth_mode(
 		return OverlayDepthMode::AlwaysOnTop;
 	}
 	if (overlay_role_is_source_wire_depth_stamp(role) || overlay_role_is_face_fill(role)) {
-		return OverlayDepthMode::DepthTested;
-	}
-	if (overlay_source_kind_is_component(source_kind) && overlay_role_is_component_handle(role)) {
 		return OverlayDepthMode::DepthTested;
 	}
 	return command.depth_mode;

@@ -213,15 +213,15 @@ void register_standard_actions(ActionRegistry &registry) {
 
 	registry.register_action(ActionId::ViewPerspective, {
 																QStringLiteral("Perspective"),
-																QStringLiteral("Use the prototype perspective view."),
+																QStringLiteral("Use the perspective viewport."),
 														});
 	registry.register_action(ActionId::ViewShaded, {
 														   QStringLiteral("Shaded"),
-														   QStringLiteral("Use the prototype shaded view."),
+														   QStringLiteral("Use the shaded viewport."),
 												   });
 	registry.register_action(ActionId::ToggleQuadViewports, {
 																	QStringLiteral("Four Viewports"),
-																	QStringLiteral("Toggle the prototype four-viewport layout."),
+																	QStringLiteral("Toggle the four-viewport layout."),
 																	QList<QKeySequence>{ QKeySequence(Qt::Key_F1) },
 																	Qt::WindowShortcut,
 																	true,

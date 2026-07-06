@@ -129,3 +129,26 @@ Out of scope:
 - `python tools/dev_builds.py archive --preset qt-mingw-debug --json` created `0.1.1-dev.9` with `resources/modeling_assets/materials/default/default_albedo.png` and `default_roughness.png`.
 - `ctest --test-dir build/qt-mingw-debug -R ... --output-on-failure` did not reach the filtered tests because GoogleTest discovery attempted to load unrelated `ui_model_tests.exe` without Qt runtime DLL path and exited with `0xc0000135`.
 - After user reported `UnlitSurface` runtime program creation failure, `shaders/pbr/unlit_surface.fs.sc` was updated to match the reused PBR vertex shader's `v_texcoord0` varying and the app was rebuilt/redeployed.
+
+## Review Rework: Crimson UV Orientation
+
+User rejection: the default material texture appeared inverted in the viewport; the `QUADER` text in `default_albedo.png` was visibly reversed/upside down.
+
+Reference mapping:
+
+- `C:\Users\Drako\Desktop\quader-windows\quader-app\resources\materials\quader_mesh.mat:23` and `quader_mesh_lit.mat:35` flip V for Filament sampling with `vec2(getUV0().x, 1.0 - getUV0().y)`.
+- `C:\Users\Drako\Desktop\quader-windows\quader-app\src\mesh\polygon\quader_poly_document_mesh_internal.cpp:327-356` provides the generated face UV basis mirrored in Quader's current viewport upload path.
+
+Rework edits:
+
+1. Preserve the reference generated UV basis in the mesh upload path.
+2. Adapt the material sampling step for Crimson/bgfx PNG upload conventions by removing the extra shader-side V flip from OpaquePbr, AlphaCutoutPbr, TransparentPbr, and UnlitSurface.
+3. Add a shader-source regression guard that the PBR shader family samples `v_texcoord0` directly through `u_pbrUvTransform0`, avoiding another hidden texture inversion.
+
+Verification:
+
+- `cmake --build --preset qt-mingw-debug --parallel 20` passed.
+- `cmake --build --preset qt-mingw-debug-tests --parallel 20` passed.
+- `ctest --preset qt-mingw-debug-runtime -R "tool_manager_tests|ui_viewport_tests|crimson_shader_manifest_tests|crimson_material_system_tests|crimson_render_upload_tests|command_tests|crimson_overlay_tests|document_tests" --output-on-failure` passed, including `ShaderManifest.PbrTextureSamplingPreservesCrimsonPngUvOrientation`.
+- `cmake --build --preset qt-mingw-debug-deploy --parallel 20` passed.
+- `python tools/dev_builds.py archive --preset qt-mingw-debug` created `0.1.1-dev.18`.

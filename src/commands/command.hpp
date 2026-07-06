@@ -60,6 +60,10 @@ public:
 	/**
 	 * Merge a later command into this command.
 	 *
+	 * `CommandHistory` calls this only after `can_merge_with()` returns true
+	 * for a command that has already executed successfully. Implementations
+	 * that accept a merge must preserve undo of the original pre-merge state.
+	 *
 	 * @param next Later command to consume.
 	 * @return `CommandStatus::NotMergeable` when the merge is rejected.
 	 */

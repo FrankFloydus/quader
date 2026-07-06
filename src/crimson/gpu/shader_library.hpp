@@ -40,7 +40,7 @@ enum class ShaderStage {
 /// Reference to one compiled shader binary.
 struct ShaderBinaryRef {
 	/// Shader program identifier.
-	ShaderProgramId program = ShaderProgramId::PrototypeLitCube;
+	ShaderProgramId program = ShaderProgramId::ViewportLitCube;
 	/// Shader stage.
 	ShaderStage stage = ShaderStage::Vertex;
 	/// Compiled target platform.

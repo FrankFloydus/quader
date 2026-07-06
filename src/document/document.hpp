@@ -87,6 +87,16 @@ public:
 	 */
 	[[nodiscard]] quader::foundation::Result<void, DocumentError> set_transform(ObjectId id,
 			Transform transform);
+	/**
+	 * Set an object transform for a transient viewport preview.
+	 *
+	 * This emits transform-change notifications so render/UI overlays refresh, but it
+	 * deliberately does not mark the document dirty. Preview owners must restore or
+	 * commit through normal commands.
+	 */
+	[[nodiscard]] quader::foundation::Result<void, DocumentError> set_preview_transform(
+			ObjectId id,
+			Transform transform);
 
 	/// Return a mutable mesh object pointer, or `nullptr` for invalid/stale ids.
 	[[nodiscard]] MeshObject *find_mesh_object(ObjectId id) noexcept;

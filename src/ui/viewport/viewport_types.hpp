@@ -209,8 +209,8 @@ struct ViewportRenderRequest {
 	std::span<const ViewportPickRequest> picking_requests;
 	/// Mesh surface shading mode for document objects.
 	ViewportShadingMode shading_mode = ViewportShadingMode::Shaded;
-	/// True when prototype animation should advance.
-	bool prototype_animation_enabled = true;
+	/// True when scene animation should advance.
+	bool scene_animation_enabled = true;
 	/// Elapsed application time in seconds.
 	double elapsed_seconds = 0.0;
 };

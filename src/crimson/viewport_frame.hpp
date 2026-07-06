@@ -22,16 +22,16 @@
 
 namespace crimson {
 
-/// Projection mode used by the legacy prototype viewport adapter.
-enum class PrototypeCameraProjection {
+/// Projection mode used by viewport frame input.
+enum class ViewportCameraProjection {
 	/// Perspective projection.
 	Perspective,
 	/// Orthographic projection.
 	Orthographic,
 };
 
-/// Camera state consumed by the legacy prototype viewport path.
-struct PrototypeCamera {
+/// Camera state consumed by viewport frame building.
+struct ViewportCamera {
 	/// Camera eye position in world space.
 	quader::math::Vec3 eye{};
 	/// Camera target position in world space.
@@ -41,15 +41,15 @@ struct PrototypeCamera {
 	/// Camera forward direction.
 	quader::math::Vec3 forward{ 0.0F, 0.0F, -1.0F };
 	/// Projection mode.
-	PrototypeCameraProjection projection = PrototypeCameraProjection::Perspective;
+	ViewportCameraProjection projection = ViewportCameraProjection::Perspective;
 	/// Perspective vertical field of view in degrees.
 	float fov_degrees = 60.0F;
 	/// Orthographic view height in world units.
 	float orthographic_size = 24.0F;
 };
 
-/// Pixel rectangle for one prototype viewport pane.
-struct PrototypeViewportRect {
+/// Pixel rectangle for one viewport pane.
+struct ViewportFrameRect {
 	/// Left coordinate in pixels.
 	std::uint16_t x = 0;
 	/// Top coordinate in pixels.
@@ -60,24 +60,24 @@ struct PrototypeViewportRect {
 	std::uint16_t height = 1;
 };
 
-/// One view submitted through the prototype viewport path.
-struct PrototypeViewportView {
+/// One view submitted through the viewport path.
+struct ViewportFrameView {
 	/// View rectangle inside the target extent.
-	PrototypeViewportRect rect;
-	/// Index into `PrototypeViewportFrame::cameras`.
+	ViewportFrameRect rect;
+	/// Index into `ViewportFrameInput::cameras`.
 	std::uint8_t camera_index = 0;
 	/// Optional debug name borrowed by the renderer for the frame.
 	const char *debug_name = "Viewport";
 };
 
-/// Per-frame payload for the legacy prototype viewport renderer.
-struct PrototypeViewportFrame {
+/// Per-frame payload submitted by a viewport host.
+struct ViewportFrameInput {
 	/// Target extent for the frame.
 	ViewportExtent target_extent;
 	/// View list borrowed for the duration of the call.
-	std::span<const PrototypeViewportView> views;
+	std::span<const ViewportFrameView> views;
 	/// Camera list borrowed for the duration of the call.
-	std::span<const PrototypeCamera> cameras;
+	std::span<const ViewportCamera> cameras;
 	/// Mesh uploads borrowed for the duration of the call.
 	std::span<const RenderMeshUpload> mesh_uploads;
 	/// Render objects borrowed for the duration of the call.
@@ -92,19 +92,19 @@ struct PrototypeViewportFrame {
 	std::span<const PointOverlayPrimitive> point_overlay_payloads;
 	/// Picking requests borrowed for the duration of the call.
 	std::span<const PickingRequest> picking_requests;
-	/// Whether the prototype scene animation is enabled.
+	/// Whether the viewport scene animation is enabled.
 	bool animation_enabled = true;
 	/// Elapsed animation time in seconds.
 	double elapsed_seconds = 0.0;
 };
 
 /**
- * Check whether a prototype view references a valid pane and camera slot.
+ * Check whether a viewport frame view references a valid pane and camera slot.
  *
  * @param view View to validate.
- * @return True when dimensions are non-zero and `camera_index` is within the prototype limit.
+ * @return True when dimensions are non-zero and `camera_index` is within the viewport pane limit.
  */
-[[nodiscard]] constexpr bool is_valid_prototype_view(const PrototypeViewportView &view) noexcept {
+[[nodiscard]] constexpr bool is_valid_viewport_frame_view(const ViewportFrameView &view) noexcept {
 	return view.rect.width > 0 && view.rect.height > 0 && view.camera_index < 4;
 }
 

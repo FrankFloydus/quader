@@ -47,9 +47,14 @@ void DocumentSelectionAdapter::sync_from_document() {
 	const QSignalBlocker kBlocker(&selection_model_);
 	selection_model_.clearSelection();
 
+	const auto &document_selection = documents_.document().selection();
+	if (document_selection.mode() != quader::document::SelectionMode::Object) {
+		syncing_ = false;
+		return;
+	}
+
 	QItemSelection selection;
-	for (const auto kObject :
-			documents_.document().selection().selected_objects()) {
+	for (const auto kObject : document_selection.selected_objects()) {
 		const QModelIndex kLeft = model_.index_for_object(
 				kObject, static_cast<int>(DocumentItemColumn::Name));
 		if (!kLeft.isValid()) {

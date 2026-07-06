@@ -260,7 +260,7 @@ std::uint64_t RenderGraph::resize_generation() const noexcept {
 	return resources_.resize_generation();
 }
 
-RenderGraph make_minimal_prototype_render_graph(ViewportExtent extent) {
+RenderGraph make_minimal_viewport_render_graph(ViewportExtent extent) {
 	RenderGraph graph;
 	(void)graph.add_resource(RenderResourceDesc{
 			.name = "BackbufferColor",
@@ -282,7 +282,7 @@ RenderGraph make_minimal_prototype_render_graph(ViewportExtent extent) {
 															ResourceUse{ .resource_name = "BackbufferColor", .access = RenderResourceAccess::ReadWrite },
 															ResourceUse{ .resource_name = "BackbufferDepth", .access = RenderResourceAccess::ReadWrite },
 													}));
-	graph.add_pass(make_pass("PrototypeOpaquePass", {
+	graph.add_pass(make_pass("ViewportOpaquePass", {
 															ResourceUse{ .resource_name = "BackbufferColor", .access = RenderResourceAccess::ReadWrite },
 															ResourceUse{ .resource_name = "BackbufferDepth", .access = RenderResourceAccess::ReadWrite },
 													}));

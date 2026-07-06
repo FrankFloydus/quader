@@ -206,8 +206,14 @@ QString DiagnosticsItemModel::copy_text_for_all() const {
 }
 
 void DiagnosticsItemModel::reload_from_service() {
+	auto next_roots = make_roots_from_snapshot(diagnostics_.latest_snapshot());
+	if (same_topology(roots_, next_roots)) {
+		update_same_topology(roots_, next_roots);
+		return;
+	}
+
 	beginResetModel();
-	rebuild_from_snapshot(diagnostics_.latest_snapshot());
+	roots_ = std::move(next_roots);
 	endResetModel();
 }
 
@@ -223,8 +229,12 @@ DiagnosticsItemModel::Node *DiagnosticsItemModel::node_from_index(const QModelIn
 }
 
 void DiagnosticsItemModel::rebuild_from_snapshot(const std::optional<ViewportDiagnosticsSnapshot> &snapshot) {
-	roots_.clear();
+	roots_ = make_roots_from_snapshot(snapshot);
+}
 
+std::vector<std::unique_ptr<DiagnosticsItemModel::Node>> DiagnosticsItemModel::make_roots_from_snapshot(
+		const std::optional<ViewportDiagnosticsSnapshot> &snapshot) const {
+	std::vector<std::unique_ptr<Node>> roots;
 	auto summary = make_node(DiagnosticsNodeKind::Section, QStringLiteral("Summary"));
 	auto render_passes = make_node(DiagnosticsNodeKind::Section, QStringLiteral("Render Passes"));
 	auto counters = make_node(DiagnosticsNodeKind::Section, QStringLiteral("Counters"));
@@ -270,15 +280,16 @@ void DiagnosticsItemModel::rebuild_from_snapshot(const std::optional<ViewportDia
 		}
 	}
 
-	append_root(std::move(summary));
-	append_root(std::move(render_passes));
-	append_root(std::move(counters));
-	append_root(std::move(diagnostics));
+	append_root(roots, std::move(summary));
+	append_root(roots, std::move(render_passes));
+	append_root(roots, std::move(counters));
+	append_root(roots, std::move(diagnostics));
+	return roots;
 }
 
 void DiagnosticsItemModel::add_summary_rows(
 		Node &section,
-		const std::optional<ViewportDiagnosticsSnapshot> &snapshot) {
+		const std::optional<ViewportDiagnosticsSnapshot> &snapshot) const {
 	if (!snapshot.has_value()) {
 		append_node(section,
 				make_node(
@@ -336,10 +347,77 @@ std::unique_ptr<DiagnosticsItemModel::Node> DiagnosticsItemModel::make_node(
 	return node;
 }
 
+bool DiagnosticsItemModel::same_topology(
+		const std::vector<std::unique_ptr<Node>> &current,
+		const std::vector<std::unique_ptr<Node>> &next) noexcept {
+	if (current.size() != next.size()) {
+		return false;
+	}
+
+	for (std::size_t index = 0; index < current.size(); ++index) {
+		if (!same_node_topology(*current[index], *next[index])) {
+			return false;
+		}
+	}
+	return true;
+}
+
+bool DiagnosticsItemModel::same_node_topology(const Node &current, const Node &next) noexcept {
+	if (current.kind != next.kind || current.name != next.name || current.category != next.category ||
+			current.children.size() != next.children.size()) {
+		return false;
+	}
+
+	for (std::size_t index = 0; index < current.children.size(); ++index) {
+		if (!same_node_topology(*current.children[index], *next.children[index])) {
+			return false;
+		}
+	}
+	return true;
+}
+
+bool DiagnosticsItemModel::copy_node_payload(Node &current, const Node &next) {
+	const bool kChanged = current.value != next.value ||
+			current.detail != next.detail ||
+			current.severity != next.severity ||
+			current.frame_index != next.frame_index ||
+			current.copy_text != next.copy_text;
+
+	current.value = next.value;
+	current.detail = next.detail;
+	current.severity = next.severity;
+	current.frame_index = next.frame_index;
+	current.copy_text = next.copy_text;
+	return kChanged;
+}
+
+void DiagnosticsItemModel::update_same_topology(
+		std::vector<std::unique_ptr<Node>> &current,
+		const std::vector<std::unique_ptr<Node>> &next,
+		const QModelIndex &parent_index) {
+	for (std::size_t row = 0; row < current.size(); ++row) {
+		Node &current_node = *current[row];
+		const Node &next_node = *next[row];
+		const QModelIndex kNodeIndex = index(current_node.row, static_cast<int>(DiagnosticsItemColumn::Name), parent_index);
+		if (copy_node_payload(current_node, next_node)) {
+			const QModelIndex kFirst = index(current_node.row, 0, parent_index);
+			const QModelIndex kLast = index(current_node.row, kDiagnosticsItemColumnCount - 1, parent_index);
+			Q_EMIT dataChanged(kFirst, kLast);
+		}
+		update_same_topology(current_node.children, next_node.children, kNodeIndex);
+	}
+}
+
 void DiagnosticsItemModel::append_root(std::unique_ptr<Node> node) {
 	node->parent = nullptr;
 	node->row = static_cast<int>(roots_.size());
 	roots_.push_back(std::move(node));
+}
+
+void DiagnosticsItemModel::append_root(std::vector<std::unique_ptr<Node>> &roots, std::unique_ptr<Node> node) {
+	node->parent = nullptr;
+	node->row = static_cast<int>(roots.size());
+	roots.push_back(std::move(node));
 }
 
 void DiagnosticsItemModel::append_node(Node &parent, std::unique_ptr<Node> child) {

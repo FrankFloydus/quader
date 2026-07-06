@@ -59,7 +59,7 @@ namespace {
 		RenderMaterialHandle material,
 		RenderMeshHandle unit_box_mesh,
 		const RenderCamera &camera) {
-	const RenderQueue kQueue = object.queue == RenderQueue::PrototypeOpaque
+	const RenderQueue kQueue = object.queue == RenderQueue::ViewportOpaque
 			? RenderQueue::Opaque
 			: object.queue;
 	const RenderMeshHandle kMesh = is_valid_handle(object.mesh)	 ? object.mesh
@@ -145,7 +145,7 @@ DrawPacketBuildResult build_draw_packets(
 			case RenderQueue::Transparent:
 				result.transparent.push_back(packet);
 				break;
-			case RenderQueue::PrototypeOpaque:
+			case RenderQueue::ViewportOpaque:
 				packet.queue = RenderQueue::Opaque;
 				result.opaque.push_back(packet);
 				break;

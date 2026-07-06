@@ -132,6 +132,22 @@
       }
     },
     {
+      "name": "qt-mingw-debug-runtime",
+      "displayName": "Qt MinGW Debug Runtime Tests",
+      "configurePreset": "qt-mingw-debug",
+      "filter": {
+        "exclude": {
+          "label": "style"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
       "name": "qt-mingw-release",
       "configurePreset": "qt-mingw-release",
       "output": {

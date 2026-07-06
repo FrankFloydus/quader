@@ -60,6 +60,22 @@ void append_tool_preview_line_overlays(
 		std::vector<crimson::LineOverlaySegment> &line_payloads);
 
 /**
+ * Convert a tool preview's styled world lines and triangles into Crimson overlay commands.
+ *
+ * @param preview Tool preview to convert.
+ * @param view_count Number of active render views.
+ * @param overlays Destination overlay command list.
+ * @param line_payloads Destination line segment payload list.
+ * @param triangle_payloads Destination solid triangle payload list.
+ */
+void append_tool_preview_overlays(
+		const quader::tools::ToolPreview &preview,
+		std::size_t view_count,
+		std::vector<crimson::OverlayCommand> &overlays,
+		std::vector<crimson::LineOverlaySegment> &line_payloads,
+		std::vector<crimson::TriangleOverlayPrimitive> &triangle_payloads);
+
+/**
  * Convert the document selection into semantic Crimson overlay commands.
  *
  * Object mode emits selected topology wires. Component modes emit source-wire
@@ -73,6 +89,8 @@ void append_tool_preview_line_overlays(
  * @param triangle_payloads Destination face-fill/source-depth payload list.
  * @param point_payloads Destination vertex-handle payload list.
  * @param selection_hover Optional transient hit used for component hover overlays.
+ * @param selection_hover_suppresses_selected True only for selected-hover
+ * removal preview, where the matching selected base overlay is hidden.
  */
 void append_document_selection_overlays(
 		const quader::document::Document &document,
@@ -81,6 +99,7 @@ void append_document_selection_overlays(
 		std::vector<crimson::LineOverlaySegment> &line_payloads,
 		std::vector<crimson::TriangleOverlayPrimitive> &triangle_payloads,
 		std::vector<crimson::PointOverlayPrimitive> &point_payloads,
-		const std::optional<quader::tools::SurfaceHit> &selection_hover = std::nullopt);
+		const std::optional<quader::tools::SurfaceHit> &selection_hover = std::nullopt,
+		bool selection_hover_suppresses_selected = false);
 
 } // namespace quader::ui

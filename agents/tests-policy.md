@@ -18,7 +18,7 @@ If a requested gate causes broad churn or needs staged adoption, stop and report
 
 Do not run clang-format, clang-tidy, `check_format`, `check_clang_tidy`, `check_static_analysis`, related Python tools, raw clang tools, or any CTest/preset command that includes them without immediate explicit user permission in the current turn.
 
-If a broad preset includes those gates, use targeted test binaries or targeted CTest selections instead.
+Use `ctest --preset qt-mingw-debug-runtime` for broad agent-safe debug runtime coverage. If another broad preset includes those gates, use targeted test binaries or targeted CTest selections instead.
 
 ## What To Test
 

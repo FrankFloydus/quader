@@ -62,7 +62,7 @@ namespace quader::ui {
 [[nodiscard]] std::optional<crimson::RenderMeshUpload> make_crimson_viewport_mesh_upload(
 		const quader::document::MeshObject &object);
 
-/// Create a standalone Crimson viewport render host with prototype content.
+/// Create a standalone Crimson viewport render host with viewport content.
 std::unique_ptr<IViewportRenderHost> create_crimson_viewport_render_host();
 
 /**

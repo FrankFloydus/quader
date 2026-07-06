@@ -53,6 +53,8 @@ public:
 	[[nodiscard]] SelectionMode selection_mode() const noexcept;
 	/// Return the transient selection hover hit, when the viewport has one.
 	[[nodiscard]] std::optional<SurfaceHit> selection_hover() const;
+	/// Return true when the current hover is a selected-component removal preview.
+	[[nodiscard]] bool selection_hover_suppresses_selected() const noexcept;
 	/// Clear the transient selection hover hit.
 	[[nodiscard]] bool clear_selection_hover();
 	/**
@@ -91,7 +93,12 @@ public:
 
 private:
 	[[nodiscard]] bool handle_select_pointer_event(const PointerEvent &event);
-	[[nodiscard]] bool set_selection_hover(SurfaceHit hit);
+	[[nodiscard]] bool clear_selection_hover_state() noexcept;
+	[[nodiscard]] bool clear_visible_selection_hover() noexcept;
+	[[nodiscard]] bool suppress_selection_hover_after_click(const SurfaceHit &hit);
+	[[nodiscard]] bool selected_modifier_hover_for_hit(const SurfaceHit &hit,
+			const KeyboardModifiers &modifiers) const;
+	[[nodiscard]] bool set_selection_hover(SurfaceHit hit, bool suppresses_selected);
 	void apply_tool_completion_request(ToolId handled_tool);
 	void notify_active_tool_changed();
 
@@ -100,6 +107,8 @@ private:
 	ITool *active_tool_ = nullptr;
 	SelectionMode selection_mode_ = SelectionMode::Object;
 	std::optional<SurfaceHit> selection_hover_;
+	bool selection_hover_suppresses_selected_ = false;
+	std::optional<SurfaceHit> suppressed_selection_hover_;
 	std::function<void()> after_active_tool_changed_;
 };
 

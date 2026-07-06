@@ -12,6 +12,7 @@
 #include "app/app_services.hpp"
 #include "tools/box_tool.hpp"
 #include "tools/tool.hpp"
+#include "tools/transform_gizmo_tool.hpp"
 #include "ui/actions/action_registry.hpp"
 #include "ui/qt_app/main_window.hpp"
 #include "ui/qt_app/qt_application_bootstrap.hpp"
@@ -41,9 +42,9 @@ private:
 
 void register_shell_tools(quader::tools::ToolManager &tool_manager) {
 	(void)tool_manager.register_tool(std::make_unique<ShellTool>(quader::tools::ToolId::Select));
-	(void)tool_manager.register_tool(std::make_unique<ShellTool>(quader::tools::ToolId::Move));
-	(void)tool_manager.register_tool(std::make_unique<ShellTool>(quader::tools::ToolId::Rotate));
-	(void)tool_manager.register_tool(std::make_unique<ShellTool>(quader::tools::ToolId::Scale));
+	(void)tool_manager.register_tool(std::make_unique<quader::tools::TransformGizmoTool>(quader::tools::ToolId::Move));
+	(void)tool_manager.register_tool(std::make_unique<quader::tools::TransformGizmoTool>(quader::tools::ToolId::Rotate));
+	(void)tool_manager.register_tool(std::make_unique<quader::tools::TransformGizmoTool>(quader::tools::ToolId::Scale));
 	(void)tool_manager.register_tool(std::make_unique<quader::tools::BoxTool>());
 	(void)tool_manager.set_active_tool(quader::tools::ToolId::Select);
 }
@@ -63,6 +64,9 @@ AppServices::AppServices() : tool_manager(quader::tools::ToolContext{ document, 
 		} {
 	ui::register_standard_actions(actions);
 	tool_manager.context().set_after_command_applied([this]() {
+		document_ui.refresh_from_document();
+	});
+	tool_manager.context().set_after_preview_mutation_applied([this]() {
 		document_ui.refresh_from_document();
 	});
 	tool_manager.set_after_active_tool_changed([this]() {

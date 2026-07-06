@@ -103,14 +103,26 @@ private:
 
 	[[nodiscard]] Node *node_from_index(const QModelIndex &index) const noexcept;
 	void rebuild_from_snapshot(const std::optional<ViewportDiagnosticsSnapshot> &snapshot);
-	void add_summary_rows(Node &section, const std::optional<ViewportDiagnosticsSnapshot> &snapshot);
+	[[nodiscard]] std::vector<std::unique_ptr<Node>> make_roots_from_snapshot(
+			const std::optional<ViewportDiagnosticsSnapshot> &snapshot) const;
+	void add_summary_rows(Node &section, const std::optional<ViewportDiagnosticsSnapshot> &snapshot) const;
 	[[nodiscard]] static std::unique_ptr<Node> make_node(
 			DiagnosticsNodeKind kind,
 			QString name,
 			QString value = {},
 			QString detail = {});
+	[[nodiscard]] static bool same_topology(
+			const std::vector<std::unique_ptr<Node>> &current,
+			const std::vector<std::unique_ptr<Node>> &next) noexcept;
+	[[nodiscard]] static bool same_node_topology(const Node &current, const Node &next) noexcept;
+	[[nodiscard]] static bool copy_node_payload(Node &current, const Node &next);
+	void update_same_topology(
+			std::vector<std::unique_ptr<Node>> &current,
+			const std::vector<std::unique_ptr<Node>> &next,
+			const QModelIndex &parent_index = {});
 	void append_root(std::unique_ptr<Node> node);
-	void append_node(Node &parent, std::unique_ptr<Node> child);
+	static void append_root(std::vector<std::unique_ptr<Node>> &roots, std::unique_ptr<Node> node);
+	static void append_node(Node &parent, std::unique_ptr<Node> child);
 	[[nodiscard]] QString copy_text_for_node(const Node &node) const;
 	void append_copy_text_recursive(const Node &node, QStringList &lines) const;
 

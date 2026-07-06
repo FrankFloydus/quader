@@ -185,9 +185,9 @@ std::string_view shader_stage_name(ShaderStage stage) noexcept {
 
 std::string_view shader_file_name(ShaderProgramId program, ShaderStage stage) noexcept {
 	switch (program) {
-		case ShaderProgramId::PrototypeLitCube:
+		case ShaderProgramId::ViewportLitCube:
 			return stage == ShaderStage::Vertex ? "vs_cube.bin" : "fs_cube.bin";
-		case ShaderProgramId::PrototypeGridOverlay:
+		case ShaderProgramId::ViewportGridOverlay:
 			return stage == ShaderStage::Vertex ? "vs_grid.bin" : "fs_grid.bin";
 		case ShaderProgramId::ToneMap:
 			return stage == ShaderStage::Vertex ? "fullscreen_triangle.bin" : "tone_map.bin";

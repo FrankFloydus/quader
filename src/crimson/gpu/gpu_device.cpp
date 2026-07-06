@@ -56,7 +56,7 @@ constexpr std::uint32_t kViewportClearColor = 0x020202ff;
 constexpr std::uint32_t kSceneViewStride = 4;
 constexpr std::uint32_t kOverlayViewStride = 3;
 
-struct PrototypeResources {
+struct ViewportResources {
 	bgfx::UniformHandle pbr_model_uniform = BGFX_INVALID_HANDLE;
 	bool ready = false;
 };
@@ -224,7 +224,7 @@ void destroy_handle(bgfx::UniformHandle &handle) noexcept {
 	}
 }
 
-void destroy_prototype_resources(PrototypeResources &resources) noexcept {
+void destroy_viewport_resources(ViewportResources &resources) noexcept {
 	destroy_handle(resources.pbr_model_uniform);
 	resources.ready = false;
 }
@@ -238,7 +238,7 @@ void destroy_post_process_resources(PostProcessResources &resources) noexcept {
 	resources.ready = false;
 }
 
-[[nodiscard]] bool are_prototype_resources_ready(const PrototypeResources &resources) noexcept {
+[[nodiscard]] bool are_viewport_resources_ready(const ViewportResources &resources) noexcept {
 	return bgfx::isValid(resources.pbr_model_uniform);
 }
 
@@ -261,23 +261,23 @@ void destroy_post_process_resources(PostProcessResources &resources) noexcept {
 	};
 }
 
-[[nodiscard]] bool create_prototype_resources(
-		PrototypeResources &resources,
+[[nodiscard]] bool create_viewport_resources(
+		ViewportResources &resources,
 		RendererStatus &status) {
-	destroy_prototype_resources(resources);
+	destroy_viewport_resources(resources);
 
 	resources.pbr_model_uniform = bgfx::createUniform("u_pbrModel", bgfx::UniformType::Mat4);
 
-	resources.ready = are_prototype_resources_ready(resources);
+	resources.ready = are_viewport_resources_ready(resources);
 	if (!resources.ready) {
 		push_diagnostic(status, RendererDiagnostic{
 										.severity = RendererDiagnosticSeverity::Error,
 										.code = RendererDiagnosticCode::ResourceCreationFailed,
-										.message = "Crimson failed to create prototype viewport GPU resources.",
-										.subsystem = "gpu.prototype",
-										.resource_name = "PrototypeViewportResources",
+										.message = "Crimson failed to create viewport GPU resources.",
+										.subsystem = "gpu.viewport",
+										.resource_name = "ViewportResources",
 								});
-		destroy_prototype_resources(resources);
+		destroy_viewport_resources(resources);
 	}
 
 	return resources.ready;
@@ -534,7 +534,7 @@ std::uint32_t submit_pbr_packets(
 		const GpuMeshCache &mesh_cache,
 		const GpuProgramCache &program_cache,
 		const GpuMaterialCache &material_cache,
-		const PrototypeResources &resources,
+		const ViewportResources &resources,
 		PbrSubmitMode mode = PbrSubmitMode::Lit) {
 	std::uint32_t draw_calls = 0;
 	for (const PbrDrawPacket &packet : packets) {
@@ -609,6 +609,7 @@ std::uint32_t submit_grid_scene_underlay_bucket(
 std::uint32_t submit_line_overlay_bucket(
 		const OverlayDrawBucket &bucket,
 		OverlayDepthMode depth_mode,
+		std::span<const SourceWireDepthStampMetadata> source_wire_depth_stamps,
 		std::span<const RenderView> views,
 		const GpuOverlayRenderer &overlay_renderer,
 		const GpuProgramCache &program_cache,
@@ -627,7 +628,12 @@ std::uint32_t submit_line_overlay_bucket(
 			if (lines.command.view_index != view.view_index) {
 				continue;
 			}
-			draw_calls += overlay_renderer.submit_lines(kViewId, view, lines, kProgram);
+			const PreparedLineOverlayCommand kFilteredLines =
+					make_source_wire_visibility_filtered_line_command(
+							view,
+							lines,
+							source_wire_depth_stamps);
+			draw_calls += overlay_renderer.submit_lines(kViewId, view, kFilteredLines, kProgram);
 		}
 	}
 	return draw_calls;
@@ -663,6 +669,7 @@ std::uint32_t submit_triangle_overlay_bucket(
 std::uint32_t submit_point_overlay_bucket(
 		const OverlayDrawBucket &bucket,
 		OverlayDepthMode depth_mode,
+		std::span<const SourceWireDepthStampMetadata> source_wire_depth_stamps,
 		std::span<const RenderView> views,
 		const GpuOverlayRenderer &overlay_renderer,
 		const GpuProgramCache &program_cache,
@@ -681,7 +688,12 @@ std::uint32_t submit_point_overlay_bucket(
 			if (points.command.view_index != view.view_index) {
 				continue;
 			}
-			draw_calls += overlay_renderer.submit_points(kViewId, view, points, kProgram);
+			const PreparedPointOverlayCommand kFilteredPoints =
+					make_source_wire_visibility_filtered_point_command(
+							view,
+							points,
+							source_wire_depth_stamps);
+			draw_calls += overlay_renderer.submit_points(kViewId, view, kFilteredPoints, kProgram);
 		}
 	}
 	return draw_calls;
@@ -814,7 +826,7 @@ struct GpuDevice::Impl {
 	GpuMaterialCache material_cache;
 	GpuOverlayRenderer overlay_renderer;
 	GpuPicking picking;
-	PrototypeResources prototype_resources;
+	ViewportResources viewport_resources;
 	PostProcessResources post_resources;
 	RenderMeshHandle unit_box_mesh;
 	RenderMaterialHandle default_opaque_material;
@@ -1028,7 +1040,7 @@ bool GpuDevice::initialize(const RendererConfig &config, const NativeSurfaceDesc
 		return false;
 	}
 
-	if (!create_prototype_resources(impl_->prototype_resources, status_)) {
+	if (!create_viewport_resources(impl_->viewport_resources, status_)) {
 		impl_->picking.shutdown();
 		impl_->overlay_renderer.shutdown();
 		impl_->material_cache.shutdown();
@@ -1041,7 +1053,7 @@ bool GpuDevice::initialize(const RendererConfig &config, const NativeSurfaceDesc
 	}
 
 	if (!create_post_process_resources(impl_->post_resources, status_)) {
-		destroy_prototype_resources(impl_->prototype_resources);
+		destroy_viewport_resources(impl_->viewport_resources);
 		impl_->picking.shutdown();
 		impl_->overlay_renderer.shutdown();
 		impl_->material_cache.shutdown();
@@ -1062,7 +1074,7 @@ void GpuDevice::shutdown() noexcept {
 	}
 
 	destroy_post_process_resources(impl_->post_resources);
-	destroy_prototype_resources(impl_->prototype_resources);
+	destroy_viewport_resources(impl_->viewport_resources);
 	impl_->picking.shutdown();
 	impl_->overlay_renderer.shutdown();
 	impl_->material_cache.shutdown();
@@ -1239,7 +1251,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 			return quader::foundation::Result<FrameRenderResult, RendererDiagnostic>::failure(std::move(diagnostic));
 		}
 	}
-	if (impl_->prototype_resources.ready) {
+	if (impl_->viewport_resources.ready) {
 		const auto kSubmitStart = std::chrono::steady_clock::now();
 		for (std::size_t index = 0; index < snapshot.views().size(); ++index) {
 			const RenderView &view = snapshot.views()[index];
@@ -1316,7 +1328,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 						impl_->mesh_cache,
 						impl_->program_cache,
 						impl_->material_cache,
-						impl_->prototype_resources,
+						impl_->viewport_resources,
 						PbrSubmitMode::DepthOnly);
 				queue_stats.opaque_draw_count += submit_pbr_packets(
 						kOpaqueViewId,
@@ -1326,7 +1338,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 						impl_->mesh_cache,
 						impl_->program_cache,
 						impl_->material_cache,
-						impl_->prototype_resources);
+						impl_->viewport_resources);
 				queue_stats.alpha_cutout_draw_count += submit_pbr_packets(
 						kCutoutViewId,
 						packets.alpha_cutout,
@@ -1335,7 +1347,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 						impl_->mesh_cache,
 						impl_->program_cache,
 						impl_->material_cache,
-						impl_->prototype_resources);
+						impl_->viewport_resources);
 				queue_stats.transparent_draw_count += submit_pbr_packets(
 						kTransparentViewId,
 						packets.transparent,
@@ -1344,7 +1356,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 						impl_->mesh_cache,
 						impl_->program_cache,
 						impl_->material_cache,
-						impl_->prototype_resources);
+						impl_->viewport_resources);
 			}
 		}
 
@@ -1422,6 +1434,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 			queue_stats.overlay_draw_count += submit_line_overlay_bucket(
 					kOverlayDrawLists.depth_tested,
 					OverlayDepthMode::DepthTested,
+					kOverlayDrawLists.source_wire_depth_stamps,
 					snapshot.views(),
 					impl_->overlay_renderer,
 					impl_->program_cache,
@@ -1430,6 +1443,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 			queue_stats.overlay_draw_count += submit_line_overlay_bucket(
 					kOverlayDrawLists.xray,
 					OverlayDepthMode::XRay,
+					kOverlayDrawLists.source_wire_depth_stamps,
 					snapshot.views(),
 					impl_->overlay_renderer,
 					impl_->program_cache,
@@ -1438,6 +1452,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 			queue_stats.overlay_draw_count += submit_line_overlay_bucket(
 					kOverlayDrawLists.always_on_top,
 					OverlayDepthMode::AlwaysOnTop,
+					kOverlayDrawLists.source_wire_depth_stamps,
 					snapshot.views(),
 					impl_->overlay_renderer,
 					impl_->program_cache,
@@ -1446,6 +1461,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 			queue_stats.overlay_draw_count += submit_point_overlay_bucket(
 					kOverlayDrawLists.depth_tested,
 					OverlayDepthMode::DepthTested,
+					kOverlayDrawLists.source_wire_depth_stamps,
 					snapshot.views(),
 					impl_->overlay_renderer,
 					impl_->program_cache,
@@ -1454,6 +1470,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 			queue_stats.overlay_draw_count += submit_point_overlay_bucket(
 					kOverlayDrawLists.xray,
 					OverlayDepthMode::XRay,
+					kOverlayDrawLists.source_wire_depth_stamps,
 					snapshot.views(),
 					impl_->overlay_renderer,
 					impl_->program_cache,
@@ -1462,6 +1479,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 			queue_stats.overlay_draw_count += submit_point_overlay_bucket(
 					kOverlayDrawLists.always_on_top,
 					OverlayDepthMode::AlwaysOnTop,
+					kOverlayDrawLists.source_wire_depth_stamps,
 					snapshot.views(),
 					impl_->overlay_renderer,
 					impl_->program_cache,

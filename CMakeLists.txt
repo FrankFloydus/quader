@@ -370,6 +370,8 @@ add_library(modeling_tools STATIC
     src/tools/tool_manager.hpp
     src/tools/tool_preview.cpp
     src/tools/tool_preview.hpp
+    src/tools/transform_gizmo_tool.cpp
+    src/tools/transform_gizmo_tool.hpp
 )
 
 target_include_directories(modeling_tools
@@ -446,7 +448,7 @@ add_library(crimson STATIC
     src/crimson/pipeline/frustum_culler.hpp
     src/crimson/pipeline/instancing_batcher.cpp
     src/crimson/pipeline/instancing_batcher.hpp
-    src/crimson/prototype_viewport.hpp
+    src/crimson/viewport_frame.hpp
     src/crimson/renderer.cpp
     src/crimson/renderer.hpp
     src/crimson/renderer_config.hpp
@@ -1197,6 +1199,7 @@ if(BUILD_TESTING)
             --root "${CMAKE_CURRENT_SOURCE_DIR}"
             ${QUADER_CLANG_FORMAT_ARGS}
     )
+    set_tests_properties(clang_format PROPERTIES LABELS style)
 
     add_test(
         NAME clang_tidy
@@ -1205,6 +1208,7 @@ if(BUILD_TESTING)
             --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
             ${QUADER_CLANG_TIDY_ARGS}
     )
+    set_tests_properties(clang_tidy PROPERTIES LABELS style)
 endif()
 
 add_executable(quader_renderer_benchmarks EXCLUDE_FROM_ALL

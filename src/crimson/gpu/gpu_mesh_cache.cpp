@@ -122,6 +122,10 @@ void push_mesh_upload_creation_error(RendererStatus &status, RenderMeshHandle ha
 	});
 }
 
+bool is_clean_mesh_upload(const GpuMeshResource *resource, RenderMeshRevision revision) noexcept {
+	return resource != nullptr && resource->uploaded_revision == revision;
+}
+
 } // namespace
 
 RenderMeshHandle GpuMeshCache::create_unit_box(RendererStatus &status) {
@@ -156,7 +160,14 @@ bool GpuMeshCache::upload_mesh(const RenderMeshUploadDesc &desc, RendererStatus 
 		return false;
 	}
 
+	const GpuMeshResource *existing = get(desc.handle);
+	if (is_clean_mesh_upload(existing, desc.revision)) {
+		++upload_stats_.skipped_clean_resource_count;
+		return true;
+	}
+
 	GpuMeshResource resource;
+	resource.uploaded_revision = desc.revision;
 	resource.vertex_layout
 			.begin()
 			.add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
@@ -177,7 +188,7 @@ bool GpuMeshCache::upload_mesh(const RenderMeshUploadDesc &desc, RendererStatus 
 		return false;
 	}
 
-	const bool kUpdated = get(desc.handle) != nullptr;
+	const bool kUpdated = existing != nullptr;
 	if (!meshes_.upsert(desc.handle, std::move(resource))) {
 		push_mesh_upload_creation_error(status, desc.handle);
 		return false;

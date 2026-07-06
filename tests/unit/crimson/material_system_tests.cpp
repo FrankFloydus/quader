@@ -505,7 +505,7 @@ TEST(MaterialSystem, PbrPacketPreparationBucketsAndSortsDrawPackets) {
 			"same-depth transparent packets sort by stable object id tie-breaker");
 	expect_true(
 			kPackets.opaque[0].program == crimson::ShaderProgramId::OpaquePbr,
-			"PBR packet uses the base shader program, not prototype object program data");
+			"PBR packet uses the base shader program, not viewport object program data");
 }
 
 } // namespace

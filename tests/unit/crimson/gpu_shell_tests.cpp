@@ -116,14 +116,14 @@ TEST(GpuShell, ShaderLibraryResolvesManifestTargetShaderPaths) {
 
 	expect_true(
 			crimson::gpu::shader_file_name(
-					crimson::ShaderProgramId::PrototypeLitCube,
+					crimson::ShaderProgramId::ViewportLitCube,
 					crimson::gpu::ShaderStage::Vertex) == "vs_cube.bin",
-			"prototype cube vertex shader name is stable");
+			"viewport cube vertex shader name is stable");
 	expect_true(
 			crimson::gpu::shader_file_name(
-					crimson::ShaderProgramId::PrototypeGridOverlay,
+					crimson::ShaderProgramId::ViewportGridOverlay,
 					crimson::gpu::ShaderStage::Fragment) == "fs_grid.bin",
-			"prototype grid fragment shader name is stable");
+			"viewport grid fragment shader name is stable");
 	expect_true(
 			crimson::gpu::shader_file_name(
 					crimson::ShaderProgramId::OpaquePbr,
@@ -146,14 +146,14 @@ TEST(GpuShell, ShaderLibraryResolvesManifestTargetShaderPaths) {
 			"Picking fragment shader name is stable");
 	expect_true(
 			library.shader_path(
-						   crimson::ShaderProgramId::PrototypeLitCube,
+						   crimson::ShaderProgramId::ViewportLitCube,
 						   crimson::gpu::ShaderStage::Fragment,
 						   crimson::gpu::ShaderTarget::Vulkan)
 							.generic_string() == "shaders/vulkan/fs_cube.bin",
 			"shader library resolves Vulkan paths relative to shader root");
 	expect_true(
 			library.shader_path(
-						   crimson::ShaderProgramId::PrototypeLitCube,
+						   crimson::ShaderProgramId::ViewportLitCube,
 						   crimson::gpu::ShaderStage::Fragment,
 						   crimson::gpu::ShaderTarget::Direct3D12)
 							.generic_string() == "shaders/dx12/fs_cube.bin",
