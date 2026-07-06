@@ -7,7 +7,7 @@ Quader is a C++20 Qt Widgets polygon modeling app. The renderer is `crimson`; do
 ## Read First
 
 - Workflow authority: `agents/workflow.md`
-- Board commands/metadata: `agents/task_board.md`
+- Board pause/status: `agents/task_board.md`
 - Tests: `agents/tests-policy.md`
 - Documentation: `agents/documentation-policy.md`
 - Critical hindsight: `agents/hindsight.md`
@@ -19,27 +19,29 @@ Use full architecture references only for broad audits/major design work: `agent
 ## Map
 
 - Main repo: `C:\Users\Drako\Desktop\_quader-qt-base`
-- External board: `C:\Users\Drako\Desktop\quader-project-board`
+- External board app: `C:\Users\Drako\Desktop\quader-project-board`
 - Dev builds: `C:\Users\Drako\Desktop\quader-dev-builds`
 - Plans: `agents/plans/`; archived plans: `agents/archive/`
-- Board: `project_board.md`; archive: `project_board_archive.md`
+- Paused board files: `project_board.md`; archive: `project_board_archive.md`
 - Target: `quader_app`; executable: `quader.exe`
 
 ## Active Workflow
 
-Use `$quader-workflow` for Quader workflow requests: task/bug intake, execution, review/rework, archive closeout, audit, beautify, docs, performance, parity/reference work, dev builds, changelogs, and external board/dashboard work.
+Use `$quader-workflow` for Quader workflow requests: direct execution, review/rework, audit, beautify, docs, performance, parity/reference work, dev builds, changelogs, and explicit external board/dashboard maintenance.
 
 No active `quader-*.toml` agents should be spawned.
 
-Add/intake creates only a board entry. Execute creates/updates exactly one plan: `agents/plans/implementation_task{id}_{slug}.md`. Ad hoc implementation without a task id must add the board entry first, then execute it.
+Temporary board pause: do not create, update, validate, archive, or require project-board entries during normal work. Add/intake requests should be handled from the user request and current repository context without mutating `project_board.md`. Ad hoc implementation may proceed directly after reading the relevant docs, hindsight, and code.
+
+Implementation plans are required only when the workflow docs, task risk, or user request call for them. Use `agents/plans/implementation_YYYYMMDD_{slug}.md` for new board-free work unless an existing plan is already the active authority.
 
 Audit/beautify is incomplete until the full markdown artifact exists in `agents/plans/`.
 
-## Board Authority
+## Board Pause
 
-`$quader-workflow` owns board authority. Mutating commands use `--workflow-authorized`; `--architect-authorized` and `--pm-authorized` are legacy only.
+The project board is temporarily disabled as workflow authority. Treat `project_board.md` and `project_board_archive.md` as historical/read-only context only when the user explicitly cites them or asks for board restoration/inspection.
 
-Never hand-edit `project_board.md` or `project_board_archive.md`.
+Never hand-edit `project_board.md` or `project_board_archive.md`. Do not run `tools/project_board.py` commands unless the current user request is explicitly about inspecting, repairing, restoring, or maintaining the board.
 
 ## Commands
 
@@ -50,11 +52,10 @@ cmake --build --preset qt-mingw-debug-tests --parallel 20
 ctest --preset qt-mingw-debug-runtime
 cmake --build --preset qt-mingw-debug-deploy --parallel 20
 .\build\qt-mingw-debug\quader.exe
-python tools/project_board.py validate
 python tools/dev_builds.py current
 ```
 
-External board:
+External board app, only when explicitly working on that app:
 
 ```powershell
 cd C:\Users\Drako\Desktop\quader-project-board

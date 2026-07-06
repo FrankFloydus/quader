@@ -22,8 +22,8 @@ documentation-specific tasks; it is
 not an automatic implementation-review blocker for newly added code.
 
 Documentation maintenance is allowed to change comments and copyright headers.
-It must not change behavior, public API shape, build semantics, tests, task-board
-state, versions, or public release notes.
+It must not change behavior, public API shape, build semantics, tests, paused
+board files/state, versions, or public release notes.
 
 ## Documentation Sync Rule
 
@@ -675,8 +675,8 @@ ambiguous, report it instead of guessing.
 ## Documentation Maintenance Mode
 
 `$quader-workflow` handles documentation-only maintenance directly in the same
-thread. It does not go through task intake for documentation-only work unless the
-user asks to create a board task.
+thread. It does not create or require board tasks while the board pause is
+active.
 
 Allowed direct work:
 
@@ -692,7 +692,7 @@ Forbidden direct work:
 - Source behavior changes.
 - Public API redesign.
 - CMake/build/test behavior changes.
-- Task-board mutations.
+- Board mutations.
 - Version changes.
 - Public `changelog.md` changes.
 - Formatting or clang-tidy cleanup unrelated to documentation.
@@ -704,10 +704,11 @@ deviation report to main/root.
 
 Avoid full codebase scans by default. Use the narrowest useful scope:
 
-1. **Explicit scope**: files, folders, task ids, symbols, or active assignment
+1. **Explicit scope**: files, folders, legacy task ids explicitly cited by the
+   user, symbols, or active assignment
    scope named by the user.
-2. **Active task scope**: files listed in the active board task, `Active:`
-   metadata, architect review, active plan, or current executor report.
+2. **Active plan/review scope**: files listed in an active plan, architect
+   review, current executor report, or explicitly cited legacy board context.
 3. **Changed-file scope**: project-owned C++ files from `git status --short`,
    `git diff --name-only`, and `git diff --cached --name-only`.
 4. **Recent implementation scope**: files mentioned in the latest relevant

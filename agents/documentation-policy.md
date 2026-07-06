@@ -6,7 +6,7 @@ Lean first-read for Quader documentation work. Full detailed examples and extend
 
 Project-owned C++ files must start with the Quader copyright block. Project-owned public/protected C++ APIs should be documented where first declared with Javadoc-style Doxygen.
 
-Documentation maintenance may change comments, copyright headers, docs, and dev-changelog entries. It must not change source behavior, public API shape, build/test behavior, board state, versions, or public release notes unless explicitly requested.
+Documentation maintenance may change comments, copyright headers, docs, and dev-changelog entries. It must not change source behavior, public API shape, build/test behavior, paused board files/state, versions, or public release notes unless explicitly requested.
 
 ## Sync Rule
 
@@ -97,7 +97,7 @@ Use ordinary comments sparingly for non-obvious algorithms, platform workarounds
 
 ## Documentation Maintenance Mode
 
-`$quader-workflow` can directly handle docs-only maintenance unless the user asks for a board task.
+`$quader-workflow` can directly handle docs-only maintenance. Do not create or require board tasks while the board pause is active.
 
 Allowed direct work: copyright headers, Doxygen repair/additions, scoped docs audits, docs policy edits, dev-changelog entries for durable docs changes.
 
@@ -108,7 +108,7 @@ Forbidden direct work: behavior changes, API redesign, build/test semantics, boa
 Use the narrowest useful scope:
 
 1. explicit user scope;
-2. active board task/plan/review scope;
+2. active plan/review scope;
 3. changed files from git diff/status;
 4. recent implementation scope;
 5. full audit only when explicitly requested.

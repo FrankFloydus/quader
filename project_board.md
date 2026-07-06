@@ -23,30 +23,6 @@ removed only when the user explicitly asks for that board operation.
 
 
   Coordination: Fifth helper rework implemented from communication thread 019f2d49-d913-7292-89da-5cb5fdd53b63: source-wire depth-stamp CPU filtering is restricted to SourceWire/SourceVertex with SourceWire source kind; selected/hover component edges and vertices bypass CPU filtering and retain depth-tested render state; ambiguous/mixed open stamp sets no longer bypass visibility; edge overlay refs now carry incident face metadata and source-wire ownership skip is semantic rather than endpoint-geometric. Verification: crimson_gpu_resource_tests 22/22 passed; debug build passed; deploy passed; archived dev build 0.1.1-dev.27. Plan updated: agents/plans/implementation_task25_overlay_parity_rework.md.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## In Review
 
 #13 [priority:high][type:enhancement][area:viewport] Add Godot-style transform gizmos to the viewport - Add move, rotate, and scale viewport gizmos modeled on Godot, with camera-scaled handles, analytic picking, drag previews, snapping, commit/cancel behavior, and a Quader-specific uniform-scale center cube.
@@ -91,6 +67,39 @@ removed only when the user explicitly asks for that board operation.
 
   Authority: [owner:workflow][status:pending][agent:quader-workflow] Rework resubmitted for review; verify Rework before approval.
   Rework: [owner:workflow][agent:quader-workflow][checked:2026-07-06T07:34:39Z] Recheck C:\Users\Drako\Desktop\quader-windows\quader-app renderer internals beyond nominal setting constants, especially ground_grid material shader behavior, sRGB-to-linear binding, alpha blending, fade/coverage math, and pass/tone-map placement. Fix Crimson so the rendered ground viewport grid/background visually matches the reference app screenshot: darker/dimmer grid lines, correct horizon fade, and no over-bright white grid appearance. Preserve viewport ground-grid defaults distinct from mesh-surface grid settings, add focused regression coverage for the rendering parameter/pipeline cause where practical, redeploy and archive a dev build.
+
+#30 [priority:high][type:enhancement][area:ui] Implement current audit and beautify findings - Fix current audit findings for viewport render prep, property model refresh precision, and shader naming.
+  Created: 2026-07-06T14:12:25+02:00
+  Brief: Source audit: agents/plans/audit_20260706_current_code_master.md. Implement A1 by caching document render mesh metadata/uploads in the UI-side Crimson viewport adapter and submitting mesh uploads only when revisions change. Implement A2 by preserving typed DocumentChange through DocumentUiController and updating PropertyItemModel same-topology rows with dataChanged instead of resets for selected-object value changes. Implement B1 by removing unused prototype cube/grid shader ids, cube shader sources/outputs, built-in unit-box fallback mesh path, and inert Create Cube action; keep the live grid overlay on OverlayUnlit with production source/output names. Verification: build app, build tests, run targeted runtime tests plus board validation, deploy debug runtime, archive dev build, then move this task to In Review only.
+  Freshness: [status:fresh][checked:2026-07-06T12:12:58Z] Revalidated against current audit artifact agents/plans/audit_20260706_current_code_master.md.
+  Final owner: codex
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## Bugs
 
 #21 [priority:high][type:bug][area:viewport] Restore fly navigation mouse capture in the Qt viewport - Right-button fly navigation enters Fly mode and routes movement keys, but the Qt viewport does not capture, hide, warp, or feed relative mouse deltas while flying.
