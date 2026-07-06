@@ -14,7 +14,7 @@
 namespace crimson {
 
 /// Default near clip distance for viewport cameras, in meters.
-inline constexpr float kDefaultCameraNearPlaneM = 0.01F;
+inline constexpr float kDefaultCameraNearPlaneM = 0.05F;
 /// Default far clip distance for viewport cameras, in meters.
 inline constexpr float kDefaultCameraFarPlaneM = 1000.0F;
 

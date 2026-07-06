@@ -16,6 +16,7 @@
 #include "crimson/renderer_types.hpp"
 #include "crimson/scene/render_camera.hpp"
 #include "crimson/scene/render_object.hpp"
+#include "crimson/scene/viewport_settings.hpp"
 #include "math/vec3.hpp"
 
 #include <cstdint>
@@ -97,6 +98,8 @@ struct ViewportFrameInput {
 	std::span<const PointOverlayPrimitive> point_overlay_payloads;
 	/// Picking requests borrowed for the duration of the call.
 	std::span<const PickingRequest> picking_requests;
+	/// Viewport render settings copied into the immutable frame snapshot.
+	ViewportSettings viewport_settings;
 	/// Whether the viewport scene animation is enabled.
 	bool animation_enabled = true;
 	/// Elapsed animation time in seconds.

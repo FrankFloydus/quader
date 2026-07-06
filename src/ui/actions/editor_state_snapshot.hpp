@@ -70,6 +70,12 @@ struct EditorStateSnapshot {
 	bool viewport_state_known = false;
 	/// True when quad viewport layout is active.
 	bool quad_viewports_enabled = false;
+	/// True when the viewport ground grid is visible.
+	bool show_grid = true;
+	/// True when editor overlays are visible.
+	bool show_overlays = true;
+	/// True when the material-space mesh surface grid is visible.
+	bool show_mesh_grid = false;
 };
 
 /// Interface for components that can provide an `EditorStateSnapshot`.

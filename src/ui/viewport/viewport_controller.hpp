@@ -70,6 +70,10 @@ public:
 	void set_shading_mode(ViewportShadingMode mode);
 	/// Return the viewport mesh surface shading mode.
 	[[nodiscard]] ViewportShadingMode shading_mode() const noexcept;
+	/// Set viewport display settings used by render requests.
+	void set_display_settings(ViewportDisplaySettings settings);
+	/// Return current viewport display settings.
+	[[nodiscard]] ViewportDisplaySettings display_settings() const noexcept;
 
 	/// Submit one frame to the render host.
 	void render_frame(double elapsed_seconds, float delta_seconds);
@@ -153,6 +157,7 @@ private:
 	bool tool_pointer_left_pressed_ = false;
 	double device_pixel_ratio_ = 1.0;
 	ViewportShadingMode shading_mode_ = ViewportShadingMode::Shaded;
+	ViewportDisplaySettings display_settings_;
 	bool scene_animation_enabled_ = true;
 	bool surface_initialized_ = false;
 };

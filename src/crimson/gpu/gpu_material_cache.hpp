@@ -13,6 +13,7 @@
 #include "crimson/material/material_system.hpp"
 #include "crimson/renderer_config.hpp"
 #include "crimson/renderer_diagnostics.hpp"
+#include "crimson/scene/viewport_settings.hpp"
 
 #include <array>
 #include <cstddef>
@@ -35,6 +36,14 @@ struct GpuPbrMaterialBlock {
 	std::array<float, 4> uv_transform_0{ 1.0F, 1.0F, 0.0F, 0.0F };
 	/// Packed material flags.
 	std::array<float, 4> flags{};
+	/// Mesh surface grid minor color in linear SDR.
+	std::array<float, 4> surface_grid_minor_color_linear{ 0.0F, 0.0F, 0.0F, 0.0F };
+	/// Mesh surface grid major color in linear SDR.
+	std::array<float, 4> surface_grid_major_color_linear{ 0.0F, 0.0F, 0.0F, 0.0F };
+	/// Mesh surface grid spacing and thickness parameters.
+	std::array<float, 4> surface_grid_params{ 1.0F, 4.0F, 0.325F, 0.250F };
+	/// Mesh surface grid feature flags.
+	std::array<float, 4> surface_grid_flags{};
 };
 
 /// One RGBA8 mip level prepared for texture upload.
@@ -127,12 +136,14 @@ public:
 	 * @param materials Material system used to resolve `material`.
 	 * @param material Material handle to resolve.
 	 * @param definition Base shader definition used for packing.
+	 * @param viewport_settings Active viewport render settings.
 	 * @return Packed material block, using defaults when resolution fails.
 	 */
 	[[nodiscard]] GpuPbrMaterialBlock material_block(
 			const MaterialSystem &materials,
 			RenderMaterialHandle material,
-			const BaseShaderDefinition &definition) const noexcept;
+			const BaseShaderDefinition &definition,
+			const ViewportSettings &viewport_settings) const noexcept;
 	/**
 	 * Bind packed PBR material constants for subsequent draws.
 	 *

@@ -251,6 +251,55 @@ TEST(FrameSnapshot, BuilderCopiesCallerRenderObjectsAndOverlayPayloads) {
 	expect_true(snapshot.point_overlay_payloads()[0].position.x == 0.0F, "point overlay payload is immutable from source changes");
 }
 
+TEST(FrameSnapshot, BuilderCopiesViewportSettingsAndSuppressesGridOnly) {
+	std::array<crimson::ViewportCamera, 1> cameras = { make_camera() };
+	std::array<crimson::ViewportFrameView, 1> views = {
+		crimson::ViewportFrameView{
+				.rect = crimson::ViewportFrameRect{ 0, 0, 320, 200 },
+				.camera_index = 0,
+				.debug_name = "Perspective",
+		},
+	};
+	std::array<crimson::LineOverlaySegment, 1> lines = {
+		crimson::LineOverlaySegment{ .start = { 0.0F, 0.0F, 0.0F }, .end = { 1.0F, 0.0F, 0.0F } },
+	};
+	std::array<crimson::OverlayCommand, 1> overlays = {
+		crimson::OverlayCommand{
+				.view_index = 0,
+				.primitive = crimson::OverlayPrimitive::LineList,
+				.depth_mode = crimson::OverlayDepthMode::AlwaysOnTop,
+				.payload_offset = 0,
+				.payload_count = 1,
+		},
+	};
+	crimson::ViewportSettings settings;
+	settings.draw_grid_overlay = false;
+	settings.draw_overlays = false;
+	settings.draw_mesh_grid = true;
+	crimson::ViewportFrameInput frame{
+		.target_extent = crimson::ViewportExtent{ 640, 480, 1.0F },
+		.views = views,
+		.cameras = cameras,
+		.overlays = overlays,
+		.line_overlay_payloads = lines,
+		.viewport_settings = settings,
+	};
+
+	const crimson::FrameBuilder kBuilder;
+	auto built = kBuilder.build_snapshot(frame);
+	expect_true(built.has_value(), "valid frame with viewport settings builds");
+	if (!built) {
+		return;
+	}
+
+	crimson::FrameSnapshot snapshot = std::move(built).value();
+	expect_true(snapshot.grid_overlay_payloads().empty(), "ShowGrid=false suppresses only generated grid payloads");
+	expect_true(snapshot.overlays().size() == 1, "caller overlay commands are preserved for renderer overlay toggle policy");
+	expect_true(!snapshot.viewport_settings().draw_grid_overlay, "snapshot keeps ShowGrid=false");
+	expect_true(!snapshot.viewport_settings().draw_overlays, "snapshot keeps ShowOverlays=false");
+	expect_true(snapshot.viewport_settings().draw_mesh_grid, "snapshot keeps ShowMeshGrid=true");
+}
+
 TEST(FrameSnapshot, RenderWorldStoresPreparedObjectsById) {
 	crimson::RenderWorld world;
 	crimson::RenderObject object;

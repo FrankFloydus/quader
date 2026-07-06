@@ -54,7 +54,7 @@
 
 namespace {
 
-constexpr std::array<quader::ui::ActionId, 32> kStandardActions = {
+constexpr std::array<quader::ui::ActionId, 35> kStandardActions = {
 	quader::ui::ActionId::NewScene,
 	quader::ui::ActionId::OpenScene,
 	quader::ui::ActionId::SaveScene,
@@ -82,6 +82,9 @@ constexpr std::array<quader::ui::ActionId, 32> kStandardActions = {
 	quader::ui::ActionId::ViewPerspective,
 	quader::ui::ActionId::ViewShaded,
 	quader::ui::ActionId::ToggleQuadViewports,
+	quader::ui::ActionId::ShowGrid,
+	quader::ui::ActionId::ShowOverlays,
+	quader::ui::ActionId::ShowMeshGrid,
 	quader::ui::ActionId::FocusViewport,
 	quader::ui::ActionId::ShowScenePanel,
 	quader::ui::ActionId::ShowPropertiesPanel,
@@ -208,6 +211,9 @@ TEST(UiShell, ActionStateUpdaterUsesEditorSnapshot) {
 	snapshot.viewport_available = true;
 	snapshot.viewport_state_known = true;
 	snapshot.quad_viewports_enabled = true;
+	snapshot.show_grid = false;
+	snapshot.show_overlays = true;
+	snapshot.show_mesh_grid = true;
 
 	fixture.action_state_updater.refresh_from_snapshot(snapshot);
 
@@ -226,6 +232,9 @@ TEST(UiShell, ActionStateUpdaterUsesEditorSnapshot) {
 	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::SelectObjectMode).isChecked());
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::FlipMeshNormals).isEnabled());
 	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::ToggleQuadViewports).isChecked());
+	EXPECT_FALSE(fixture.actions.action(quader::ui::ActionId::ShowGrid).isChecked());
+	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::ShowOverlays).isChecked());
+	EXPECT_TRUE(fixture.actions.action(quader::ui::ActionId::ShowMeshGrid).isChecked());
 }
 
 TEST(UiShell, SettingsServiceUsesWorkspaceKeysAndResetScope) {
@@ -240,6 +249,11 @@ TEST(UiShell, SettingsServiceUsesWorkspaceKeysAndResetScope) {
 	settings.set_value(QStringLiteral("app/unrelated"), QStringLiteral("keep"));
 	settings.set_value(QStringLiteral("ui/workspace/v1/legacy"), QStringLiteral("keep"));
 	settings.set_viewport_value(QStringLiteral("layout_mode"), QStringLiteral("quad"));
+	settings.set_viewport_display_settings(quader::ui::ViewportDisplaySettings{
+			.show_grid = false,
+			.show_overlays = true,
+			.show_mesh_grid = true,
+	});
 	settings.set_panel_visible(quader::ui::PanelId::Scene, false);
 	settings.set_panel_visible(quader::ui::PanelId::Diagnostics, true);
 	settings.set_workspace_value(QStringLiteral("custom/value"), QStringLiteral("workspace"));
@@ -249,6 +263,10 @@ TEST(UiShell, SettingsServiceUsesWorkspaceKeysAndResetScope) {
 	EXPECT_EQ(settings_store.value(QStringLiteral("ui/workspace/v2/main_window/state_version")).toInt(),
 			quader::ui::SettingsService::kWorkspaceStateVersion);
 	EXPECT_EQ(settings.viewport_value(QStringLiteral("layout_mode")).toString(), QStringLiteral("quad"));
+	const quader::ui::ViewportDisplaySettings kViewportSettings = settings.viewport_display_settings();
+	EXPECT_FALSE(kViewportSettings.show_grid);
+	EXPECT_TRUE(kViewportSettings.show_overlays);
+	EXPECT_TRUE(kViewportSettings.show_mesh_grid);
 	EXPECT_FALSE(settings.panel_visible(quader::ui::PanelId::Scene, true));
 	EXPECT_TRUE(settings.panel_visible(quader::ui::PanelId::Diagnostics, false));
 	EXPECT_EQ(settings.workspace_value(QStringLiteral("custom/value")).toString(), QStringLiteral("workspace"));
@@ -256,6 +274,10 @@ TEST(UiShell, SettingsServiceUsesWorkspaceKeysAndResetScope) {
 	settings.reset_workspace();
 	EXPECT_TRUE(settings.main_window_geometry().isEmpty());
 	EXPECT_TRUE(settings.main_window_state().isEmpty());
+	const quader::ui::ViewportDisplaySettings kResetViewportSettings = settings.viewport_display_settings();
+	EXPECT_TRUE(kResetViewportSettings.show_grid);
+	EXPECT_TRUE(kResetViewportSettings.show_overlays);
+	EXPECT_FALSE(kResetViewportSettings.show_mesh_grid);
 	EXPECT_TRUE(settings.panel_visible(quader::ui::PanelId::Scene, true));
 	EXPECT_FALSE(settings.panel_visible(quader::ui::PanelId::Diagnostics, false));
 	EXPECT_EQ(settings.value(QStringLiteral("app/unrelated")).toString(), QStringLiteral("keep"));

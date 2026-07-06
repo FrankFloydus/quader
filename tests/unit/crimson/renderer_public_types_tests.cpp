@@ -78,6 +78,15 @@ TEST(RendererPublicTypes, NamesAreStableForPublicDiagnosticsAndConfig) {
 			crimson::shader_program_id_name(crimson::ShaderProgramId::OverlayLine) == "OverlayLine",
 			"OverlayLine program name is stable");
 	expect_true(
+			crimson::shader_program_id_name(crimson::ShaderProgramId::OverlayEditLine) == "OverlayEditLine",
+			"OverlayEditLine program name is stable");
+	expect_true(
+			crimson::shader_program_id_name(crimson::ShaderProgramId::OverlaySolid) == "OverlaySolid",
+			"OverlaySolid program name is stable");
+	expect_true(
+			crimson::shader_program_id_name(crimson::ShaderProgramId::OverlayDeviceSolid) == "OverlayDeviceSolid",
+			"OverlayDeviceSolid program name is stable");
+	expect_true(
 			crimson::shader_program_id_name(crimson::ShaderProgramId::Picking) == "Picking",
 			"Picking program name is stable");
 	expect_true(
@@ -117,9 +126,9 @@ TEST(RendererPublicTypes, RenderObjectContractDoesNotExposeProgramSelection) {
 TEST(RendererPublicTypes, RenderCameraDefaultsUseViewportClipRange) {
 	const crimson::RenderCamera kCamera;
 	expect_true(
-			kCamera.near_plane_m == 0.01F &&
+			kCamera.near_plane_m == 0.05F &&
 					kCamera.far_plane_m == 1000.0F,
-			"RenderCamera defaults to the requested viewport clip range");
+			"RenderCamera defaults to the Windows reference viewport clip range");
 }
 
 TEST(RendererPublicTypes, CameraProjectionRaysFollowCrimsonRenderedViewBasis) {

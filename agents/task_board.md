@@ -1,39 +1,55 @@
-# Quader Task Board Pause
+# Quader Database Board
 
-The project board is temporarily disabled as workflow authority.
+The active project board is the SQLite-backed external app/API, not the historical markdown files.
 
-Historical files:
+## Storage
 
-- active board file: `project_board.md`
-- archive file: `project_board_archive.md`
 - external board app: `C:\Users\Drako\Desktop\quader-project-board`
+- default SQLite database: `C:\Users\Drako\Desktop\quader-project-board\data\quader-board.sqlite`
+- override database path: `QUADER_BOARD_DB`
+- historical active board import source: `project_board.md`
+- historical archive import source: `project_board_archive.md`
 
-## Current Rule
+The dashboard imports historical markdown files only when the SQLite database is first created. After that, board content belongs to the database.
 
-Do not use the board for normal intake, execution, review, closeout, audit, beautify, docs, performance, parity, or dev-build work. Do not create, update, validate, move, archive, remove, reopen, or require board entries.
+## Rule
 
-`project_board.md` and `project_board_archive.md` are read-only historical context during this pause. Never hand-edit either file.
+Use the database board for workflows that add, execute, review, rework, complete, archive, or reopen board tasks.
 
-## Allowed Access
+Never hand-edit `project_board.md` or `project_board_archive.md`. Do not run `tools/project_board.py` for active workflow. If the database API lacks a needed action, report the missing action and stop instead of falling back to legacy markdown tooling.
 
-Board access is allowed only when the current user request explicitly asks for one of these:
+## Public API
 
-- inspect or summarize an existing board/archive entry;
-- restore board-backed workflow;
-- repair, migrate, or validate board metadata;
-- maintain the external board/dashboard app without mutating board content;
-- use an explicitly cited task id as historical context for direct work.
+Reads:
 
-When a user cites a task id, read the cited entry only for context and then proceed from current code, current docs, hindsight, and the user's latest request. Do not run board state-transition commands.
+- `GET /api/board` lists active tasks with filters for `section`, `status`, `priority`, `type`, `area`, `freshness`, `rework`, and `query`/`q`.
+- `GET /api/board/task?id=...&state=active|archived|all` shows one task; add `diagnostics=true` only when raw/original text is needed.
+- `GET /api/board/search?q=...&state=active|archived|all` searches active and archive rows.
+- `GET /api/archive` lists archived rows grouped by date and structured dev version.
 
-## Replacement Workflow
+Mutations:
 
-- Add/intake requests: capture a concise brief from the user request and current repo context; write an `agents/plans/` artifact only when the user asks for one or the work needs durable planning.
-- Execution requests: proceed directly after reading relevant docs, hindsight, and code.
-- Review/rework: use the latest user/review feedback as the correction source and update the active plan when one exists.
-- Audit/beautify: continue to write the full markdown artifact under `agents/plans/`.
-- Closeout: report files changed, verification, docs/hindsight updates, dev-build status when relevant, and blockers. Report `Board: paused; no board commands run.`
+- `POST /api/board/action`
+- Required authorization flag: `workflowAuthorized`, `architectAuthorized`, or `pmAuthorized`.
+- Supported actions: `add-task`, `add-bug`, `edit`, `delete`, `move`, `start`, `review`, `request-changes`, `complete`, `archive`, `reopen`, `append-note`, `bulk-edit-meta`.
 
-## Dormant Tooling
+## Archive Metadata
 
-`tools/project_board.py` is dormant while this pause is active. Do not run its mutating or validation commands unless the user explicitly asks for board restoration, repair, migration, validation, or inspection.
+Archived database entries must carry explicit dev-version metadata. `archive` and `complete` actions must include `devVersion` and must store:
+
+- `dev_version`
+- `archive_date`
+- `archived_at`
+- `from_section`
+- `archive_status`
+
+Dashboard views must group history as date -> dev version -> changes without guessing from changelog text, notes, or historical markdown headings.
+
+## Workflow Links
+
+- Task-only flow creates the board task first to lock the task id, then writes `agents/plans/{task_id}-final-plan_{MM_DD_YYYY_HHMM}.md`, then updates the task metadata with that path.
+- Implementation flow reads the linked final plan and implements it as-is after freshness approval.
+- Review flow links final review files when changes are requested.
+- Completion flow archives through `POST /api/board/action` with `action:"complete"` or `action:"archive"` and `devVersion`.
+
+See `agents/workflow.md` for the full A-F workflow.

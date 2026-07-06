@@ -103,6 +103,12 @@ void ActionStateUpdater::refresh_from_snapshot(const EditorStateSnapshot &snapsh
 		set_enabled(actions_, ActionId::ViewShaded, snapshot.viewport_available);
 		set_enabled(actions_, ActionId::ToggleQuadViewports, snapshot.viewport_available);
 		set_checked(actions_, ActionId::ToggleQuadViewports, snapshot.quad_viewports_enabled);
+		set_enabled(actions_, ActionId::ShowGrid, snapshot.viewport_available);
+		set_enabled(actions_, ActionId::ShowOverlays, snapshot.viewport_available);
+		set_enabled(actions_, ActionId::ShowMeshGrid, snapshot.viewport_available);
+		set_checked(actions_, ActionId::ShowGrid, snapshot.show_grid);
+		set_checked(actions_, ActionId::ShowOverlays, snapshot.show_overlays);
+		set_checked(actions_, ActionId::ShowMeshGrid, snapshot.show_mesh_grid);
 		set_enabled(actions_, ActionId::FocusViewport, snapshot.viewport_available);
 	}
 

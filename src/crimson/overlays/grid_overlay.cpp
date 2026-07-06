@@ -118,6 +118,8 @@ GridOverlayCommand make_grid_overlay_for_view(const RenderView &view) {
 	command.orthographic_height_m = std::max(0.0001F, camera.orthographic_height_m);
 	command.viewport_height_px = static_cast<float>(std::max<std::uint16_t>(1, view.rect.height));
 	command.edge_softness_m = 0.001F;
+	command.camera_far_plane_m = std::max(camera.near_plane_m + 0.001F, camera.far_plane_m);
+	command.camera_far_fade = camera.projection == CameraProjection::Perspective ? 1.0F : 0.0F;
 	return command;
 }
 

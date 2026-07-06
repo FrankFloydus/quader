@@ -18,6 +18,9 @@ constexpr auto kMainWindowGeometryKey = u"ui/workspace/v2/main_window/geometry";
 constexpr auto kMainWindowStateKey = u"ui/workspace/v2/main_window/state";
 constexpr auto kMainWindowStateVersionKey = u"ui/workspace/v2/main_window/state_version";
 constexpr auto kViewportRoot = u"ui/workspace/v2/viewport/";
+constexpr auto kViewportShowGridKey = u"show_grid";
+constexpr auto kViewportShowOverlaysKey = u"show_overlays";
+constexpr auto kViewportShowMeshGridKey = u"show_mesh_grid";
 constexpr auto kPanelsRoot = u"ui/workspace/v2/panels/";
 
 QString key_string(QStringView key) {
@@ -75,6 +78,20 @@ QVariant SettingsService::viewport_value(QStringView key, const QVariant &fallba
 
 void SettingsService::set_viewport_value(QStringView key, const QVariant &value) {
 	set_value(QString::fromUtf16(kViewportRoot) + key.toString(), value);
+}
+
+ViewportDisplaySettings SettingsService::viewport_display_settings() const {
+	ViewportDisplaySettings settings;
+	settings.show_grid = viewport_value(QString::fromUtf16(kViewportShowGridKey), settings.show_grid).toBool();
+	settings.show_overlays = viewport_value(QString::fromUtf16(kViewportShowOverlaysKey), settings.show_overlays).toBool();
+	settings.show_mesh_grid = viewport_value(QString::fromUtf16(kViewportShowMeshGridKey), settings.show_mesh_grid).toBool();
+	return settings;
+}
+
+void SettingsService::set_viewport_display_settings(const ViewportDisplaySettings &settings) {
+	set_viewport_value(QString::fromUtf16(kViewportShowGridKey), settings.show_grid);
+	set_viewport_value(QString::fromUtf16(kViewportShowOverlaysKey), settings.show_overlays);
+	set_viewport_value(QString::fromUtf16(kViewportShowMeshGridKey), settings.show_mesh_grid);
 }
 
 QVariant SettingsService::workspace_value(QStringView key, const QVariant &fallback) const {

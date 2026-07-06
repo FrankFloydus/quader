@@ -1,13 +1,13 @@
 # Quader Agent Bootstrap
 
-Keep this file short. Put detailed policy in focused docs or `$quader-workflow`.
+Keep this file short. Detailed policy lives in focused docs and active `quader-*.toml` architects.
 
 Quader is a C++20 Qt Widgets polygon modeling app. The renderer is `crimson`; do not use graphics-runtime names in renderer folders, targets, or planned public class names.
 
 ## Read First
 
 - Workflow authority: `agents/workflow.md`
-- Board pause/status: `agents/task_board.md`
+- Database board/status: `agents/task_board.md`
 - Tests: `agents/tests-policy.md`
 - Documentation: `agents/documentation-policy.md`
 - Critical hindsight: `agents/hindsight.md`
@@ -19,29 +19,37 @@ Use full architecture references only for broad audits/major design work: `agent
 ## Map
 
 - Main repo: `C:\Users\Drako\Desktop\_quader-qt-base`
+- Active architect profiles: `C:\Users\Drako\.codex\agents\quader-*.toml`
 - External board app: `C:\Users\Drako\Desktop\quader-project-board`
+- Database board: `C:\Users\Drako\Desktop\quader-project-board\data\quader-board.sqlite` unless `QUADER_BOARD_DB` overrides it
 - Dev builds: `C:\Users\Drako\Desktop\quader-dev-builds`
-- Plans: `agents/plans/`; archived plans: `agents/archive/`
-- Paused board files: `project_board.md`; archive: `project_board_archive.md`
+- Plans: `agents/plans/`; reviews: `agents/reviews/`; archived artifacts: `agents/archive/`
+- Historical text board files: `project_board.md`; archive: `project_board_archive.md`
 - Target: `quader_app`; executable: `quader.exe`
 
 ## Active Workflow
 
-Use `$quader-workflow` for Quader workflow requests: direct execution, review/rework, audit, beautify, docs, performance, parity/reference work, dev builds, changelogs, and explicit external board/dashboard maintenance.
+Use the restored active `quader-*.toml` architects. Do not route Quader work through `$quader-workflow`; that plugin is disabled.
 
-No active `quader-*.toml` agents should be spawned.
+Root coordinates the work:
 
-Temporary board pause: do not create, update, validate, archive, or require project-board entries during normal work. Add/intake requests should be handled from the user request and current repository context without mutating `project_board.md`. Ad hoc implementation may proceed directly after reading the relevant docs, hindsight, and code.
+- task-only requests -> spawn needed architects, require plan files, create the database board task, write the final plan, link it on the board;
+- implementation requests -> fetch the board task/final plan, get software-architect freshness approval, implement the plan as-is;
+- completed work -> spawn reviewing architects, require review files, recursively fix changes-requested reviews, then move the task to `In Review`;
+- user review failure -> use user feedback as the correction source, run the rework loop, then ask the user to check again;
+- complete/archive requests -> archive through the database board API with `devVersion`.
 
-Implementation plans are required only when the workflow docs, task risk, or user request call for them. Use `agents/plans/implementation_YYYYMMDD_{slug}.md` for new board-free work unless an existing plan is already the active authority.
+Architect plan/review artifacts are mandatory. Use Windows-safe timestamps: `MM_DD_YYYY_HHMM`.
 
-Audit/beautify is incomplete until the full markdown artifact exists in `agents/plans/`.
+## Database Board
 
-## Board Pause
+The active board uses the SQLite-backed external app/API.
 
-The project board is temporarily disabled as workflow authority. Treat `project_board.md` and `project_board_archive.md` as historical/read-only context only when the user explicitly cites them or asks for board restoration/inspection.
+Never hand-edit `project_board.md` or `project_board_archive.md`. Do not run `tools/project_board.py`; board-content changes go through `POST /api/board/action`.
 
-Never hand-edit `project_board.md` or `project_board_archive.md`. Do not run `tools/project_board.py` commands unless the current user request is explicitly about inspecting, repairing, restoring, or maintaining the board.
+Public board API: `GET /api/board`, `GET /api/board/task?id=...`, `GET /api/board/search?q=...&state=active|archived|all`, `GET /api/archive`, and `POST /api/board/action` with typed JSON actions such as `add-task`, `add-bug`, `edit`, `delete`, `move`, `start`, `review`, `request-changes`, `complete`, `archive`, `reopen`, `append-note`, and `bulk-edit-meta`.
+
+Archive/complete actions must store the exact internal dev version in structured metadata (`dev_version`, with archive date/time/status/source section). Do not infer archive grouping from changelog text, notes, or legacy markdown.
 
 ## Commands
 
@@ -71,5 +79,5 @@ npm run dev
 - If `C:\Users\Drako\Desktop\quader-windows\quader-app` is cited, briefs/plans must name it as source of truth and preserve the same user-visible substance with only necessary Quader/Crimson/Qt/licensing/test adaptations.
 - If code changes documented symbols or documented behavior, update that documentation in place.
 - Do not run clang-format, clang-tidy, style/static-analysis targets, or CTest presets that include them without immediate explicit user permission.
-- For C++/CMake/shader/runtime work, follow build/dev-build checkpoint policy in `$quader-workflow`.
+- For C++/CMake/shader/runtime work, follow build/dev-build checkpoint policy in `agents/workflow.md`.
 - Record durable development/workflow changes in `dev-changelog.md`.

@@ -124,8 +124,14 @@ enum class ShaderProgramId : std::uint16_t {
 	UnlitSurface,
 	/// Unlit overlay program.
 	OverlayUnlit,
+	/// Solid world-space overlay primitive program.
+	OverlaySolid,
+	/// Solid device-space overlay primitive program.
+	OverlayDeviceSolid,
 	/// Unlit line-list overlay program.
 	OverlayLine,
+	/// Depth-aware component edit-line overlay program.
+	OverlayEditLine,
 	/// Object and element picking program.
 	Picking,
 	/// Tone-mapping program.
@@ -152,8 +158,14 @@ constexpr std::string_view shader_program_id_name(ShaderProgramId id) noexcept {
 			return "UnlitSurface";
 		case ShaderProgramId::OverlayUnlit:
 			return "OverlayUnlit";
+		case ShaderProgramId::OverlaySolid:
+			return "OverlaySolid";
+		case ShaderProgramId::OverlayDeviceSolid:
+			return "OverlayDeviceSolid";
 		case ShaderProgramId::OverlayLine:
 			return "OverlayLine";
+		case ShaderProgramId::OverlayEditLine:
+			return "OverlayEditLine";
 		case ShaderProgramId::Picking:
 			return "Picking";
 		case ShaderProgramId::ToneMap:

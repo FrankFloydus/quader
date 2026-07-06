@@ -199,8 +199,14 @@ std::string_view shader_file_name(ShaderProgramId program, ShaderStage stage) no
 			return stage == ShaderStage::Vertex ? "unlit_surface.vs.bin" : "unlit_surface.fs.bin";
 		case ShaderProgramId::OverlayUnlit:
 			return stage == ShaderStage::Vertex ? "overlay_unlit.vs.bin" : "overlay_unlit.fs.bin";
+		case ShaderProgramId::OverlaySolid:
+			return stage == ShaderStage::Vertex ? "overlay_solid.vs.bin" : "overlay_solid.fs.bin";
+		case ShaderProgramId::OverlayDeviceSolid:
+			return stage == ShaderStage::Vertex ? "overlay_device_solid.vs.bin" : "overlay_device_solid.fs.bin";
 		case ShaderProgramId::OverlayLine:
 			return stage == ShaderStage::Vertex ? "overlay_line.vs.bin" : "overlay_line.fs.bin";
+		case ShaderProgramId::OverlayEditLine:
+			return stage == ShaderStage::Vertex ? "overlay_edit_line.vs.bin" : "overlay_edit_line.fs.bin";
 		case ShaderProgramId::Picking:
 			return stage == ShaderStage::Vertex ? "picking.vs.bin" : "picking.fs.bin";
 	}

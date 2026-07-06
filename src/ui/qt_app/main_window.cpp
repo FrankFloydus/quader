@@ -49,6 +49,7 @@ MainWindow::MainWindow(UiContext &context, QWidget *parent) : QMainWindow(parent
 	setObjectName(QStringLiteral("quader.main_window"));
 	setWindowTitle(QStringLiteral("Quader"));
 	resize(1280, 800);
+	viewport_display_settings_ = context_.settings.viewport_display_settings();
 
 	build_central_area();
 	build_menus();
@@ -118,6 +119,9 @@ void MainWindow::build_menus() {
 	view_menu->addAction(&context_.actions.action(ActionId::ViewShaded));
 	view_menu->addSeparator();
 	view_menu->addAction(&context_.actions.action(ActionId::ToggleQuadViewports));
+	view_menu->addAction(&context_.actions.action(ActionId::ShowGrid));
+	view_menu->addAction(&context_.actions.action(ActionId::ShowOverlays));
+	view_menu->addAction(&context_.actions.action(ActionId::ShowMeshGrid));
 	auto *panels_menu = view_menu->addMenu(QStringLiteral("Panels"));
 	panels_menu->addAction(&context_.actions.action(ActionId::ShowScenePanel));
 	panels_menu->addAction(&context_.actions.action(ActionId::ShowPropertiesPanel));
@@ -131,6 +135,7 @@ void MainWindow::build_central_area() {
 	viewport_render_host_ = create_crimson_viewport_render_host(context_.documents.document(), context_.tools);
 	context_.viewport_diagnostics.attach_render_host(*viewport_render_host_);
 	viewport_controller_ = std::make_unique<ViewportController>(*viewport_render_host_, context_.tools);
+	viewport_controller_->set_display_settings(viewport_display_settings_);
 	viewport_ = new ViewportWidget(*viewport_controller_, this);
 	viewport_->addAction(&context_.actions.action(ActionId::SelectTool));
 	viewport_->addAction(&context_.actions.action(ActionId::MoveTool));
@@ -221,6 +226,19 @@ void MainWindow::connect_actions() {
 	connect(&context_.actions, &ActionRegistry::action_toggled, this, [this](ActionId id, bool checked) {
 		if (id == ActionId::ToggleQuadViewports && viewport_controller_ != nullptr) {
 			viewport_controller_->set_quad_viewports_enabled(checked);
+		} else if (id == ActionId::ShowGrid || id == ActionId::ShowOverlays || id == ActionId::ShowMeshGrid) {
+			if (id == ActionId::ShowGrid) {
+				viewport_display_settings_.show_grid = checked;
+			} else if (id == ActionId::ShowOverlays) {
+				viewport_display_settings_.show_overlays = checked;
+			} else {
+				viewport_display_settings_.show_mesh_grid = checked;
+			}
+			context_.settings.set_viewport_display_settings(viewport_display_settings_);
+			if (viewport_controller_ != nullptr) {
+				viewport_controller_->set_display_settings(viewport_display_settings_);
+			}
+			context_.action_state_updater.refresh_from_snapshot(editor_state_with_viewport());
 		}
 	});
 }
@@ -303,6 +321,7 @@ void MainWindow::restore_workspace() {
 void MainWindow::save_workspace() {
 	context_.settings.set_main_window_geometry(saveGeometry());
 	context_.settings.set_main_window_state(saveState(SettingsService::kWorkspaceStateVersion));
+	context_.settings.set_viewport_display_settings(viewport_display_settings_);
 	if (panel_host_ != nullptr) {
 		panel_host_->save_workspace(context_.settings);
 	}
@@ -318,8 +337,13 @@ void MainWindow::reset_workspace() {
 	if (viewport_ != nullptr) {
 		viewport_controller_->set_quad_viewports_enabled(false);
 	}
+	viewport_display_settings_ = ViewportDisplaySettings{};
+	if (viewport_controller_ != nullptr) {
+		viewport_controller_->set_display_settings(viewport_display_settings_);
+	}
 
 	resize(1280, 800);
+	context_.action_state_updater.refresh_from_snapshot(editor_state_with_viewport());
 	context_.notifications.show_status(QStringLiteral("Workspace layout reset"), 2000);
 }
 
@@ -328,6 +352,9 @@ EditorStateSnapshot MainWindow::editor_state_with_viewport() const {
 	snapshot.viewport_available = viewport_ != nullptr;
 	snapshot.viewport_state_known = true;
 	snapshot.quad_viewports_enabled = quad_viewports_enabled_;
+	snapshot.show_grid = viewport_display_settings_.show_grid;
+	snapshot.show_overlays = viewport_display_settings_.show_overlays;
+	snapshot.show_mesh_grid = viewport_display_settings_.show_mesh_grid;
 	return snapshot;
 }
 

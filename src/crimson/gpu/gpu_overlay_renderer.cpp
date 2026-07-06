@@ -38,6 +38,14 @@ struct OverlayPositionVertex {
 	float z;
 };
 
+struct OverlayEditLineVertex {
+	float x;
+	float y;
+	float z;
+	float line_distance_pixels;
+	float original_device_z;
+};
+
 struct OverlayVec2 {
 	float x = 0.0F;
 	float y = 0.0F;
@@ -63,6 +71,7 @@ struct OverlayCameraProjector {
 };
 
 struct OverlayProjectedPoint {
+	OverlayVec2 device;
 	OverlayVec2 pixel;
 	float device_z = 0.0F;
 	bool valid = false;
@@ -71,17 +80,6 @@ struct OverlayProjectedPoint {
 struct OverlayClippedLine {
 	quader::math::Vec3 start;
 	quader::math::Vec3 end;
-};
-
-struct SourceWireSampleRay {
-	quader::math::Vec3 origin;
-	quader::math::Vec3 direction;
-	float target_distance = 0.0F;
-};
-
-struct SourceWireStampSetClassification {
-	bool has_stamps = false;
-	bool inside_out = false;
 };
 
 const GridVertex kGridVertices[] = {
@@ -109,28 +107,12 @@ constexpr std::uint32_t kMaxTransientQuads16 =
 constexpr float kOverlayLineDepthBiasUnits = 1.0F;
 constexpr float kOverlayPointDepthBiasUnits = 1.5F;
 constexpr float kOverlayDeviceDepthBiasPerNearPlane = 0.0025F;
+constexpr float kOverlayLineViewDepthBiasPerUnit = 0.012F;
+constexpr float kOverlayPointViewDepthBiasPerUnit = 0.004F;
+constexpr float kOverlayEditWireViewDepthBias = 0.04F;
+constexpr float kOverlayEditWireMaxDeviceDepthOffset = -0.0008F;
 constexpr float kOverlayLineFeatherPixels = 1.0F;
-constexpr float kSourceWireOcclusionBaseTolerance = 0.015F;
-constexpr float kSourceWireOcclusionDistanceToleranceScale = 0.0005F;
-constexpr std::array<float, 17> kSourceWireVisibilitySamples = {
-	0.0F,
-	0.0625F,
-	0.125F,
-	0.1875F,
-	0.25F,
-	0.3125F,
-	0.375F,
-	0.4375F,
-	0.5F,
-	0.5625F,
-	0.625F,
-	0.6875F,
-	0.75F,
-	0.8125F,
-	0.875F,
-	0.9375F,
-	1.0F,
-};
+constexpr float kOverlayEditWireDepthToleranceM = 0.035F;
 
 void push_overlay_resource_error(RendererStatus &status, std::string resource_name) {
 	status.diagnostics.push_back(RendererDiagnostic{
@@ -167,292 +149,6 @@ void push_overlay_resource_error(RendererStatus &status, std::string resource_na
 		.up = normalized_or(quader::math::cross(kView, kRight), { 0.0F, 1.0F, 0.0F }),
 		.view = kView,
 	};
-}
-
-[[nodiscard]] bool valid_overlay_object_id(RenderObjectId object_id) noexcept {
-	return object_id != 0U;
-}
-
-[[nodiscard]] bool same_known_face(
-		const OverlayElementRef &left,
-		const OverlayElementRef &right) noexcept {
-	return left.face_index != kInvalidOverlayElementIndex &&
-			right.face_index != kInvalidOverlayElementIndex &&
-			left.face_index == right.face_index;
-}
-
-[[nodiscard]] RenderObjectId stamp_object_id(const SourceWireDepthStampMetadata &stamp) noexcept {
-	return valid_overlay_object_id(stamp.triangle.element.object_id)
-			? stamp.triangle.element.object_id
-			: stamp.element.object_id;
-}
-
-[[nodiscard]] const OverlayElementRef &stamp_element_ref(
-		const SourceWireDepthStampMetadata &stamp) noexcept {
-	return valid_overlay_object_id(stamp.element.object_id) ? stamp.element : stamp.triangle.element;
-}
-
-[[nodiscard]] bool element_references_face(
-		const OverlayElementRef &element,
-		std::uint32_t face_index) noexcept {
-	return face_index != kInvalidOverlayElementIndex &&
-			(element.face_index == face_index ||
-					element.incident_face_index0 == face_index ||
-					element.incident_face_index1 == face_index);
-}
-
-[[nodiscard]] bool stamp_owns_segment(
-		const SourceWireDepthStampMetadata &stamp,
-		const LineOverlaySegment &segment) noexcept {
-	return element_references_face(segment.element, stamp_element_ref(stamp).face_index);
-}
-
-[[nodiscard]] bool stamp_matches_object(
-		const SourceWireDepthStampMetadata &stamp,
-		RenderObjectId object_id,
-		std::uint32_t view_index) noexcept {
-	return stamp.view_index == view_index &&
-			stamp.source_kind == OverlaySourceKind::SourceWire &&
-			stamp_object_id(stamp) == object_id &&
-			valid_overlay_object_id(object_id);
-}
-
-[[nodiscard]] bool has_matching_object_stamps(
-		std::span<const SourceWireDepthStampMetadata> stamps,
-		RenderObjectId object_id,
-		std::uint32_t view_index) noexcept {
-	return std::any_of(stamps.begin(), stamps.end(), [object_id, view_index](const SourceWireDepthStampMetadata &stamp) {
-		return stamp_matches_object(stamp, object_id, view_index);
-	});
-}
-
-[[nodiscard]] quader::math::Vec3 triangle_centroid(const TriangleOverlayPrimitive &triangle) noexcept {
-	return (triangle.a + triangle.b + triangle.c) / 3.0F;
-}
-
-[[nodiscard]] quader::math::Vec3 triangle_normal(const TriangleOverlayPrimitive &triangle) noexcept {
-	return quader::math::cross(triangle.b - triangle.a, triangle.c - triangle.a);
-}
-
-[[nodiscard]] SourceWireStampSetClassification classify_source_wire_stamp_set(
-		std::span<const SourceWireDepthStampMetadata> stamps,
-		RenderObjectId object_id,
-		std::uint32_t view_index) noexcept {
-	SourceWireStampSetClassification classification;
-	quader::math::Vec3 stamp_set_centroid;
-	std::uint32_t stamp_vertex_count = 0U;
-	for (const SourceWireDepthStampMetadata &stamp : stamps) {
-		if (!stamp_matches_object(stamp, object_id, view_index)) {
-			continue;
-		}
-		stamp_set_centroid = stamp_set_centroid + stamp.triangle.a + stamp.triangle.b + stamp.triangle.c;
-		stamp_vertex_count += 3U;
-	}
-	if (stamp_vertex_count == 0U) {
-		return classification;
-	}
-
-	classification.has_stamps = true;
-	stamp_set_centroid = stamp_set_centroid / static_cast<float>(stamp_vertex_count);
-	float winding_score = 0.0F;
-	float negative_area = 0.0F;
-	float positive_area = 0.0F;
-	std::uint32_t valid_stamp_count = 0U;
-	for (const SourceWireDepthStampMetadata &stamp : stamps) {
-		if (!stamp_matches_object(stamp, object_id, view_index)) {
-			continue;
-		}
-		const quader::math::Vec3 kNormal = triangle_normal(stamp.triangle);
-		if (quader::math::length_squared(kNormal) <= kOverlayEpsilon * kOverlayEpsilon) {
-			continue;
-		}
-
-		++valid_stamp_count;
-		const float kTriangleScore = quader::math::dot(
-				kNormal,
-				triangle_centroid(stamp.triangle) - stamp_set_centroid);
-		const float kTriangleAreaWeight = std::sqrt(quader::math::length_squared(kNormal));
-		winding_score += kTriangleScore;
-		if (kTriangleScore < -kOverlayEpsilon) {
-			negative_area += kTriangleAreaWeight;
-		} else if (kTriangleScore > kOverlayEpsilon) {
-			positive_area += kTriangleAreaWeight;
-		}
-	}
-
-	if (valid_stamp_count == 0U) {
-		return classification;
-	}
-
-	const bool kInsideOutByScore = winding_score < -kOverlayEpsilon;
-	const bool kInsideOutByArea = negative_area > kOverlayEpsilon &&
-			negative_area > positive_area * 1.1F;
-	classification.inside_out = kInsideOutByScore || kInsideOutByArea;
-	return classification;
-}
-
-[[nodiscard]] bool source_wire_stamp_set_keeps_topology(
-		std::span<const SourceWireDepthStampMetadata> stamps,
-		RenderObjectId object_id,
-		std::uint32_t view_index) noexcept {
-	const SourceWireStampSetClassification kClassification =
-			classify_source_wire_stamp_set(stamps, object_id, view_index);
-	return kClassification.inside_out;
-}
-
-[[nodiscard]] std::optional<SourceWireSampleRay> source_wire_sample_ray(
-		const RenderCamera &camera,
-		const OverlayCameraBasis &basis,
-		quader::math::Vec3 sample) noexcept {
-	if (camera.projection == CameraProjection::Orthographic) {
-		const float kTargetDistance = quader::math::dot(sample - camera.eye, basis.view);
-		if (kTargetDistance <= kOverlayEpsilon) {
-			return std::nullopt;
-		}
-		return SourceWireSampleRay{
-			.origin = sample - basis.view * kTargetDistance,
-			.direction = basis.view,
-			.target_distance = kTargetDistance,
-		};
-	}
-
-	const quader::math::Vec3 kToSample = sample - camera.eye;
-	const float kTargetDistance = quader::math::length(kToSample);
-	if (kTargetDistance <= kOverlayEpsilon) {
-		return std::nullopt;
-	}
-	return SourceWireSampleRay{
-		.origin = camera.eye,
-		.direction = kToSample / kTargetDistance,
-		.target_distance = kTargetDistance,
-	};
-}
-
-[[nodiscard]] std::optional<float> ray_triangle_intersection_distance(
-		const SourceWireSampleRay &ray,
-		const TriangleOverlayPrimitive &triangle) noexcept {
-	const quader::math::Vec3 kEdge1 = triangle.b - triangle.a;
-	const quader::math::Vec3 kEdge2 = triangle.c - triangle.a;
-	const quader::math::Vec3 kP = quader::math::cross(ray.direction, kEdge2);
-	const float kDeterminant = quader::math::dot(kEdge1, kP);
-	if (std::abs(kDeterminant) <= kOverlayEpsilon) {
-		return std::nullopt;
-	}
-
-	const float kInverseDeterminant = 1.0F / kDeterminant;
-	const quader::math::Vec3 kT = ray.origin - triangle.a;
-	const float kU = quader::math::dot(kT, kP) * kInverseDeterminant;
-	if (kU < -kOverlayEpsilon || kU > 1.0F + kOverlayEpsilon) {
-		return std::nullopt;
-	}
-
-	const quader::math::Vec3 kQ = quader::math::cross(kT, kEdge1);
-	const float kV = quader::math::dot(ray.direction, kQ) * kInverseDeterminant;
-	if (kV < -kOverlayEpsilon || kU + kV > 1.0F + kOverlayEpsilon) {
-		return std::nullopt;
-	}
-
-	const float kDistance = quader::math::dot(kEdge2, kQ) * kInverseDeterminant;
-	if (kDistance <= kOverlayEpsilon) {
-		return std::nullopt;
-	}
-	return kDistance;
-}
-
-[[nodiscard]] bool source_wire_sample_visible(
-		const RenderCamera &camera,
-		const OverlayCameraBasis &basis,
-		std::span<const SourceWireDepthStampMetadata> stamps,
-		RenderObjectId object_id,
-		const OverlayElementRef &element,
-		const LineOverlaySegment *segment,
-		quader::math::Vec3 sample,
-		std::uint32_t view_index) noexcept {
-	const std::optional<SourceWireSampleRay> kRay = source_wire_sample_ray(camera, basis, sample);
-	if (!kRay.has_value()) {
-		return true;
-	}
-
-	const float kTolerance = std::max(
-			kSourceWireOcclusionBaseTolerance,
-			kRay->target_distance * kSourceWireOcclusionDistanceToleranceScale);
-	const float kOccludedDistance = kRay->target_distance - kTolerance;
-	for (const SourceWireDepthStampMetadata &stamp : stamps) {
-		if (!stamp_matches_object(stamp, object_id, view_index) ||
-				same_known_face(stamp_element_ref(stamp), element) ||
-				(segment != nullptr && stamp_owns_segment(stamp, *segment))) {
-			continue;
-		}
-
-		const std::optional<float> kHitDistance = ray_triangle_intersection_distance(*kRay, stamp.triangle);
-		if (kHitDistance.has_value() && *kHitDistance < kOccludedDistance) {
-			return false;
-		}
-	}
-	return true;
-}
-
-[[nodiscard]] bool source_wire_segment_visible(
-		const RenderView &view,
-		const OverlayCameraBasis &basis,
-		std::span<const SourceWireDepthStampMetadata> stamps,
-		const LineOverlaySegment &segment) noexcept {
-	if (!has_matching_object_stamps(stamps, segment.element.object_id, view.view_index) ||
-			source_wire_stamp_set_keeps_topology(stamps, segment.element.object_id, view.view_index)) {
-		return true;
-	}
-
-	std::uint32_t visible_samples = 0U;
-	for (const float kT : kSourceWireVisibilitySamples) {
-		const quader::math::Vec3 kSample = segment.start + (segment.end - segment.start) * kT;
-		if (source_wire_sample_visible(
-					view.camera,
-					basis,
-					stamps,
-					segment.element.object_id,
-					segment.element,
-					&segment,
-					kSample,
-					view.view_index)) {
-			++visible_samples;
-		}
-	}
-	return visible_samples > 0U;
-}
-
-[[nodiscard]] bool source_wire_point_visible(
-		const RenderView &view,
-		const OverlayCameraBasis &basis,
-		std::span<const SourceWireDepthStampMetadata> stamps,
-		const PointOverlayPrimitive &point) noexcept {
-	if (!has_matching_object_stamps(stamps, point.element.object_id, view.view_index) ||
-			source_wire_stamp_set_keeps_topology(stamps, point.element.object_id, view.view_index)) {
-		return true;
-	}
-
-	return source_wire_sample_visible(
-			view.camera,
-			basis,
-			stamps,
-			point.element.object_id,
-			point.element,
-			nullptr,
-			point.position,
-			view.view_index);
-}
-
-[[nodiscard]] bool line_role_uses_depth_stamp_visibility(
-		OverlaySemanticRole role,
-		OverlaySourceKind source_kind) noexcept {
-	return role == OverlaySemanticRole::SourceWire &&
-			source_kind == OverlaySourceKind::SourceWire;
-}
-
-[[nodiscard]] bool point_role_uses_depth_stamp_visibility(
-		OverlaySemanticRole role,
-		OverlaySourceKind source_kind) noexcept {
-	return role == OverlaySemanticRole::SourceVertex &&
-			source_kind == OverlaySourceKind::SourceWire;
 }
 
 [[nodiscard]] float sanitized_near_plane(const RenderCamera &camera) noexcept {
@@ -538,6 +234,21 @@ void push_overlay_resource_error(RendererStatus &status, std::string resource_na
 	return kDepthBias / kDenominator;
 }
 
+void apply_view_depth_bias(
+		const OverlayCameraProjector &projector,
+		OverlayProjectedPoint &point,
+		float view_depth_bias_m) noexcept {
+	if (!point.valid || view_depth_bias_m <= 0.0F) {
+		return;
+	}
+
+	const float kDepth = std::max(
+			depth_from_device_z(projector, point.device_z),
+			projector.near_plane_m);
+	const float kBiasedDepth = std::max(projector.near_plane_m, kDepth - view_depth_bias_m);
+	point.device_z = device_z_from_depth(projector, kBiasedDepth);
+}
+
 void apply_normal_depth_bias(
 		const OverlayCameraProjector &projector,
 		OverlayProjectedPoint &point,
@@ -550,6 +261,47 @@ void apply_normal_depth_bias(
 			depth_bias_units * projector.near_plane_m * kOverlayDeviceDepthBiasPerNearPlane;
 	const float kNearDeviceZ = projector.homogeneous_depth ? -1.0F : 0.0F;
 	point.device_z = std::max(kNearDeviceZ, point.device_z - kDeviceOffset);
+}
+
+void apply_line_depth_bias(
+		const OverlayCameraProjector &projector,
+		OverlayProjectedPoint &point,
+		float depth_bias_units) noexcept {
+	apply_view_depth_bias(
+			projector,
+			point,
+			depth_bias_units * kOverlayLineViewDepthBiasPerUnit);
+}
+
+void apply_point_depth_bias(
+		const OverlayCameraProjector &projector,
+		OverlayProjectedPoint &point,
+		float depth_bias_units) noexcept {
+	apply_view_depth_bias(
+			projector,
+			point,
+			depth_bias_units * kOverlayPointViewDepthBiasPerUnit);
+}
+
+void apply_edit_wire_depth_bias(
+		const OverlayCameraProjector &projector,
+		OverlayProjectedPoint &point) noexcept {
+	if (!point.valid) {
+		return;
+	}
+
+	const float kDepth = std::max(
+			depth_from_device_z(projector, point.device_z),
+			projector.near_plane_m);
+	const float kBiasedDepth = std::max(
+			projector.near_plane_m,
+			kDepth - kOverlayEditWireViewDepthBias);
+	const float kBiasedDeviceZ = device_z_from_depth(projector, kBiasedDepth);
+	const float kDeviceOffset = std::clamp(
+			kBiasedDeviceZ - point.device_z,
+			kOverlayEditWireMaxDeviceDepthOffset,
+			0.0F);
+	point.device_z += kDeviceOffset;
 }
 
 [[nodiscard]] std::optional<OverlayProjectedPoint> project_overlay_point(
@@ -581,12 +333,24 @@ void apply_normal_depth_bias(
 	}
 
 	return OverlayProjectedPoint{
+		.device = { device_x, device_y },
 		.pixel = {
 				(device_x * 0.5F + 0.5F) * projector.viewport_width_px,
 				(0.5F - device_y * 0.5F) * projector.viewport_height_px,
 		},
 		.device_z = device_z_from_depth(projector, kDepth),
 		.valid = true,
+	};
+}
+
+[[nodiscard]] quader::math::Vec3 device_position_with_pixel_offset(
+		const OverlayCameraProjector &projector,
+		const OverlayProjectedPoint &point,
+		OverlayVec2 pixel_offset) noexcept {
+	return quader::math::Vec3{
+		point.device.x + pixel_offset.x * 2.0F / projector.viewport_width_px,
+		point.device.y - pixel_offset.y * 2.0F / projector.viewport_height_px,
+		point.device_z,
 	};
 }
 
@@ -714,6 +478,38 @@ void append_quad(
 	indices[index_index++] = static_cast<std::uint16_t>(kBase + 3U);
 }
 
+void append_quad_indices(
+		std::uint16_t *indices,
+		std::uint32_t base_vertex,
+		std::uint32_t &index_index) noexcept {
+	const auto kBase = static_cast<std::uint16_t>(base_vertex);
+	indices[index_index++] = kBase;
+	indices[index_index++] = static_cast<std::uint16_t>(kBase + 1U);
+	indices[index_index++] = static_cast<std::uint16_t>(kBase + 2U);
+	indices[index_index++] = kBase;
+	indices[index_index++] = static_cast<std::uint16_t>(kBase + 2U);
+	indices[index_index++] = static_cast<std::uint16_t>(kBase + 3U);
+}
+
+void append_line_device_quad(
+		OverlayEditLineVertex *vertices,
+		std::uint16_t *indices,
+		std::uint32_t &vertex_index,
+		std::uint32_t &index_index,
+		const OverlayLineDeviceQuad &quad) noexcept {
+	const std::uint32_t kBase = vertex_index;
+	for (const OverlayLineDeviceVertex &vertex : quad.vertices) {
+		vertices[vertex_index++] = OverlayEditLineVertex{
+			vertex.position.x,
+			vertex.position.y,
+			vertex.position.z,
+			vertex.line_distance_pixels,
+			vertex.original_device_z,
+		};
+	}
+	append_quad_indices(indices, kBase, index_index);
+}
+
 [[nodiscard]] std::uint64_t depth_test_state_for(
 		const PreparedOverlayRenderState &render_state) noexcept {
 	if (!render_state.depth_test_enabled) {
@@ -734,7 +530,7 @@ void append_quad(
 	if (render_state.color_write_enabled) {
 		state |= BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A;
 		if (render_state.pass_kind != PreparedOverlayPassKind::DepthStamp) {
-			state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+			state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_INV_SRC_ALPHA);
 		}
 	}
 	if (render_state.depth_write_enabled) {
@@ -751,6 +547,100 @@ void append_quad(
 }
 
 } // namespace
+
+std::optional<OverlayLineDeviceQuad> make_overlay_line_device_quad(
+		const RenderView &view,
+		const LineOverlaySegment &segment,
+		float width_px,
+		float depth_bias_units,
+		bool homogeneous_depth,
+		bool edit_wire_depth_bias) noexcept {
+	const OverlayCameraProjector kProjector = make_overlay_projector(view, homogeneous_depth);
+	const std::optional<OverlayClippedLine> kClipped = clip_line_to_near_plane(
+			kProjector,
+			view.camera,
+			segment.start,
+			segment.end);
+	if (!kClipped.has_value()) {
+		return std::nullopt;
+	}
+
+	std::optional<OverlayProjectedPoint> projected_start = project_overlay_point(
+			kProjector,
+			view.camera,
+			kClipped->start);
+	std::optional<OverlayProjectedPoint> projected_end = project_overlay_point(
+			kProjector,
+			view.camera,
+			kClipped->end);
+	if (!projected_start.has_value() || !projected_end.has_value()) {
+		return std::nullopt;
+	}
+
+	const float kOriginalStartDeviceZ = projected_start->device_z;
+	const float kOriginalEndDeviceZ = projected_end->device_z;
+
+	if (edit_wire_depth_bias) {
+		apply_edit_wire_depth_bias(kProjector, *projected_start);
+		apply_edit_wire_depth_bias(kProjector, *projected_end);
+	} else {
+		apply_normal_depth_bias(kProjector, *projected_start, depth_bias_units);
+		apply_normal_depth_bias(kProjector, *projected_end, depth_bias_units);
+	}
+
+	OverlayVec2 direction = projected_end->pixel - projected_start->pixel;
+	const float kPixelLength = length(direction);
+	if (kPixelLength <= kOverlayEpsilon) {
+		direction = { 1.0F, 0.0F };
+	} else {
+		direction = direction * (1.0F / kPixelLength);
+	}
+	const OverlayVec2 kNormal{ -direction.y, direction.x };
+	const float kSideDistance = (std::max(width_px, 1.0F) + kOverlayLineFeatherPixels) * 0.5F;
+	const OverlayVec2 kStartCap = direction * -kSideDistance;
+	const OverlayVec2 kEndCap = direction * kSideDistance;
+
+	return OverlayLineDeviceQuad{
+		.vertices = {
+				OverlayLineDeviceVertex{
+						.position = device_position_with_pixel_offset(
+								kProjector,
+								*projected_start,
+								kStartCap + kNormal * -kSideDistance),
+						.line_distance_pixels = -kSideDistance,
+						.original_device_z = kOriginalStartDeviceZ,
+						.center_device = { projected_start->device.x, projected_start->device.y },
+				},
+				OverlayLineDeviceVertex{
+						.position = device_position_with_pixel_offset(
+								kProjector,
+								*projected_end,
+								kEndCap + kNormal * -kSideDistance),
+						.line_distance_pixels = -kSideDistance,
+						.original_device_z = kOriginalEndDeviceZ,
+						.center_device = { projected_end->device.x, projected_end->device.y },
+				},
+				OverlayLineDeviceVertex{
+						.position = device_position_with_pixel_offset(
+								kProjector,
+								*projected_end,
+								kEndCap + kNormal * kSideDistance),
+						.line_distance_pixels = kSideDistance,
+						.original_device_z = kOriginalEndDeviceZ,
+						.center_device = { projected_end->device.x, projected_end->device.y },
+				},
+				OverlayLineDeviceVertex{
+						.position = device_position_with_pixel_offset(
+								kProjector,
+								*projected_start,
+								kStartCap + kNormal * kSideDistance),
+						.line_distance_pixels = kSideDistance,
+						.original_device_z = kOriginalStartDeviceZ,
+						.center_device = { projected_start->device.x, projected_start->device.y },
+				},
+		},
+	};
+}
 
 std::optional<OverlayScreenSpaceQuad> make_overlay_line_screen_space_quad(
 		const RenderView &view,
@@ -829,87 +719,43 @@ std::optional<OverlayScreenSpaceQuad> make_overlay_point_screen_space_quad(
 		return std::nullopt;
 	}
 
-	apply_normal_depth_bias(kProjector, *projected, depth_bias_units);
+	apply_point_depth_bias(kProjector, *projected, depth_bias_units);
 
 	const float kHalfSize = std::max(size_px, 1.0F) * 0.5F;
 	return OverlayScreenSpaceQuad{
 		.corners = {
-				unproject_overlay_point(kProjector,
-						view.camera,
-						projected->pixel + OverlayVec2{ -kHalfSize, -kHalfSize },
-						projected->device_z),
-				unproject_overlay_point(kProjector,
-						view.camera,
-						projected->pixel + OverlayVec2{ kHalfSize, -kHalfSize },
-						projected->device_z),
-				unproject_overlay_point(kProjector,
-						view.camera,
-						projected->pixel + OverlayVec2{ kHalfSize, kHalfSize },
-						projected->device_z),
-				unproject_overlay_point(kProjector,
-						view.camera,
-						projected->pixel + OverlayVec2{ -kHalfSize, kHalfSize },
-						projected->device_z),
+				device_position_with_pixel_offset(
+						kProjector,
+						*projected,
+						OverlayVec2{ -kHalfSize, -kHalfSize }),
+				device_position_with_pixel_offset(
+						kProjector,
+						*projected,
+						OverlayVec2{ kHalfSize, -kHalfSize }),
+				device_position_with_pixel_offset(
+						kProjector,
+						*projected,
+						OverlayVec2{ kHalfSize, kHalfSize }),
+				device_position_with_pixel_offset(
+						kProjector,
+						*projected,
+						OverlayVec2{ -kHalfSize, kHalfSize }),
 		},
 	};
-}
-
-PreparedLineOverlayCommand make_source_wire_visibility_filtered_line_command(
-		const RenderView &view,
-		const PreparedLineOverlayCommand &lines,
-		std::span<const SourceWireDepthStampMetadata> source_wire_depth_stamps) {
-	PreparedLineOverlayCommand filtered = lines;
-	if (!line_role_uses_depth_stamp_visibility(lines.semantic_role, lines.source_kind) ||
-			lines.segments.empty() ||
-			source_wire_depth_stamps.empty()) {
-		return filtered;
-	}
-
-	const OverlayCameraBasis kBasis = camera_basis(view.camera);
-	filtered.segments.clear();
-	filtered.segments.reserve(lines.segments.size());
-	for (const LineOverlaySegment &segment : lines.segments) {
-		if (source_wire_segment_visible(view, kBasis, source_wire_depth_stamps, segment)) {
-			filtered.segments.push_back(segment);
-		}
-	}
-	filtered.command.payload_count = static_cast<std::uint32_t>(std::min<std::size_t>(
-			filtered.segments.size(),
-			std::numeric_limits<std::uint32_t>::max()));
-	return filtered;
-}
-
-PreparedPointOverlayCommand make_source_wire_visibility_filtered_point_command(
-		const RenderView &view,
-		const PreparedPointOverlayCommand &points,
-		std::span<const SourceWireDepthStampMetadata> source_wire_depth_stamps) {
-	PreparedPointOverlayCommand filtered = points;
-	if (!point_role_uses_depth_stamp_visibility(points.semantic_role, points.source_kind) ||
-			points.points.empty() ||
-			source_wire_depth_stamps.empty()) {
-		return filtered;
-	}
-
-	const OverlayCameraBasis kBasis = camera_basis(view.camera);
-	filtered.points.clear();
-	filtered.points.reserve(points.points.size());
-	for (const PointOverlayPrimitive &point : points.points) {
-		if (source_wire_point_visible(view, kBasis, source_wire_depth_stamps, point)) {
-			filtered.points.push_back(point);
-		}
-	}
-	filtered.command.payload_count = static_cast<std::uint32_t>(std::min<std::size_t>(
-			filtered.points.size(),
-			std::numeric_limits<std::uint32_t>::max()));
-	return filtered;
 }
 
 struct GpuOverlayRenderer::Impl {
 	bgfx::VertexLayout grid_vertex_layout{};
 	bgfx::VertexLayout line_vertex_layout{};
+	bgfx::VertexLayout edit_line_vertex_layout{};
+	bgfx::VertexLayout solid_vertex_layout{};
 	UniqueVertexBufferHandle grid_vertex_buffer;
 	UniqueIndexBufferHandle grid_index_buffer;
 	UniqueUniformHandle line_color_uniform;
+	UniqueUniformHandle line_params_uniform;
+	UniqueUniformHandle edit_line_depth_params_uniform;
+	UniqueUniformHandle edit_line_camera_params_uniform;
+	UniqueUniformHandle scene_depth_sampler;
 	UniqueUniformHandle grid_plane_size_uniform;
 	UniqueUniformHandle grid_color_uniform;
 	UniqueUniformHandle major_grid_color_uniform;
@@ -921,6 +767,7 @@ struct GpuOverlayRenderer::Impl {
 	UniqueUniformHandle grid_params0_uniform;
 	UniqueUniformHandle grid_params1_uniform;
 	UniqueUniformHandle grid_params2_uniform;
+	UniqueUniformHandle grid_params3_uniform;
 	bool ready = false;
 };
 
@@ -940,11 +787,24 @@ bool GpuOverlayRenderer::initialize(RendererStatus &status) {
 			.begin()
 			.add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
 			.end();
+	impl_->edit_line_vertex_layout
+			.begin()
+			.add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+			.add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+			.end();
+	impl_->solid_vertex_layout
+			.begin()
+			.add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+			.end();
 	impl_->grid_vertex_buffer.reset(bgfx::createVertexBuffer(
 			bgfx::makeRef(kGridVertices, sizeof(kGridVertices)),
 			impl_->grid_vertex_layout));
 	impl_->grid_index_buffer.reset(bgfx::createIndexBuffer(bgfx::makeRef(kGridIndices, sizeof(kGridIndices))));
 	impl_->line_color_uniform.reset(bgfx::createUniform("u_lineColor", bgfx::UniformType::Vec4));
+	impl_->line_params_uniform.reset(bgfx::createUniform("u_lineParams", bgfx::UniformType::Vec4));
+	impl_->edit_line_depth_params_uniform.reset(bgfx::createUniform("u_editLineDepthParams", bgfx::UniformType::Vec4));
+	impl_->edit_line_camera_params_uniform.reset(bgfx::createUniform("u_editLineCameraParams", bgfx::UniformType::Vec4));
+	impl_->scene_depth_sampler.reset(bgfx::createUniform("s_sceneDepth", bgfx::UniformType::Sampler));
 	impl_->grid_plane_size_uniform.reset(bgfx::createUniform("u_gridPlaneSize", bgfx::UniformType::Vec4));
 	impl_->grid_color_uniform.reset(bgfx::createUniform("u_gridColor", bgfx::UniformType::Vec4));
 	impl_->major_grid_color_uniform.reset(bgfx::createUniform("u_majorGridColor", bgfx::UniformType::Vec4));
@@ -956,8 +816,9 @@ bool GpuOverlayRenderer::initialize(RendererStatus &status) {
 	impl_->grid_params0_uniform.reset(bgfx::createUniform("u_gridParams0", bgfx::UniformType::Vec4));
 	impl_->grid_params1_uniform.reset(bgfx::createUniform("u_gridParams1", bgfx::UniformType::Vec4));
 	impl_->grid_params2_uniform.reset(bgfx::createUniform("u_gridParams2", bgfx::UniformType::Vec4));
+	impl_->grid_params3_uniform.reset(bgfx::createUniform("u_gridParams3", bgfx::UniformType::Vec4));
 
-	impl_->ready = impl_->grid_vertex_buffer.valid() && impl_->grid_index_buffer.valid() && impl_->line_color_uniform.valid() && impl_->grid_plane_size_uniform.valid() && impl_->grid_color_uniform.valid() && impl_->major_grid_color_uniform.valid() && impl_->origin_u_color_uniform.valid() && impl_->origin_v_color_uniform.valid() && impl_->camera_position_uniform.valid() && impl_->grid_u_axis_uniform.valid() && impl_->grid_v_axis_uniform.valid() && impl_->grid_params0_uniform.valid() && impl_->grid_params1_uniform.valid() && impl_->grid_params2_uniform.valid();
+	impl_->ready = impl_->grid_vertex_buffer.valid() && impl_->grid_index_buffer.valid() && impl_->line_color_uniform.valid() && impl_->line_params_uniform.valid() && impl_->edit_line_depth_params_uniform.valid() && impl_->edit_line_camera_params_uniform.valid() && impl_->scene_depth_sampler.valid() && impl_->grid_plane_size_uniform.valid() && impl_->grid_color_uniform.valid() && impl_->major_grid_color_uniform.valid() && impl_->origin_u_color_uniform.valid() && impl_->origin_v_color_uniform.valid() && impl_->camera_position_uniform.valid() && impl_->grid_u_axis_uniform.valid() && impl_->grid_v_axis_uniform.valid() && impl_->grid_params0_uniform.valid() && impl_->grid_params1_uniform.valid() && impl_->grid_params2_uniform.valid() && impl_->grid_params3_uniform.valid();
 	if (!impl_->ready) {
 		push_overlay_resource_error(status, "GpuOverlayRenderer");
 		shutdown();
@@ -971,6 +832,10 @@ void GpuOverlayRenderer::shutdown() noexcept {
 	impl_->grid_vertex_buffer.reset();
 	impl_->grid_index_buffer.reset();
 	impl_->line_color_uniform.reset();
+	impl_->line_params_uniform.reset();
+	impl_->edit_line_depth_params_uniform.reset();
+	impl_->edit_line_camera_params_uniform.reset();
+	impl_->scene_depth_sampler.reset();
 	impl_->grid_plane_size_uniform.reset();
 	impl_->grid_color_uniform.reset();
 	impl_->major_grid_color_uniform.reset();
@@ -982,6 +847,7 @@ void GpuOverlayRenderer::shutdown() noexcept {
 	impl_->grid_params0_uniform.reset();
 	impl_->grid_params1_uniform.reset();
 	impl_->grid_params2_uniform.reset();
+	impl_->grid_params3_uniform.reset();
 	impl_->ready = false;
 }
 
@@ -991,7 +857,7 @@ bool GpuOverlayRenderer::ready() const noexcept {
 
 std::uint64_t grid_overlay_submit_state(OverlayDepthMode depth_mode) noexcept {
 	std::uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_MSAA |
-			BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+			BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_INV_SRC_ALPHA);
 	if (depth_mode == OverlayDepthMode::DepthTested) {
 		state |= BGFX_STATE_DEPTH_TEST_LEQUAL;
 	}
@@ -1043,6 +909,12 @@ std::uint32_t GpuOverlayRenderer::submit_grid(
 		grid.minor_spacing_m,
 		grid.edge_softness_m,
 	};
+	const float kParams3[4] = {
+		std::max(0.0001F, grid.camera_far_plane_m),
+		std::clamp(grid.camera_far_fade, 0.0F, 1.0F),
+		0.0F,
+		0.0F,
+	};
 
 	bgfx::setTransform(transform);
 	bgfx::setUniform(impl_->grid_plane_size_uniform.get(), kPlaneSize);
@@ -1056,6 +928,7 @@ std::uint32_t GpuOverlayRenderer::submit_grid(
 	bgfx::setUniform(impl_->grid_params0_uniform.get(), kParams0);
 	bgfx::setUniform(impl_->grid_params1_uniform.get(), kParams1);
 	bgfx::setUniform(impl_->grid_params2_uniform.get(), kParams2);
+	bgfx::setUniform(impl_->grid_params3_uniform.get(), kParams3);
 	bgfx::setVertexBuffer(0, impl_->grid_vertex_buffer.get());
 	bgfx::setIndexBuffer(impl_->grid_index_buffer.get());
 	bgfx::setState(grid_overlay_submit_state(prepared.command.depth_mode));
@@ -1072,7 +945,7 @@ std::uint32_t GpuOverlayRenderer::submit_lines(
 		return 0;
 	}
 
-	const std::uint32_t kQuadCount = available_quad_count(lines.segments.size(), impl_->line_vertex_layout);
+	const std::uint32_t kQuadCount = available_quad_count(lines.segments.size(), impl_->edit_line_vertex_layout);
 	if (kQuadCount == 0U) {
 		return 0;
 	}
@@ -1081,9 +954,9 @@ std::uint32_t GpuOverlayRenderer::submit_lines(
 	const std::uint32_t kIndexCount = kQuadCount * kIndicesPerQuad;
 	bgfx::TransientVertexBuffer vertices{};
 	bgfx::TransientIndexBuffer indices{};
-	bgfx::allocTransientVertexBuffer(&vertices, kVertexCount, impl_->line_vertex_layout);
+	bgfx::allocTransientVertexBuffer(&vertices, kVertexCount, impl_->edit_line_vertex_layout);
 	bgfx::allocTransientIndexBuffer(&indices, kIndexCount);
-	auto *data = reinterpret_cast<OverlayPositionVertex *>(vertices.data);
+	auto *data = reinterpret_cast<OverlayEditLineVertex *>(vertices.data);
 	auto *index_data = reinterpret_cast<std::uint16_t *>(indices.data);
 	std::uint32_t vertex_index = 0;
 	std::uint32_t index_index = 0;
@@ -1096,23 +969,21 @@ std::uint32_t GpuOverlayRenderer::submit_lines(
 			break;
 		}
 
-		const std::optional<OverlayScreenSpaceQuad> kQuad = make_overlay_line_screen_space_quad(
+		const std::optional<OverlayLineDeviceQuad> kQuad = make_overlay_line_device_quad(
 				view,
 				segment,
 				kThicknessPx,
 				kDepthBias,
-				kHomogeneousDepth);
+				kHomogeneousDepth,
+				false);
 		if (!kQuad.has_value()) {
 			continue;
 		}
-		append_quad(data,
+		append_line_device_quad(data,
 				index_data,
 				vertex_index,
 				index_index,
-				kQuad->corners[0],
-				kQuad->corners[1],
-				kQuad->corners[2],
-				kQuad->corners[3]);
+				*kQuad);
 	}
 
 	if (vertex_index == 0U || index_index == 0U) {
@@ -1122,9 +993,126 @@ std::uint32_t GpuOverlayRenderer::submit_lines(
 	float transform[16];
 	bx::mtxIdentity(transform);
 	const std::uint64_t kState = state_for_overlay_render_state(lines.render_state);
+	const float kLineParams[4] = {
+		kThicknessPx,
+		kOverlayLineFeatherPixels,
+		0.0F,
+		0.0F,
+	};
 
 	bgfx::setTransform(transform);
 	bgfx::setUniform(impl_->line_color_uniform.get(), lines.color_linear_sdr.data());
+	bgfx::setUniform(impl_->line_params_uniform.get(), kLineParams);
+	bgfx::setVertexBuffer(0, &vertices, 0, vertex_index);
+	bgfx::setIndexBuffer(&indices, 0, index_index);
+	bgfx::setState(kState);
+	bgfx::submit(view_id, program);
+	return 1;
+}
+
+std::uint32_t GpuOverlayRenderer::submit_edit_lines(
+		bgfx::ViewId view_id,
+		const RenderView &view,
+		ViewportExtent target_extent,
+		const PreparedLineOverlayCommand &lines,
+		bgfx::TextureHandle scene_depth_texture,
+		bgfx::ProgramHandle program) const noexcept {
+	if (!impl_->ready ||
+			!bgfx::isValid(program) ||
+			!bgfx::isValid(scene_depth_texture) ||
+			lines.segments.empty()) {
+		return 0;
+	}
+
+	const std::uint32_t kQuadCount = available_quad_count(lines.segments.size(), impl_->edit_line_vertex_layout);
+	if (kQuadCount == 0U) {
+		return 0;
+	}
+
+	const std::uint32_t kVertexCount = kQuadCount * kVerticesPerQuad;
+	const std::uint32_t kIndexCount = kQuadCount * kIndicesPerQuad;
+	bgfx::TransientVertexBuffer vertices{};
+	bgfx::TransientIndexBuffer indices{};
+	bgfx::allocTransientVertexBuffer(&vertices, kVertexCount, impl_->edit_line_vertex_layout);
+	bgfx::allocTransientIndexBuffer(&indices, kIndexCount);
+	auto *data = reinterpret_cast<OverlayEditLineVertex *>(vertices.data);
+	auto *index_data = reinterpret_cast<std::uint16_t *>(indices.data);
+	std::uint32_t vertex_index = 0;
+	std::uint32_t index_index = 0;
+	const float kThicknessPx = std::max(1.0F, lines.command.thickness_px);
+	const bool kHomogeneousDepth = current_render_homogeneous_depth();
+	for (const LineOverlaySegment &segment : lines.segments) {
+		if (vertex_index + kVerticesPerQuad > kVertexCount ||
+				index_index + kIndicesPerQuad > kIndexCount) {
+			break;
+		}
+
+		const std::optional<OverlayLineDeviceQuad> kQuad = make_overlay_line_device_quad(
+				view,
+				segment,
+				kThicknessPx,
+				0.0F,
+				kHomogeneousDepth,
+				true);
+		if (!kQuad.has_value()) {
+			continue;
+		}
+		append_line_device_quad(
+				data,
+				index_data,
+				vertex_index,
+				index_index,
+				*kQuad);
+	}
+
+	if (vertex_index == 0U || index_index == 0U) {
+		return 0;
+	}
+
+	float transform[16];
+	bx::mtxIdentity(transform);
+	PreparedOverlayRenderState render_state = lines.render_state;
+	render_state.depth_test_enabled = false;
+	render_state.depth_write_enabled = false;
+	const std::uint64_t kState = state_for_overlay_render_state(render_state);
+	const float kLineParams[4] = {
+		kThicknessPx,
+		kOverlayLineFeatherPixels,
+		0.0F,
+		0.0F,
+	};
+	const float kTargetWidth = std::max(1.0F, static_cast<float>(target_extent.width_px));
+	const float kTargetHeight = std::max(1.0F, static_cast<float>(target_extent.height_px));
+	const float kDepthParams[4] = {
+		static_cast<float>(view.rect.x) / kTargetWidth,
+		static_cast<float>(view.rect.y) / kTargetHeight,
+		static_cast<float>(view.rect.width) / kTargetWidth,
+		static_cast<float>(view.rect.height) / kTargetHeight,
+	};
+	const bgfx::Caps *caps = bgfx::getCaps();
+	const float kOriginMode = (caps != nullptr && caps->originBottomLeft) ? 4.0F : 0.0F;
+	const float kProjectionMode = kOriginMode +
+			(view.camera.projection == CameraProjection::Orthographic ? 2.0F : 0.0F) +
+			(kHomogeneousDepth ? 1.0F : 0.0F);
+	const float kCameraParams[4] = {
+		sanitized_near_plane(view.camera),
+		sanitized_far_plane(view.camera),
+		kOverlayEditWireDepthToleranceM,
+		kProjectionMode,
+	};
+	constexpr std::uint64_t kDepthSamplerFlags =
+			BGFX_SAMPLER_MIN_POINT |
+			BGFX_SAMPLER_MAG_POINT |
+			BGFX_SAMPLER_MIP_POINT |
+			BGFX_SAMPLER_U_CLAMP |
+			BGFX_SAMPLER_V_CLAMP;
+
+	bgfx::setTransform(transform);
+	bgfx::setUniform(impl_->line_color_uniform.get(), lines.color_linear_sdr.data());
+	bgfx::setUniform(impl_->line_params_uniform.get(), kLineParams);
+	bgfx::setUniform(impl_->edit_line_depth_params_uniform.get(), kDepthParams);
+	bgfx::setUniform(impl_->edit_line_camera_params_uniform.get(), kCameraParams);
+	bgfx::setTexture(0, impl_->scene_depth_sampler.get(), scene_depth_texture, kDepthSamplerFlags);
 	bgfx::setVertexBuffer(0, &vertices, 0, vertex_index);
 	bgfx::setIndexBuffer(&indices, 0, index_index);
 	bgfx::setState(kState);
@@ -1141,12 +1129,12 @@ std::uint32_t GpuOverlayRenderer::submit_triangles(
 	}
 
 	const std::uint32_t kVertexCount = clamped_vertex_count(triangles.triangles.size() * 3U);
-	if (kVertexCount < 3U || bgfx::getAvailTransientVertexBuffer(kVertexCount, impl_->line_vertex_layout) < kVertexCount) {
+	if (kVertexCount < 3U || bgfx::getAvailTransientVertexBuffer(kVertexCount, impl_->solid_vertex_layout) < kVertexCount) {
 		return 0;
 	}
 
 	bgfx::TransientVertexBuffer vertices{};
-	bgfx::allocTransientVertexBuffer(&vertices, kVertexCount, impl_->line_vertex_layout);
+	bgfx::allocTransientVertexBuffer(&vertices, kVertexCount, impl_->solid_vertex_layout);
 	auto *data = reinterpret_cast<OverlayPositionVertex *>(vertices.data);
 	std::uint32_t vertex_index = 0;
 	for (const TriangleOverlayPrimitive &triangle : triangles.triangles) {
@@ -1179,7 +1167,7 @@ std::uint32_t GpuOverlayRenderer::submit_points(
 		return 0;
 	}
 
-	const std::uint32_t kQuadCount = available_quad_count(points.points.size(), impl_->line_vertex_layout);
+	const std::uint32_t kQuadCount = available_quad_count(points.points.size(), impl_->solid_vertex_layout);
 	if (kQuadCount == 0U) {
 		return 0;
 	}
@@ -1188,7 +1176,7 @@ std::uint32_t GpuOverlayRenderer::submit_points(
 	const std::uint32_t kIndexCount = kQuadCount * kIndicesPerQuad;
 	bgfx::TransientVertexBuffer vertices{};
 	bgfx::TransientIndexBuffer indices{};
-	bgfx::allocTransientVertexBuffer(&vertices, kVertexCount, impl_->line_vertex_layout);
+	bgfx::allocTransientVertexBuffer(&vertices, kVertexCount, impl_->solid_vertex_layout);
 	bgfx::allocTransientIndexBuffer(&indices, kIndexCount);
 	auto *data = reinterpret_cast<OverlayPositionVertex *>(vertices.data);
 	auto *index_data = reinterpret_cast<std::uint16_t *>(indices.data);

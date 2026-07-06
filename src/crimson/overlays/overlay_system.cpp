@@ -86,8 +86,7 @@ namespace {
 
 	state.color_write_enabled = true;
 	state.depth_write_enabled = false;
-	state.depth_test_enabled = depth_mode == OverlayDepthMode::DepthTested ||
-			(overlay_source_kind_is_component(source_kind) && overlay_role_is_component_handle(role));
+	state.depth_test_enabled = depth_mode == OverlayDepthMode::DepthTested;
 	state.equal_depth_test_enabled = false;
 	return state;
 }
@@ -355,6 +354,18 @@ bool overlay_role_is_component_handle(OverlaySemanticRole role) noexcept {
 	return role == OverlaySemanticRole::SelectedFaceEdge || role == OverlaySemanticRole::HoverFaceEdge || role == OverlaySemanticRole::SelectedEdge || role == OverlaySemanticRole::HoverEdge || role == OverlaySemanticRole::SelectedVertex || role == OverlaySemanticRole::HoverVertex;
 }
 
+bool overlay_role_is_component_edge(OverlaySemanticRole role) noexcept {
+	return role == OverlaySemanticRole::SelectedFaceEdge || role == OverlaySemanticRole::HoverFaceEdge || role == OverlaySemanticRole::SelectedEdge || role == OverlaySemanticRole::HoverEdge;
+}
+
+bool overlay_role_is_component_edit_wire(OverlaySemanticRole role) noexcept {
+	return overlay_role_is_source_wire(role) || overlay_role_is_component_edge(role);
+}
+
+bool overlay_role_is_vertex_handle(OverlaySemanticRole role) noexcept {
+	return role == OverlaySemanticRole::SourceVertex || role == OverlaySemanticRole::SelectedVertex || role == OverlaySemanticRole::HoverVertex;
+}
+
 bool overlay_source_kind_is_component(OverlaySourceKind source_kind) noexcept {
 	return source_kind == OverlaySourceKind::ComponentSelection || source_kind == OverlaySourceKind::ComponentHover;
 }
@@ -375,7 +386,14 @@ OverlayDepthMode effective_overlay_depth_mode(
 		const OverlayCommand &command,
 		OverlaySemanticRole role,
 		OverlaySourceKind source_kind) noexcept {
+	if (overlay_source_kind_is_component(source_kind) &&
+			(overlay_role_is_component_edit_wire(role) || overlay_role_is_vertex_handle(role))) {
+		return OverlayDepthMode::DepthTested;
+	}
 	if (overlay_role_is_source_wire(role)) {
+		return OverlayDepthMode::AlwaysOnTop;
+	}
+	if (overlay_role_is_vertex_handle(role)) {
 		return OverlayDepthMode::AlwaysOnTop;
 	}
 	if (overlay_role_is_source_wire_depth_stamp(role) || overlay_role_is_face_fill(role)) {

@@ -222,6 +222,27 @@ void register_standard_actions(ActionRegistry &registry) {
 																	Qt::WindowShortcut,
 																	true,
 															});
+	registry.register_action(ActionId::ShowGrid, {
+														QStringLiteral("Show Grid"),
+														QStringLiteral("Show or hide the viewport ground grid."),
+														{},
+														Qt::WindowShortcut,
+														true,
+												});
+	registry.register_action(ActionId::ShowOverlays, {
+															QStringLiteral("Show Overlays"),
+															QStringLiteral("Show or hide editor overlays."),
+															{},
+															Qt::WindowShortcut,
+															true,
+													});
+	registry.register_action(ActionId::ShowMeshGrid, {
+														  QStringLiteral("Mesh Grid"),
+														  QStringLiteral("Show or hide the material-space mesh surface grid."),
+														  {},
+														  Qt::WindowShortcut,
+														  true,
+												  });
 	registry.register_action(ActionId::FocusViewport, {
 															  QStringLiteral("Focus Viewport"),
 															  QStringLiteral("Move keyboard focus to the viewport."),

@@ -97,6 +97,26 @@ struct ProjectedPoint {
 	float camera_distance = 0.0F;
 };
 
+[[nodiscard]] bool camera_clip_contains_distance(
+		const PickViewContext &context,
+		float camera_distance) noexcept {
+	const float kNear = std::max(0.0F, context.camera.settings.clip.near_clip_m);
+	const float kFar = std::max(kNear, context.camera.settings.clip.far_clip_m);
+	return quader::math::is_finite(camera_distance) &&
+			camera_distance >= kNear - kRayEpsilon &&
+			camera_distance <= kFar + kRayEpsilon;
+}
+
+[[nodiscard]] bool world_position_inside_camera_clip(
+		const PickViewContext &context,
+		quader::math::Vec3 world_position) noexcept {
+	const quader::math::Vec3 kForward = normalized_or(
+			context.camera.target - context.camera.eye,
+			normalized_or(context.camera.forward, { 0.0F, 0.0F, -1.0F }));
+	const float kCameraDistance = quader::math::dot(world_position - context.camera.eye, kForward);
+	return camera_clip_contains_distance(context, kCameraDistance);
+}
+
 [[nodiscard]] RayTriangleHit intersect_triangle(const quader::tools::ViewportRay &ray,
 		quader::math::Vec3 a,
 		quader::math::Vec3 b,
@@ -194,6 +214,9 @@ struct ScreenHandleHit {
 	const quader::math::Vec3 kCameraRelative = world_position - context.camera.eye;
 	const float kCameraDistance = quader::math::dot(kCameraRelative, kForward);
 	if (!quader::math::is_finite(kCameraDistance)) {
+		return std::nullopt;
+	}
+	if (!camera_clip_contains_distance(context, kCameraDistance)) {
 		return std::nullopt;
 	}
 
@@ -407,14 +430,80 @@ struct FaceHitCandidate {
 	return best;
 }
 
+[[nodiscard]] bool face_contains_vertex(
+		const quader::mesh::Polyhedron &mesh,
+		quader::mesh::FaceId face,
+		quader::mesh::VertexId vertex) {
+	auto vertices = quader::mesh::face_vertices(mesh, face);
+	return vertices && std::find(vertices.value().begin(), vertices.value().end(), vertex) != vertices.value().end();
+}
+
+[[nodiscard]] bool face_contains_edge(
+		const quader::mesh::Polyhedron &mesh,
+		quader::mesh::FaceId face,
+		quader::mesh::EdgeId edge) {
+	auto edges = quader::mesh::face_edges(mesh, face);
+	return edges && std::find(edges.value().begin(), edges.value().end(), edge) != edges.value().end();
+}
+
+[[nodiscard]] bool selection_contains_vertex(
+		const quader::document::Selection &selection,
+		quader::document::ObjectId object_id,
+		quader::mesh::VertexId vertex) noexcept {
+	for (const quader::document::ComponentRef &component : selection.selected_components()) {
+		if (component.object != object_id) {
+			continue;
+		}
+		const auto *selected_vertex = std::get_if<quader::mesh::VertexId>(&component.component);
+		if (selected_vertex != nullptr && *selected_vertex == vertex) {
+			return true;
+		}
+	}
+	return false;
+}
+
+[[nodiscard]] bool selection_contains_edge(
+		const quader::document::Selection &selection,
+		quader::document::ObjectId object_id,
+		quader::mesh::EdgeId edge) noexcept {
+	for (const quader::document::ComponentRef &component : selection.selected_components()) {
+		if (component.object != object_id) {
+			continue;
+		}
+		const auto *selected_edge = std::get_if<quader::mesh::EdgeId>(&component.component);
+		if (selected_edge != nullptr && *selected_edge == edge) {
+			return true;
+		}
+	}
+	return false;
+}
+
 [[nodiscard]] bool handle_occluded_by_same_mesh(
 		const std::vector<FaceHitCandidate> &faces,
-		quader::document::ObjectId object_id,
+		const quader::document::MeshObject &object,
 		float handle_ray_distance,
-		float handle_radius_world) noexcept {
-	const FaceHitCandidate *nearest_face = nearest_face_for_object(faces, object_id);
-	return nearest_face != nullptr &&
-			handle_ray_distance > nearest_face->distance + kHandleOcclusionBiasWorld + handle_radius_world;
+		float handle_radius_world,
+		quader::mesh::VertexId vertex) {
+	const FaceHitCandidate *nearest_face = nearest_face_for_object(faces, object.id);
+	if (nearest_face == nullptr ||
+			handle_ray_distance <= nearest_face->distance + kHandleOcclusionBiasWorld + handle_radius_world) {
+		return false;
+	}
+	return !face_contains_vertex(object.mesh, nearest_face->face_id, vertex);
+}
+
+[[nodiscard]] bool handle_occluded_by_same_mesh(
+		const std::vector<FaceHitCandidate> &faces,
+		const quader::document::MeshObject &object,
+		float handle_ray_distance,
+		float handle_radius_world,
+		quader::mesh::EdgeId edge) {
+	const FaceHitCandidate *nearest_face = nearest_face_for_object(faces, object.id);
+	if (nearest_face == nullptr ||
+			handle_ray_distance <= nearest_face->distance + kHandleOcclusionBiasWorld + handle_radius_world) {
+		return false;
+	}
+	return !face_contains_edge(object.mesh, nearest_face->face_id, edge);
 }
 
 [[nodiscard]] bool better_handle_hit(
@@ -631,6 +720,21 @@ ViewportShadingMode ViewportController::shading_mode() const noexcept {
 	return shading_mode_;
 }
 
+void ViewportController::set_display_settings(ViewportDisplaySettings settings) {
+	if (display_settings_.show_grid == settings.show_grid &&
+			display_settings_.show_overlays == settings.show_overlays &&
+			display_settings_.show_mesh_grid == settings.show_mesh_grid) {
+		return;
+	}
+
+	display_settings_ = settings;
+	request_frame();
+}
+
+ViewportDisplaySettings ViewportController::display_settings() const noexcept {
+	return display_settings_;
+}
+
 void ViewportController::render_frame(double elapsed_seconds, float delta_seconds) {
 	if (!surface_initialized_) {
 		return;
@@ -649,6 +753,7 @@ void ViewportController::render_frame(double elapsed_seconds, float delta_second
 		.panes = std::span<const ViewportPane>(kPanes.data(), static_cast<std::size_t>(kPaneCount)),
 		.cameras = std::span<const ViewportCameraSnapshot>(kCameras.data(), kCameras.size()),
 		.shading_mode = shading_mode_,
+		.display_settings = display_settings_,
 		.scene_animation_enabled = scene_animation_enabled_,
 		.elapsed_seconds = elapsed_seconds,
 	};
@@ -973,6 +1078,9 @@ std::optional<quader::tools::SurfaceHit> ViewportController::surface_hit_for_ray
 				if (!kHit.hit) {
 					continue;
 				}
+				if (!world_position_inside_camera_clip(kPickContext, kHit.position)) {
+					continue;
+				}
 
 				FaceHitCandidate face_hit{
 					.object_id = kObjectId,
@@ -1022,7 +1130,8 @@ std::optional<quader::tools::SurfaceHit> ViewportController::surface_hit_for_ray
 				};
 				if (kScreenDistanceSquared > kVertexPickRadiusPx * kVertexPickRadiusPx ||
 						!kRayHandle.hit ||
-						handle_occluded_by_same_mesh(face_hits, kObjectId, kRayHandle.ray_distance, kVertexPickRadiusWorld) ||
+						(!selection_contains_vertex(document.selection(), kObjectId, kVertex) &&
+								handle_occluded_by_same_mesh(face_hits, *object, kRayHandle.ray_distance, kVertexPickRadiusWorld, kVertex)) ||
 						!better_screen_handle_hit(kScreenHandle, best_handle)) {
 					continue;
 				}
@@ -1086,7 +1195,8 @@ std::optional<quader::tools::SurfaceHit> ViewportController::surface_hit_for_ray
 				};
 				if (kScreenDistanceSquared > kEdgePickRadiusPx * kEdgePickRadiusPx ||
 						!kRayHandle.hit ||
-						handle_occluded_by_same_mesh(face_hits, kObjectId, kRayHandle.ray_distance, kEdgePickRadiusWorld) ||
+						(!selection_contains_edge(document.selection(), kObjectId, kEdge) &&
+								handle_occluded_by_same_mesh(face_hits, *object, kRayHandle.ray_distance, kEdgePickRadiusWorld, kEdge)) ||
 						!better_screen_handle_hit(kScreenHandle, best_handle)) {
 					continue;
 				}

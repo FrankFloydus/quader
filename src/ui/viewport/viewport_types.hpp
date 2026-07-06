@@ -77,6 +77,16 @@ enum class ViewportShadingMode {
 	Rendered, ///< Lit rendered mode.
 };
 
+/// Persistent viewport display settings mirrored into Crimson viewport settings.
+struct ViewportDisplaySettings {
+	/// Whether the ground grid is visible.
+	bool show_grid = true;
+	/// Whether editor overlays are visible.
+	bool show_overlays = true;
+	/// Whether mesh surfaces receive the material-space grid mix.
+	bool show_mesh_grid = false;
+};
+
 /// Splitter handle under the pointer.
 enum class ViewportSplitHandle {
 	None,       ///< No splitter.
@@ -109,7 +119,7 @@ enum class CameraProjection {
 };
 
 /// Default near clip distance for viewport cameras, in meters.
-inline constexpr float kDefaultViewportCameraNearClipM = 0.01F;
+inline constexpr float kDefaultViewportCameraNearClipM = 0.05F;
 /// Default far clip distance for viewport cameras, in meters.
 inline constexpr float kDefaultViewportCameraFarClipM = 1000.0F;
 /// Default perspective field of view for viewport cameras, in degrees.
@@ -234,6 +244,8 @@ struct ViewportRenderRequest {
 	std::span<const ViewportPickRequest> picking_requests;
 	/// Mesh surface shading mode for document objects.
 	ViewportShadingMode shading_mode = ViewportShadingMode::Shaded;
+	/// Viewport display settings for grid, overlays, and mesh grid.
+	ViewportDisplaySettings display_settings;
 	/// True when scene animation should advance.
 	bool scene_animation_enabled = true;
 	/// Elapsed application time in seconds.

@@ -443,6 +443,69 @@ TEST(MaterialSystem, PbrMaterialBlocksPackSchemaValuesForGpuBinding) {
 	expect_true(kBlock.flags[1] == 0.0F && kBlock.flags[2] == 0.0F, "opaque PBR block does not set cutout or transparent flags");
 }
 
+TEST(MaterialSystem, PbrMaterialBlockAddsViewportSurfaceGridSettings) {
+	crimson::MaterialSystem materials;
+	const auto handle = materials.create_default_material(crimson::BaseShaderId::OpaquePbr);
+	ASSERT_TRUE(handle.has_value());
+	const crimson::BaseShaderDefinition *definition = materials.registry().find(crimson::BaseShaderId::OpaquePbr);
+	ASSERT_TRUE(definition != nullptr);
+
+	crimson::ViewportSettings settings;
+	settings.draw_mesh_grid = true;
+	settings.surface_grid_minor_color = crimson::ColorSrgb{ 0.5F, 0.0F, 0.0F, 0.25F };
+	settings.surface_grid_major_color = crimson::ColorSrgb{ 0.0F, 0.5F, 0.0F, 0.75F };
+	settings.surface_grid_size_m = 0.5F;
+	settings.surface_grid_major_size_m = settings.surface_grid_size_m * 4.0F;
+	settings.surface_grid_minor_line_thickness = 1.5F;
+	settings.surface_grid_major_line_thickness = 2.5F;
+
+	const crimson::gpu::GpuMaterialCache cache;
+	const crimson::gpu::GpuPbrMaterialBlock kBlock =
+			cache.material_block(materials, handle.value(), *definition, settings);
+	expect_true(kBlock.surface_grid_flags[0] == 1.0F, "viewport ShowMeshGrid enables the material surface grid flag");
+	expect_true(kBlock.surface_grid_minor_color_linear[0] > 0.21F && kBlock.surface_grid_minor_color_linear[0] < 0.22F,
+			"mesh grid sRGB color is converted to linear for shader mixing");
+	expect_true(kBlock.surface_grid_minor_color_linear[3] == 0.25F, "mesh grid color alpha is preserved");
+	expect_true(kBlock.surface_grid_params[0] == 0.5F, "minor mesh grid spacing is packed");
+	expect_true(kBlock.surface_grid_params[1] == 2.0F, "major mesh grid spacing can use spacing times four");
+	expect_true(kBlock.surface_grid_params[2] == 1.5F, "minor mesh grid thickness is packed");
+	expect_true(kBlock.surface_grid_params[3] == 2.5F, "major mesh grid thickness is packed");
+}
+
+TEST(MaterialSystem, PbrMaterialBlockUsesReferenceSurfaceGridDefaults) {
+	crimson::MaterialSystem materials;
+	const auto handle = materials.create_default_material(crimson::BaseShaderId::OpaquePbr);
+	ASSERT_TRUE(handle.has_value());
+	const crimson::BaseShaderDefinition *definition = materials.registry().find(crimson::BaseShaderId::OpaquePbr);
+	ASSERT_TRUE(definition != nullptr);
+
+	crimson::ViewportSettings settings;
+	settings.draw_mesh_grid = true;
+	expect_true(settings.surface_grid_major_color.r == settings.surface_grid_minor_color.r &&
+					settings.surface_grid_major_color.g == settings.surface_grid_minor_color.g &&
+					settings.surface_grid_major_color.b == settings.surface_grid_minor_color.b &&
+					settings.surface_grid_major_color.a == settings.surface_grid_minor_color.a,
+			"default mesh grid major color stays neutral instead of selection yellow");
+	expect_true(settings.surface_grid_major_color.r < 0.1F && settings.surface_grid_major_color.g < 0.1F,
+			"default mesh grid major color cannot read as yellow-orange selection highlight");
+
+	const crimson::gpu::GpuMaterialCache cache;
+	const crimson::gpu::GpuPbrMaterialBlock kBlock =
+			cache.material_block(materials, handle.value(), *definition, settings);
+	expect_true(kBlock.surface_grid_params[0] == 1.0F, "default mesh grid spacing is one world unit");
+	expect_true(kBlock.surface_grid_params[1] == 4.0F, "default major mesh grid spacing is spacing times four");
+	expect_true(kBlock.surface_grid_params[2] == 0.325F, "default minor mesh grid thickness matches reference");
+	expect_true(kBlock.surface_grid_params[3] == 0.250F, "default major mesh grid thickness matches reference");
+	expect_true(kBlock.surface_grid_major_color_linear[0] == kBlock.surface_grid_minor_color_linear[0] &&
+					kBlock.surface_grid_major_color_linear[1] == kBlock.surface_grid_minor_color_linear[1] &&
+					kBlock.surface_grid_major_color_linear[2] == kBlock.surface_grid_minor_color_linear[2] &&
+					kBlock.surface_grid_major_color_linear[3] == kBlock.surface_grid_minor_color_linear[3],
+			"GPU mesh grid major color packs the same neutral color as minor by default");
+	expect_true(kBlock.surface_grid_major_color_linear[0] < 0.01F &&
+					kBlock.surface_grid_major_color_linear[1] < 0.01F,
+			"GPU mesh grid major color does not pack selection-yellow RGB");
+}
+
 TEST(MaterialSystem, PbrPacketPreparationBucketsAndSortsDrawPackets) {
 	crimson::MaterialSystem materials;
 	const crimson::RenderMaterialHandle kOpaque = materials.create_default_material(crimson::BaseShaderId::OpaquePbr).value();

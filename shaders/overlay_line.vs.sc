@@ -1,8 +1,10 @@
-$input a_position
+$input a_position, a_texcoord0
+$output v_lineDistancePixels
 
 #include <bgfx_shader.sh>
 
 void main()
 {
-	gl_Position = mul(u_modelViewProj, vec4(a_position, 1.0));
+	v_lineDistancePixels = a_texcoord0.x;
+	gl_Position = vec4(a_position, 1.0);
 }

@@ -13,12 +13,12 @@
 #include "crimson/gpu/gpu_program_cache.hpp"
 #include "crimson/overlays/overlay_system.hpp"
 #include "crimson/renderer_diagnostics.hpp"
+#include "math/vec2.hpp"
 
 #include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <span>
 
 #include <bgfx/bgfx.h>
 
@@ -27,13 +27,40 @@ namespace crimson::gpu {
 /// Return the bgfx submit state used for the reference-style ground grid.
 [[nodiscard]] std::uint64_t grid_overlay_submit_state(OverlayDepthMode depth_mode) noexcept;
 
-/// Expanded overlay quad corners in world space, ready for the overlay shader path.
+/// Expanded overlay quad corners in the coordinate space consumed by the target overlay shader.
 struct OverlayScreenSpaceQuad {
 	/// Quad corners ordered for the shared overlay index pattern.
 	std::array<quader::math::Vec3, 4> corners;
 };
 
-/// Build a reference-style screen-space line quad while preserving the existing world-position shader path.
+/// Device-space line vertex carrying signed distance from the line center.
+struct OverlayLineDeviceVertex {
+	/// Clip/device-space position consumed directly by the line shader.
+	quader::math::Vec3 position;
+	/// Signed distance from the line center in physical pixels.
+	float line_distance_pixels = 0.0F;
+	/// Device-space depth before edit-wire bias; used for manual scene-depth rejection.
+	float original_device_z = 0.0F;
+	/// Device-space position on the original line center used for depth sampling.
+	quader::math::Vec2 center_device;
+};
+
+/// Expanded overlay line quad in device space.
+struct OverlayLineDeviceQuad {
+	/// Quad vertices ordered for the shared overlay index pattern.
+	std::array<OverlayLineDeviceVertex, 4> vertices;
+};
+
+/// Build a reference-style device-space line quad after CPU near-plane clipping.
+[[nodiscard]] std::optional<OverlayLineDeviceQuad> make_overlay_line_device_quad(
+		const RenderView &view,
+		const LineOverlaySegment &segment,
+		float width_px,
+		float depth_bias_units,
+		bool homogeneous_depth,
+		bool edit_wire_depth_bias = false) noexcept;
+
+/// Build a reference-style world-space line quad after CPU near-plane clipping.
 [[nodiscard]] std::optional<OverlayScreenSpaceQuad> make_overlay_line_screen_space_quad(
 		const RenderView &view,
 		const LineOverlaySegment &segment,
@@ -41,25 +68,13 @@ struct OverlayScreenSpaceQuad {
 		float depth_bias_units,
 		bool homogeneous_depth) noexcept;
 
-/// Build a reference-style screen-space point quad while preserving the existing world-position shader path.
+/// Build a reference-style device-space point quad after CPU projection.
 [[nodiscard]] std::optional<OverlayScreenSpaceQuad> make_overlay_point_screen_space_quad(
 		const RenderView &view,
 		quader::math::Vec3 position,
 		float size_px,
 		float depth_bias_units,
 		bool homogeneous_depth) noexcept;
-
-/// Return a copy of a source-wire line command with hidden same-mesh segments culled by depth stamps.
-[[nodiscard]] PreparedLineOverlayCommand make_source_wire_visibility_filtered_line_command(
-		const RenderView &view,
-		const PreparedLineOverlayCommand &lines,
-		std::span<const SourceWireDepthStampMetadata> source_wire_depth_stamps);
-
-/// Return a copy of a point command with hidden source/component handles culled by depth stamps.
-[[nodiscard]] PreparedPointOverlayCommand make_source_wire_visibility_filtered_point_command(
-		const RenderView &view,
-		const PreparedPointOverlayCommand &points,
-		std::span<const SourceWireDepthStampMetadata> source_wire_depth_stamps);
 
 /// Owns GPU state needed to submit unlit overlay grid, line, triangle, and point primitives.
 class GpuOverlayRenderer final {
@@ -92,6 +107,14 @@ public:
 			bgfx::ViewId view_id,
 			const RenderView &view,
 			const PreparedLineOverlayCommand &lines,
+			bgfx::ProgramHandle program) const noexcept;
+	/// Submit one depth-aware component edit-line overlay command.
+	[[nodiscard]] std::uint32_t submit_edit_lines(
+			bgfx::ViewId view_id,
+			const RenderView &view,
+			ViewportExtent target_extent,
+			const PreparedLineOverlayCommand &lines,
+			bgfx::TextureHandle scene_depth_texture,
 			bgfx::ProgramHandle program) const noexcept;
 	/// Submit one prepared solid-triangle overlay command.
 	[[nodiscard]] std::uint32_t submit_triangles(

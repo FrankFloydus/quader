@@ -12,6 +12,7 @@ uniform vec4 u_gridVAxis;
 uniform vec4 u_gridParams0;
 uniform vec4 u_gridParams1;
 uniform vec4 u_gridParams2;
+uniform vec4 u_gridParams3;
 
 float gridLine(float coord, float spacing, float widthScale, float thicknessValue)
 {
@@ -63,9 +64,13 @@ void main()
 
     float distanceToCamera = length(coords - cameraCoords);
     float distanceFade = 1.0 - smoothstep(u_gridParams1.y, u_gridParams1.z, distanceToCamera);
+    float worldCameraDistance = length(worldPosition - u_cameraPosition.xyz);
+    float farHalf = max(u_gridParams3.x * 0.5, 0.0001);
+    float farClipFade = 1.0 - smoothstep(0.0, farHalf, worldCameraDistance - farHalf);
+    farClipFade = mix(1.0, farClipFade, clamp(u_gridParams3.y, 0.0, 1.0));
     float edgeDistance = max(abs(v_gridLocalPosition.x), abs(v_gridLocalPosition.z));
     float edgeFade = 1.0 - smoothstep(u_gridParams1.w * 0.88, u_gridParams1.w, edgeDistance);
-    float fade = clamp(distanceFade * edgeFade, 0.0, 1.0);
+    float fade = clamp(distanceFade * edgeFade * farClipFade, 0.0, 1.0);
     fade += (u_gridParams2.x + u_gridParams2.y + u_gridParams2.z + u_gridParams2.w) * 0.0;
 
     float majorCoverage = parentGridValue * u_majorGridColor.a;

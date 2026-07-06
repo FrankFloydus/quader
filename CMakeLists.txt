@@ -1258,8 +1258,13 @@ set(MODELING_ASSET_FILES
 set(SHADER_SOURCE_FILES
     "${SHADER_SOURCE_DIR}/common/color_space.sh"
     "${SHADER_SOURCE_DIR}/overlay_unlit.fs.sc"
+    "${SHADER_SOURCE_DIR}/overlay_edit_line.fs.sc"
+    "${SHADER_SOURCE_DIR}/overlay_edit_line.vs.sc"
     "${SHADER_SOURCE_DIR}/overlay_line.fs.sc"
     "${SHADER_SOURCE_DIR}/overlay_line.vs.sc"
+    "${SHADER_SOURCE_DIR}/overlay_device_solid.vs.sc"
+    "${SHADER_SOURCE_DIR}/overlay_solid.fs.sc"
+    "${SHADER_SOURCE_DIR}/overlay_solid.vs.sc"
     "${SHADER_SOURCE_DIR}/pbr/alpha_cutout_pbr.fs.sc"
     "${SHADER_SOURCE_DIR}/pbr/alpha_cutout_pbr.vs.sc"
     "${SHADER_SOURCE_DIR}/pbr/opaque_pbr.fs.sc"

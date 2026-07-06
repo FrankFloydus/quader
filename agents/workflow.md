@@ -1,90 +1,142 @@
-# Quader Workflow
+# Quader Architect-Led Workflow
 
-`$quader-workflow` is the same-thread workflow authority for direct implementation, planning, review/rework, docs, performance, parity, dev builds, audit/beautify, and explicit external board work. Do not spawn old `quader-*.toml` agents.
+The active workflow is root-coordinated and architect-led. `$quader-workflow` is disabled and is not an active routing authority. Root may spawn the active `quader-*.toml` agents as clean scoped agents; do not spawn full-history forks.
 
-Temporary board pause: the project board is not workflow authority. Do not create, update, validate, move, archive, or require board entries unless the current user request explicitly asks to inspect, repair, restore, or maintain board tooling.
+Active profiles:
 
-## Router
+- `quader-software-architect`: final architecture governor, final plan/review reconciler, board authority.
+- `quader-core-architect`: document, commands, tools, mesh, I/O, app/core.
+- `quader-build-workflow-architect`: CMake, tools, board/API, versioning, workflow.
+- `quader-ui-architect`: Qt Widgets, actions, models, panels, viewport host UI.
+- `quader-renderer-architect`: Crimson renderer, shaders, overlays, picking, render tests.
+- `quader-docs-mantainer`: documentation-only maintenance.
+- `quader-performance-dev`: explicit C++ performance audit/fix work using `cpp-performance`.
 
-- Add task/bug/intake -> capture the requested work from the user request and current repo context; do not mutate the board.
-- Implement/fix/do work with no task id -> proceed directly after reading relevant docs, hindsight, and code.
-- Existing task id -> treat it as legacy context only if the user explicitly cites it; do not mutate board state.
-- Review failure -> use the latest user/review feedback as authoritative rework, update the same plan when one exists, then fix and verify.
-- `audit`, `beautify`, `audit and beautify` -> write full artifact in `agents/plans/`.
-- External board/dashboard -> edit `C:\Users\Drako\Desktop\quader-project-board` only when explicitly requested; project-board content remains paused.
+Root coordinates all spawned agents, waits for every spawned agent, verifies required artifacts exist, applies database-board API actions, integrates implementation, and runs the required checks. Architects scout, plan, and review; they do not implement production code unless their profile explicitly allows it.
 
-## Modes
+## Artifact Policy
 
-### Intake
+Use Windows-safe timestamps: `MM_DD_YYYY_HHMM`.
 
-Use for `add task`, `add bug`, intake, or scope-capture requests while the board pause is active.
+Architect plan mode:
 
-Read relevant docs/hindsight, duplicates in current plans when useful, and enough code/reference material to create a strong brief. Do not create or update board entries. If the user asks for a durable artifact, write an intake or planning note under `agents/plans/`; otherwise report the brief in chat.
+- Trigger: an architect scouts/analyzes code for a new requested task or a stale task re-plan.
+- Output: a detailed markdown plan under `agents/plans/`.
+- Default name: `agents/plans/{architect-name}-plan_{MM_DD_YYYY_HHMM}.md`.
+- Root may assign an exact path; if no exact path is provided, the architect uses the default.
+- The file must be implementation-ready: exact files/symbols, ordered edits, APIs/data shapes, invariants, do-not-do constraints, tests/build/dev-build checks, docs updates, acceptance criteria, and unresolved blockers.
 
-Briefs should include requested/observed behavior, likely files/modules, initial fix/implementation direction, risks, source refs for parity/reference work, and likely verification.
+Root final plan:
 
-### Execute
+- Output after architect plans are complete: `agents/plans/{task_id}-final-plan_{MM_DD_YYYY_HHMM}.md`.
+- This is not a summary. It reconciles all architect plans, removes only true duplicates/useless material, preserves unique findings, and gives the sequential implementation recipe future workers should follow literally.
+- After the final plan is written and linked into the board task, root archives the source architect plans into `agents/archive/`.
 
-Execution can start directly from the current user request, an existing plan, or explicit legacy board context cited by the user.
+Architect review mode:
 
-1. Read relevant docs, matching hindsight, current code, source refs, review feedback, and any existing active plan.
-2. Revalidate the request against the current workspace before editing.
-3. Create or update a plan when the task is broad, risky, cross-domain, delegated, explicitly requested, or already plan-backed.
-4. New board-free implementation plans use:
+- Trigger: implementation is thought complete, or user reports review failure.
+- Output: `agents/reviews/{task_id}_{architect-name}_review_{MM_DD_YYYY_HHMM}.md`.
+- Each review file must include `Decision: approved` or `Decision: changes-requested`.
+- `approved` reviews may be concise but must state reviewed scope and checks expected.
+- `changes-requested` reviews must be implementation-ready with exact corrections.
 
-```text
-agents/plans/implementation_YYYYMMDD_{slug}.md
-```
+Root final review:
 
-The plan must be worker-ready when it exists: exact files/symbols, ordered edits, APIs/data shapes, invariants, do-not-do constraints, tests/build/dev-build checks, docs updates, and acceptance criteria.
+- If any review has `Decision: changes-requested`, root writes `agents/reviews/{task_id}-final-review_{MM_DD_YYYY_HHMM}.md`, archives individual architect reviews, archives or supersedes the original final plan, links the final review into the board task, and implements the requested changes.
+- This loop recurses until all relevant architects return `Decision: approved`.
+- When all reviews approve, root archives review artifacts and moves the board task to `In Review`.
 
-Set a Codex `/goal` only for substantial work that benefits from explicit goal tracking. Implement, verify, and sync docs. Do not update board files or run board commands.
+## Workflow A: Task Only
 
-For complex work, split internally or use clean scoped workers with `fork_context:false`; wait for all workers.
+Trigger: user asks to add one or more tasks/bugs without immediate implementation.
 
-For Quader Windows parity tasks, the plan or brief must map reference files/lines to current Quader files/symbols and state `Reference substance preserved:` acceptance checks. Do not invent different behavior unless the user asks for redesign.
+1. Root classifies required architect domains.
+2. Root spawns the needed architects as clean scoped agents with repository path, exact artifact path expectations, and scoped instructions.
+3. Each architect runs architect plan mode.
+4. Root waits for all architects. If any required plan file is missing or too generic, root asks only the missing/insufficient architect to repair it and waits again.
+5. Root asks `quader-software-architect` to reconcile the architect plans and issue the exact database board add action payload.
+6. Root creates the task/bug through `POST /api/board/action` using `add-task` or `add-bug` to lock a task id.
+7. Root writes the final plan as `agents/plans/{task_id}-final-plan_{MM_DD_YYYY_HHMM}.md`.
+8. Root updates the board task through `edit` so the task metadata/description includes the final plan path.
+9. Root archives the source architect plans into `agents/archive/`.
 
-### Review/Rework
+## Workflow B: Implementation Only
 
-Use latest user/review feedback as the authoritative correction list. If an implementation plan exists, update it with `Review Rework`, then fix against both original scope and current rework, verify again, and report status. Do not move, archive, complete, or otherwise mutate board entries.
+Trigger: user pastes a board prompt, asks to implement task ids, or asks root to check the board for specific tasks.
 
-### Audit/Beautify
+1. Root reads the board task through the database API and fetches the linked final plan.
+2. Root sends the task, current final plan path, and current workspace status to `quader-software-architect` for freshness evaluation.
+3. If fresh, root implements the final plan as-is. Root should not re-scout or redesign.
+4. If stale or needing re-evaluation, root runs architect plan mode for the affected domains, updates/replaces the final plan, updates the board task with the new plan path, and then implements the plan as-is.
 
-Write full findings to `agents/plans/`; chat findings are not enough. Broad artifact pattern: `agents/plans/audit_YYYYMMDD_scope_master.md`.
+## Workflow C: Task And Implementation
 
-`audit and beautify` separates `Architecture Audit Findings` from `Beautify Findings`. Audit covers boundaries, ownership, correctness, verification, and risks. Beautify covers API/call-site elegance, naming, ownership, parameter/result shape; not formatting.
+Trigger: user asks to add/plan a task and implement it immediately.
 
-## Board Pause
+Run Workflow A, then immediately run Workflow B without a separate freshness gate because the final plan was just produced.
 
-`project_board.md` and `project_board_archive.md` are historical/read-only during this pause. Do not use them as gating authority for new work. Do not run `tools/project_board.py` commands during normal execution, review, intake, closeout, or audit work.
+## Workflow D: On Task/Goal Completed
 
-Allowed board access during the pause:
+Trigger: root believes the implementation task/goal is done, before ending the turn.
 
-- read-only context when the user explicitly cites a task id or board entry;
-- explicit board restoration, repair, migration, validation, or dashboard maintenance requested by the user;
-- external board app code changes that do not mutate board content.
+1. Root spawns the relevant reviewing architects in architect review mode.
+2. Root waits for all review artifacts.
+3. If every review says `Decision: approved`, root archives review files and moves the board task to `In Review`.
+4. If any review says `Decision: changes-requested`, root writes a final review master file, archives the individual reviews and the superseded final plan, updates the board task with the final review path, implements the requested changes, and repeats Workflow D.
 
-## Hindsight
+## Workflow E: Mark Review As Complete
 
-Before intake, revalidation, execution, audit/beautify, review, docs, performance, or deviation handling, search/read relevant `agents/hindsight.md` entries. Reference matching IDs only when they affect the work.
+Trigger: user explicitly asks to mark a reviewed task complete.
 
-If reusable critical knowledge appears, report:
+Root uses the database board API to archive/complete the task. The action must include `devVersion`; archive metadata must store `dev_version`, archive date, archived timestamp, source section, and archive status.
 
-```text
-Hindsight Candidate:
-Area/tags:
-Lesson:
-Evidence:
-Applies when:
-```
+## Workflow F: Review Not Passed
 
-## Parity
+Trigger: user manually tests the app and reports bugs, incorrect behavior, or missing expected behavior.
+
+1. Root treats the user feedback as the authoritative correction list.
+2. Root enters the review/rework loop using architect review mode and a final review master if needed.
+3. After implementing corrections, root does not launch another architect review unless the user asks. Instead it reports what was fixed, what the user should see, and what the user should try.
+4. If the user approves, root archives/completes the task with `devVersion`. If not, repeat from step 1.
+
+## Database Board
+
+The project board is active through the SQLite-backed external app/API:
+
+- app: `C:\Users\Drako\Desktop\quader-project-board`
+- default DB: `C:\Users\Drako\Desktop\quader-project-board\data\quader-board.sqlite`
+- source module: `C:\Users\Drako\Desktop\quader-project-board\lib\board-database.ts`
+
+Never hand-edit `project_board.md` or `project_board_archive.md`; never use `tools/project_board.py` for active workflow.
+
+Reads:
+
+- `GET /api/board`
+- `GET /api/board/task?id=...&state=active|archived|all`
+- `GET /api/board/search?q=...&state=active|archived|all`
+- `GET /api/archive`
+
+Mutations:
+
+- `POST /api/board/action`
+- Required authorization flag: `workflowAuthorized`, `architectAuthorized`, or `pmAuthorized`.
+- Actions: `add-task`, `add-bug`, `edit`, `delete`, `move`, `start`, `review`, `request-changes`, `complete`, `archive`, `reopen`, `append-note`, `bulk-edit-meta`.
+
+Archive/complete payloads must include `devVersion` matching `x.y.z-dev.n`. Do not infer dev versions from changelog text, archive notes, or historical markdown.
+
+## Parity And Reference App
 
 `same`, `1:1`, `100%`, `parity`, and `check this code reference` require exact `Source refs:` in the brief or plan.
 
-When `C:\Users\Drako\Desktop\quader-windows\quader-app` is cited, it is source of truth for behavior, interaction semantics, visual result, data meaning, and user-visible substance. Briefs/plans must name that path and inspected files/folders. Execution plans must map reference files/lines to current Quader files/symbols and include `Reference substance preserved:` checks.
+When `C:\Users\Drako\Desktop\quader-windows\quader-app` is cited, it is source of truth for behavior, interaction semantics, visual result, data meaning, and user-visible substance. Plans must map reference files/lines to current Quader files/symbols and include `Reference substance preserved:` checks.
 
-For renderer parity with that app, inspect its renderer internals before projection/picking/material/overlay/coordinate-space decisions.
+For parity work, architects should use the shared communication chat:
+
+```text
+codex://threads/019f365b-1ae4-7172-a3f1-d98d39834146
+```
+
+Root or the relevant architect asks the communication chat for targeted original-app details, waits for the response, and does no unrelated work while waiting. Poll/wait in 60 second intervals until the response arrives or a real blocker must be reported.
 
 ## External Resources
 
@@ -105,11 +157,9 @@ For C++/CMake/shader/runtime changes:
 
 Do not run clang-format, clang-tidy, style/static-analysis targets, or CTest presets that include them without immediate explicit user permission.
 
-## Plans And Archives
+## Hindsight, Docs, Tests, Git
 
-Intake creates no board entry. Execute creates or updates one active implementation plan only when plan-backed execution is needed. Audit/beautify creates the requested artifact. Old/implemented/outdated plans move to `agents/archive/` and stop being active authority.
-
-## Tests, Docs, Git
+Before intake, revalidation, execution, audit/beautify, review, docs, performance, or deviation handling, search/read relevant `agents/hindsight.md` entries.
 
 Read `agents/tests-policy.md` before test work. Read `agents/documentation-policy.md` when docs/comments/changelogs or documented symbols are involved. Read `agents/code-style.md` before non-trivial C++ style/static-analysis decisions.
 

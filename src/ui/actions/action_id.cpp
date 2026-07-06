@@ -67,6 +67,12 @@ std::string_view action_id_name(ActionId id) noexcept {
 			return "ViewShaded";
 		case ActionId::ToggleQuadViewports:
 			return "ToggleQuadViewports";
+		case ActionId::ShowGrid:
+			return "ShowGrid";
+		case ActionId::ShowOverlays:
+			return "ShowOverlays";
+		case ActionId::ShowMeshGrid:
+			return "ShowMeshGrid";
 		case ActionId::FocusViewport:
 			return "FocusViewport";
 		case ActionId::ShowScenePanel:

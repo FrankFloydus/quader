@@ -10,6 +10,7 @@
 #pragma once
 
 #include "ui/panels/panel_id.hpp"
+#include "ui/viewport/viewport_types.hpp"
 
 #include <QByteArray>
 #include <QSettings>
@@ -50,6 +51,10 @@ public:
 	[[nodiscard]] QVariant viewport_value(QStringView key, const QVariant &fallback = {}) const;
 	/// Write a viewport-scoped setting.
 	void set_viewport_value(QStringView key, const QVariant &value);
+	/// Return typed viewport display settings.
+	[[nodiscard]] ViewportDisplaySettings viewport_display_settings() const;
+	/// Store typed viewport display settings.
+	void set_viewport_display_settings(const ViewportDisplaySettings &settings);
 
 	/// Read a workspace-scoped setting.
 	[[nodiscard]] QVariant workspace_value(QStringView key, const QVariant &fallback = {}) const;

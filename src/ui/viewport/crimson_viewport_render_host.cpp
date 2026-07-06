@@ -71,6 +71,20 @@ namespace {
 			: crimson::ViewportCameraProjection::Perspective;
 }
 
+[[nodiscard]] crimson::ViewportSettings crimson_viewport_settings_from(
+		ViewportDisplaySettings display_settings) noexcept {
+	crimson::ViewportSettings settings;
+	settings.draw_grid_overlay = display_settings.show_grid;
+	settings.draw_overlays = display_settings.show_overlays;
+	settings.draw_mesh_grid = display_settings.show_mesh_grid;
+	settings.surface_grid_minor_color = crimson::ColorSrgb{ 0.02F, 0.02F, 0.02F, 1.0F };
+	settings.surface_grid_major_color = settings.surface_grid_minor_color;
+	settings.surface_grid_major_size_m = std::max(settings.surface_grid_size_m * 4.0F, settings.surface_grid_size_m);
+	settings.surface_grid_minor_line_thickness = 0.325F;
+	settings.surface_grid_major_line_thickness = 0.250F;
+	return settings;
+}
+
 [[nodiscard]] ViewportPickElementKind viewport_kind_from(crimson::PickingElementKind kind) noexcept {
 	switch (kind) {
 		case crimson::PickingElementKind::None:
@@ -168,6 +182,57 @@ constexpr float kPi = 3.14159265358979323846F;
 [[nodiscard]] crimson::RenderMeshHandle render_mesh_handle_for(
 		quader::document::ObjectId id) noexcept {
 	return crimson::RenderMeshHandle{ id.index() + 1U, id.generation() };
+}
+
+[[nodiscard]] bool object_is_selected(
+		const quader::document::Document &document,
+		quader::document::ObjectId object) noexcept {
+	const std::span<const quader::document::ObjectId> kSelected = document.selection().selected_objects();
+	if (std::find(kSelected.begin(), kSelected.end(), object) != kSelected.end()) {
+		return true;
+	}
+	const std::span<const quader::document::ComponentRef> kComponents = document.selection().selected_components();
+	return std::any_of(kComponents.begin(), kComponents.end(), [object](const quader::document::ComponentRef &component) {
+		return component.object == object;
+	});
+}
+
+[[nodiscard]] std::optional<crimson::LineOverlaySegment> scene_wire_segment_for_edge(
+		const quader::document::MeshObject &object,
+		quader::mesh::EdgeId edge,
+		bool selected) {
+	const auto halfedges = object.mesh.edge_halfedges(edge);
+	if (!halfedges) {
+		return std::nullopt;
+	}
+
+	const quader::mesh::HalfedgeId kHalfedge = halfedges.value()[0];
+	const auto origin = object.mesh.halfedge_origin(kHalfedge);
+	const auto target = object.mesh.halfedge_target(kHalfedge);
+	if (!origin || !target) {
+		return std::nullopt;
+	}
+
+	const auto start = object.mesh.vertex_position(origin.value());
+	const auto end = object.mesh.vertex_position(target.value());
+	if (!start || !end) {
+		return std::nullopt;
+	}
+
+	return crimson::LineOverlaySegment{
+		.start = transform_point(start.value(), object.transform),
+		.end = transform_point(end.value(), object.transform),
+		.semantic_role = selected
+				? crimson::OverlaySemanticRole::SelectedObjectTopology
+				: crimson::OverlaySemanticRole::Generic,
+		.source_kind = selected
+				? crimson::OverlaySourceKind::ObjectSelection
+				: crimson::OverlaySourceKind::Unknown,
+		.element = crimson::OverlayElementRef{
+				.object_id = render_object_id_for_document_object(object.id),
+				.edge_index = edge.index(),
+		},
+	};
 }
 
 [[nodiscard]] std::uint64_t hash_combine(std::uint64_t seed, std::uint64_t value) noexcept {
@@ -605,6 +670,10 @@ private:
 			std::vector<crimson::OverlayCommand> &overlays,
 			std::vector<crimson::LineOverlaySegment> &line_payloads,
 			std::vector<crimson::TriangleOverlayPrimitive> &triangle_payloads) const;
+	void append_scene_wireframe_overlays(
+			std::size_t view_count,
+			std::vector<crimson::OverlayCommand> &overlays,
+			std::vector<crimson::LineOverlaySegment> &line_payloads) const;
 	void append_document_selection_overlays(
 			std::size_t view_count,
 			std::vector<crimson::OverlayCommand> &overlays,
@@ -687,6 +756,9 @@ ViewportRenderResult CrimsonViewportRenderHost::render_frame(const ViewportRende
 	std::vector<crimson::LineOverlaySegment> line_overlay_payloads;
 	std::vector<crimson::TriangleOverlayPrimitive> triangle_overlay_payloads;
 	std::vector<crimson::PointOverlayPrimitive> point_overlay_payloads;
+	if (request.shading_mode == ViewportShadingMode::Wireframe) {
+		append_scene_wireframe_overlays(request.panes.size(), overlays, line_overlay_payloads);
+	}
 	append_document_selection_overlays(request.panes.size(),
 			overlays,
 			line_overlay_payloads,
@@ -707,6 +779,7 @@ ViewportRenderResult CrimsonViewportRenderHost::render_frame(const ViewportRende
 		.triangle_overlay_payloads = std::span<const crimson::TriangleOverlayPrimitive>(triangle_overlay_payloads.data(), triangle_overlay_payloads.size()),
 		.point_overlay_payloads = std::span<const crimson::PointOverlayPrimitive>(point_overlay_payloads.data(), point_overlay_payloads.size()),
 		.picking_requests = std::span<const crimson::PickingRequest>(kPickingRequests.data(), kPickingRequests.size()),
+		.viewport_settings = crimson_viewport_settings_from(request.display_settings),
 		.animation_enabled = request.scene_animation_enabled,
 		.elapsed_seconds = request.elapsed_seconds,
 	};
@@ -909,6 +982,85 @@ void CrimsonViewportRenderHost::append_tool_preview_overlays(
 
 	const quader::tools::ToolPreview kPreview = tool_manager_->preview();
 	quader::ui::append_tool_preview_overlays(kPreview, view_count, overlays, line_payloads, triangle_payloads);
+}
+
+void CrimsonViewportRenderHost::append_scene_wireframe_overlays(
+		std::size_t view_count,
+		std::vector<crimson::OverlayCommand> &overlays,
+		std::vector<crimson::LineOverlaySegment> &line_payloads) const {
+	if (document_ == nullptr || view_count == 0U) {
+		return;
+	}
+
+	const std::uint32_t kUnselectedOffset = static_cast<std::uint32_t>(line_payloads.size());
+	std::uint32_t unselected_count = 0;
+	std::vector<crimson::LineOverlaySegment> selected_segments;
+	for (const quader::document::ObjectId kObjectId : document_->object_ids()) {
+		const quader::document::MeshObject *object = document_->find_mesh_object(kObjectId);
+		if (object == nullptr) {
+			continue;
+		}
+
+		const bool kSelected = object_is_selected(*document_, kObjectId);
+		for (const quader::mesh::EdgeId kEdge : object->mesh.edge_ids()) {
+			std::optional<crimson::LineOverlaySegment> segment =
+					scene_wire_segment_for_edge(*object, kEdge, kSelected);
+			if (!segment) {
+				continue;
+			}
+			if (kSelected) {
+				selected_segments.push_back(*segment);
+			} else {
+				line_payloads.push_back(*segment);
+				++unselected_count;
+			}
+		}
+	}
+
+	const std::uint32_t kSelectedPayloadOffset = static_cast<std::uint32_t>(line_payloads.size());
+	line_payloads.insert(line_payloads.end(), selected_segments.begin(), selected_segments.end());
+	const std::uint32_t kSelectedCount = static_cast<std::uint32_t>(selected_segments.size());
+
+	const auto append_commands = [&](std::uint32_t payload_offset,
+									 std::uint32_t payload_count,
+									 crimson::OverlaySemanticRole role,
+									 crimson::OverlaySourceKind source_kind,
+									 crimson::ColorSrgb color,
+									 float thickness_px) {
+		if (payload_count == 0U) {
+			return;
+		}
+		for (std::size_t view_index = 0; view_index < view_count; ++view_index) {
+			overlays.push_back(crimson::OverlayCommand{
+					.view_index = static_cast<std::uint32_t>(view_index),
+					.primitive = crimson::OverlayPrimitive::LineList,
+					.depth_mode = crimson::OverlayDepthMode::DepthTested,
+					.semantic_role = role,
+					.source_kind = source_kind,
+					.base_shader = crimson::BaseShaderId::OverlayUnlit,
+					.color_srgb = color,
+					.opacity = 1.0F,
+					.thickness_px = thickness_px,
+					.payload_offset = payload_offset,
+					.payload_count = payload_count,
+			});
+		}
+	};
+
+	append_commands(
+			kUnselectedOffset,
+			unselected_count,
+			crimson::OverlaySemanticRole::Generic,
+			crimson::OverlaySourceKind::Unknown,
+			crimson::ColorSrgb{ 0.02F, 0.02F, 0.02F, 0.62F },
+			1.0F);
+	append_commands(
+			kSelectedPayloadOffset,
+			kSelectedCount,
+			crimson::OverlaySemanticRole::SelectedObjectTopology,
+			crimson::OverlaySourceKind::ObjectSelection,
+			crimson::ColorSrgb{ 1.0F, 0.84F, 0.22F, 1.0F },
+			1.5F);
 }
 
 void CrimsonViewportRenderHost::append_document_selection_overlays(

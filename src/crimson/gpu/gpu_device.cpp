@@ -54,7 +54,7 @@ constexpr bgfx::ViewId kFirstOverlayView = 160;
 constexpr bgfx::ViewId kPresentView = 240;
 constexpr std::uint32_t kViewportClearColor = 0x020202ff;
 constexpr std::uint32_t kSceneViewStride = 4;
-constexpr std::uint32_t kOverlayViewStride = 3;
+constexpr std::uint32_t kOverlayViewStride = 4;
 
 struct ViewportResources {
 	bgfx::UniformHandle pbr_model_uniform = BGFX_INVALID_HANDLE;
@@ -365,9 +365,9 @@ void push_material_error(RendererStatus &status, RendererDiagnostic diagnostic) 
 		case OverlayDepthMode::DepthTested:
 			return 0;
 		case OverlayDepthMode::XRay:
-			return 1;
-		case OverlayDepthMode::AlwaysOnTop:
 			return 2;
+		case OverlayDepthMode::AlwaysOnTop:
+			return 3;
 	}
 
 	return 0;
@@ -535,6 +535,7 @@ std::uint32_t submit_pbr_packets(
 		const GpuProgramCache &program_cache,
 		const GpuMaterialCache &material_cache,
 		const ViewportResources &resources,
+		const ViewportSettings &viewport_settings,
 		PbrSubmitMode mode = PbrSubmitMode::Lit) {
 	std::uint32_t draw_calls = 0;
 	for (const PbrDrawPacket &packet : packets) {
@@ -547,7 +548,11 @@ std::uint32_t submit_pbr_packets(
 
 		bgfx::setTransform(packet.world_from_object.data());
 		bgfx::setUniform(resources.pbr_model_uniform, packet.world_from_object.data());
-		material_cache.bind_pbr_material(material_cache.material_block(materials, packet.material, *definition));
+		material_cache.bind_pbr_material(material_cache.material_block(
+				materials,
+				packet.material,
+				*definition,
+				viewport_settings));
 		material_cache.bind_pbr_textures(materials, packet.material, *definition);
 		bgfx::setVertexBuffer(0, mesh->vertex_buffer.get());
 		bgfx::setIndexBuffer(mesh->index_buffer.get());
@@ -609,31 +614,56 @@ std::uint32_t submit_grid_scene_underlay_bucket(
 std::uint32_t submit_line_overlay_bucket(
 		const OverlayDrawBucket &bucket,
 		OverlayDepthMode depth_mode,
-		std::span<const SourceWireDepthStampMetadata> source_wire_depth_stamps,
 		std::span<const RenderView> views,
 		const GpuOverlayRenderer &overlay_renderer,
 		const GpuProgramCache &program_cache,
 		RenderProgramHandle line_program,
-		bgfx::FrameBufferHandle framebuffer) {
+		RenderProgramHandle edit_line_program,
+		bgfx::FrameBufferHandle framebuffer,
+		bgfx::FrameBufferHandle edit_line_framebuffer,
+		bgfx::TextureHandle scene_depth_texture,
+		ViewportExtent target_extent) {
 	std::uint32_t draw_calls = 0;
-	const bgfx::ProgramHandle kProgram = program_cache.program(line_program);
+	const bgfx::ProgramHandle kLineProgram = program_cache.program(line_program);
+	const bgfx::ProgramHandle kEditLineProgram = program_cache.program(edit_line_program);
 	const std::uint32_t kQueueOffset = overlay_queue_offset(depth_mode);
+	const bool kCanUseManualEditDepth =
+			depth_mode == OverlayDepthMode::DepthTested &&
+			bgfx::isValid(edit_line_framebuffer) &&
+			bgfx::isValid(scene_depth_texture);
 	for (std::size_t view_index = 0; view_index < views.size(); ++view_index) {
 		const RenderView &view = views[view_index];
 		const bgfx::ViewId kViewId = overlay_view_id(view_index, kQueueOffset);
 		const std::string kViewName = std::string(render_queue_name(render_queue_for_overlay_depth_mode(depth_mode))) + ":" + view.debug_name;
 		configure_scene_view(kViewId, view, kViewName, ViewClearMode::None, framebuffer);
+		const bgfx::ViewId kEditViewId = static_cast<bgfx::ViewId>(kViewId + 1);
+		if (kCanUseManualEditDepth) {
+			configure_scene_view(
+					kEditViewId,
+					view,
+					kViewName + ":ComponentEditWireManualDepth",
+					ViewClearMode::None,
+					edit_line_framebuffer);
+		}
 
 		for (const PreparedLineOverlayCommand &lines : bucket.line_commands) {
 			if (lines.command.view_index != view.view_index) {
 				continue;
 			}
-			const PreparedLineOverlayCommand kFilteredLines =
-					make_source_wire_visibility_filtered_line_command(
+			const bool kUsesEditWirePath =
+					kCanUseManualEditDepth &&
+					lines.render_state.depth_mode == OverlayDepthMode::DepthTested &&
+					overlay_source_kind_is_component(lines.source_kind) &&
+					overlay_role_is_component_edit_wire(lines.semantic_role);
+			draw_calls += kUsesEditWirePath
+					? overlay_renderer.submit_edit_lines(
+							kEditViewId,
 							view,
+							target_extent,
 							lines,
-							source_wire_depth_stamps);
-			draw_calls += overlay_renderer.submit_lines(kViewId, view, kFilteredLines, kProgram);
+							scene_depth_texture,
+							kEditLineProgram)
+					: overlay_renderer.submit_lines(kViewId, view, lines, kLineProgram);
 		}
 	}
 	return draw_calls;
@@ -669,7 +699,6 @@ std::uint32_t submit_triangle_overlay_bucket(
 std::uint32_t submit_point_overlay_bucket(
 		const OverlayDrawBucket &bucket,
 		OverlayDepthMode depth_mode,
-		std::span<const SourceWireDepthStampMetadata> source_wire_depth_stamps,
 		std::span<const RenderView> views,
 		const GpuOverlayRenderer &overlay_renderer,
 		const GpuProgramCache &program_cache,
@@ -688,12 +717,7 @@ std::uint32_t submit_point_overlay_bucket(
 			if (points.command.view_index != view.view_index) {
 				continue;
 			}
-			const PreparedPointOverlayCommand kFilteredPoints =
-					make_source_wire_visibility_filtered_point_command(
-							view,
-							points,
-							source_wire_depth_stamps);
-			draw_calls += overlay_renderer.submit_points(kViewId, view, kFilteredPoints, kProgram);
+			draw_calls += overlay_renderer.submit_points(kViewId, view, points, kProgram);
 		}
 	}
 	return draw_calls;
@@ -830,7 +854,10 @@ struct GpuDevice::Impl {
 	PostProcessResources post_resources;
 	RenderMaterialHandle default_opaque_material;
 	RenderProgramHandle overlay_program;
+	RenderProgramHandle overlay_solid_program;
+	RenderProgramHandle overlay_device_solid_program;
 	RenderProgramHandle overlay_line_program;
+	RenderProgramHandle overlay_edit_line_program;
 	RenderProgramHandle picking_program;
 	RenderProgramHandle tone_map_program;
 	RenderProgramHandle present_program;
@@ -971,9 +998,24 @@ bool GpuDevice::initialize(const RendererConfig &config, const NativeSurfaceDesc
 			ShaderProgramId::OverlayUnlit,
 			kShaderTarget,
 			status_);
+	impl_->overlay_solid_program = impl_->program_cache.load_program(
+			shader_library,
+			ShaderProgramId::OverlaySolid,
+			kShaderTarget,
+			status_);
+	impl_->overlay_device_solid_program = impl_->program_cache.load_program(
+			shader_library,
+			ShaderProgramId::OverlayDeviceSolid,
+			kShaderTarget,
+			status_);
 	impl_->overlay_line_program = impl_->program_cache.load_program(
 			shader_library,
 			ShaderProgramId::OverlayLine,
+			kShaderTarget,
+			status_);
+	impl_->overlay_edit_line_program = impl_->program_cache.load_program(
+			shader_library,
+			ShaderProgramId::OverlayEditLine,
 			kShaderTarget,
 			status_);
 	impl_->picking_program = impl_->program_cache.load_program(
@@ -1081,7 +1123,10 @@ void GpuDevice::shutdown() noexcept {
 	impl_->material_system = MaterialSystem{};
 	impl_->default_opaque_material = {};
 	impl_->overlay_program = {};
+	impl_->overlay_solid_program = {};
+	impl_->overlay_device_solid_program = {};
 	impl_->overlay_line_program = {};
+	impl_->overlay_edit_line_program = {};
 	impl_->picking_program = {};
 	impl_->tone_map_program = {};
 	impl_->present_program = {};
@@ -1198,6 +1243,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 	const bgfx::FrameBufferHandle kToneMappedFramebuffer = impl_->frame_resources.tone_mapped_framebuffer();
 	const bgfx::TextureHandle kHdrSceneTexture = impl_->frame_resources.texture(kHdrSceneColorTargetName);
 	const bgfx::TextureHandle kToneMappedTexture = impl_->frame_resources.texture(kToneMappedColorTargetName);
+	const bgfx::TextureHandle kSceneDepthTexture = impl_->frame_resources.texture(kSceneDepthTargetName);
 
 	GpuPickingFrameResult picking_frame;
 	if (impl_->picking.ready()) {
@@ -1214,11 +1260,13 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 	FramePacketStats packet_stats;
 	FrameInstancingStats instancing_stats;
 	FrameUploadStats upload_stats;
-	const bool kDrawOverlayCommands = snapshot.viewport_settings().draw_overlays &&
-			snapshot.viewport_settings().draw_grid_overlay &&
+	const bool kDrawGridCommands = snapshot.viewport_settings().draw_grid_overlay &&
 			impl_->overlay_renderer.ready();
+	const bool kDrawEditorOverlayCommands = snapshot.viewport_settings().draw_overlays &&
+			impl_->overlay_renderer.ready();
+	const bool kPrepareOverlayCommands = kDrawGridCommands || kDrawEditorOverlayCommands;
 	std::optional<OverlayDrawLists> overlay_draw_lists;
-	if (kDrawOverlayCommands) {
+	if (kPrepareOverlayCommands) {
 		overlay_draw_lists = OverlaySystem{}.prepare(
 				snapshot.overlays(),
 				snapshot.grid_overlay_payloads(),
@@ -1304,7 +1352,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 					ViewClearMode::None,
 					kHdrSceneFramebuffer);
 
-			if (overlay_draw_lists.has_value()) {
+			if (kDrawGridCommands && overlay_draw_lists.has_value()) {
 				queue_stats.overlay_draw_count += submit_grid_scene_underlay_bucket(
 						overlay_draw_lists->always_on_top,
 						view,
@@ -1324,6 +1372,7 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 						impl_->program_cache,
 						impl_->material_cache,
 						impl_->viewport_resources,
+						snapshot.viewport_settings(),
 						PbrSubmitMode::DepthOnly);
 				queue_stats.opaque_draw_count += submit_pbr_packets(
 						kOpaqueViewId,
@@ -1333,7 +1382,8 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 						impl_->mesh_cache,
 						impl_->program_cache,
 						impl_->material_cache,
-						impl_->viewport_resources);
+						impl_->viewport_resources,
+						snapshot.viewport_settings());
 				queue_stats.alpha_cutout_draw_count += submit_pbr_packets(
 						kCutoutViewId,
 						packets.alpha_cutout,
@@ -1342,7 +1392,8 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 						impl_->mesh_cache,
 						impl_->program_cache,
 						impl_->material_cache,
-						impl_->viewport_resources);
+						impl_->viewport_resources,
+						snapshot.viewport_settings());
 				queue_stats.transparent_draw_count += submit_pbr_packets(
 						kTransparentViewId,
 						packets.transparent,
@@ -1351,7 +1402,8 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 						impl_->mesh_cache,
 						impl_->program_cache,
 						impl_->material_cache,
-						impl_->viewport_resources);
+						impl_->viewport_resources,
+						snapshot.viewport_settings());
 			}
 		}
 
@@ -1378,108 +1430,118 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 
 		if (overlay_draw_lists.has_value()) {
 			const OverlayDrawLists &kOverlayDrawLists = *overlay_draw_lists;
-			queue_stats.overlay_draw_count += submit_grid_overlay_bucket(
-					kOverlayDrawLists.depth_tested,
-					OverlayDepthMode::DepthTested,
-					snapshot.views(),
-					impl_->overlay_renderer,
-					impl_->program_cache,
-					impl_->overlay_program,
-					kToneMappedFramebuffer);
-			queue_stats.overlay_draw_count += submit_grid_overlay_bucket(
-					kOverlayDrawLists.xray,
-					OverlayDepthMode::XRay,
-					snapshot.views(),
-					impl_->overlay_renderer,
-					impl_->program_cache,
-					impl_->overlay_program,
-					kToneMappedFramebuffer);
-			queue_stats.overlay_draw_count += submit_grid_overlay_bucket(
-					kOverlayDrawLists.always_on_top,
-					OverlayDepthMode::AlwaysOnTop,
-					snapshot.views(),
-					impl_->overlay_renderer,
-					impl_->program_cache,
-					impl_->overlay_program,
-					kToneMappedFramebuffer);
-			queue_stats.overlay_draw_count += submit_triangle_overlay_bucket(
-					kOverlayDrawLists.depth_tested,
-					OverlayDepthMode::DepthTested,
-					snapshot.views(),
-					impl_->overlay_renderer,
-					impl_->program_cache,
-					impl_->overlay_line_program,
-					kToneMappedFramebuffer);
-			queue_stats.overlay_draw_count += submit_triangle_overlay_bucket(
-					kOverlayDrawLists.xray,
-					OverlayDepthMode::XRay,
-					snapshot.views(),
-					impl_->overlay_renderer,
-					impl_->program_cache,
-					impl_->overlay_line_program,
-					kToneMappedFramebuffer);
-			queue_stats.overlay_draw_count += submit_triangle_overlay_bucket(
-					kOverlayDrawLists.always_on_top,
-					OverlayDepthMode::AlwaysOnTop,
-					snapshot.views(),
-					impl_->overlay_renderer,
-					impl_->program_cache,
-					impl_->overlay_line_program,
-					kToneMappedFramebuffer);
-			queue_stats.overlay_draw_count += submit_line_overlay_bucket(
-					kOverlayDrawLists.depth_tested,
-					OverlayDepthMode::DepthTested,
-					kOverlayDrawLists.source_wire_depth_stamps,
-					snapshot.views(),
-					impl_->overlay_renderer,
-					impl_->program_cache,
-					impl_->overlay_line_program,
-					kToneMappedFramebuffer);
-			queue_stats.overlay_draw_count += submit_line_overlay_bucket(
-					kOverlayDrawLists.xray,
-					OverlayDepthMode::XRay,
-					kOverlayDrawLists.source_wire_depth_stamps,
-					snapshot.views(),
-					impl_->overlay_renderer,
-					impl_->program_cache,
-					impl_->overlay_line_program,
-					kToneMappedFramebuffer);
-			queue_stats.overlay_draw_count += submit_line_overlay_bucket(
-					kOverlayDrawLists.always_on_top,
-					OverlayDepthMode::AlwaysOnTop,
-					kOverlayDrawLists.source_wire_depth_stamps,
-					snapshot.views(),
-					impl_->overlay_renderer,
-					impl_->program_cache,
-					impl_->overlay_line_program,
-					kToneMappedFramebuffer);
-			queue_stats.overlay_draw_count += submit_point_overlay_bucket(
-					kOverlayDrawLists.depth_tested,
-					OverlayDepthMode::DepthTested,
-					kOverlayDrawLists.source_wire_depth_stamps,
-					snapshot.views(),
-					impl_->overlay_renderer,
-					impl_->program_cache,
-					impl_->overlay_line_program,
-					kToneMappedFramebuffer);
-			queue_stats.overlay_draw_count += submit_point_overlay_bucket(
-					kOverlayDrawLists.xray,
-					OverlayDepthMode::XRay,
-					kOverlayDrawLists.source_wire_depth_stamps,
-					snapshot.views(),
-					impl_->overlay_renderer,
-					impl_->program_cache,
-					impl_->overlay_line_program,
-					kToneMappedFramebuffer);
-			queue_stats.overlay_draw_count += submit_point_overlay_bucket(
-					kOverlayDrawLists.always_on_top,
-					OverlayDepthMode::AlwaysOnTop,
-					kOverlayDrawLists.source_wire_depth_stamps,
-					snapshot.views(),
-					impl_->overlay_renderer,
-					impl_->program_cache,
-					impl_->overlay_line_program,
-					kToneMappedFramebuffer);
+			if (kDrawGridCommands) {
+				queue_stats.overlay_draw_count += submit_grid_overlay_bucket(
+						kOverlayDrawLists.depth_tested,
+						OverlayDepthMode::DepthTested,
+						snapshot.views(),
+						impl_->overlay_renderer,
+						impl_->program_cache,
+						impl_->overlay_program,
+						kToneMappedFramebuffer);
+				queue_stats.overlay_draw_count += submit_grid_overlay_bucket(
+						kOverlayDrawLists.xray,
+						OverlayDepthMode::XRay,
+						snapshot.views(),
+						impl_->overlay_renderer,
+						impl_->program_cache,
+						impl_->overlay_program,
+						kToneMappedFramebuffer);
+				queue_stats.overlay_draw_count += submit_grid_overlay_bucket(
+						kOverlayDrawLists.always_on_top,
+						OverlayDepthMode::AlwaysOnTop,
+						snapshot.views(),
+						impl_->overlay_renderer,
+						impl_->program_cache,
+						impl_->overlay_program,
+						kToneMappedFramebuffer);
+			}
+			if (kDrawEditorOverlayCommands) {
+				queue_stats.overlay_draw_count += submit_triangle_overlay_bucket(
+						kOverlayDrawLists.depth_tested,
+						OverlayDepthMode::DepthTested,
+						snapshot.views(),
+						impl_->overlay_renderer,
+						impl_->program_cache,
+						impl_->overlay_solid_program,
+						kToneMappedFramebuffer);
+				queue_stats.overlay_draw_count += submit_triangle_overlay_bucket(
+						kOverlayDrawLists.xray,
+						OverlayDepthMode::XRay,
+						snapshot.views(),
+						impl_->overlay_renderer,
+						impl_->program_cache,
+						impl_->overlay_solid_program,
+						kToneMappedFramebuffer);
+				queue_stats.overlay_draw_count += submit_triangle_overlay_bucket(
+						kOverlayDrawLists.always_on_top,
+						OverlayDepthMode::AlwaysOnTop,
+						snapshot.views(),
+						impl_->overlay_renderer,
+						impl_->program_cache,
+						impl_->overlay_solid_program,
+						kToneMappedFramebuffer);
+				queue_stats.overlay_draw_count += submit_line_overlay_bucket(
+						kOverlayDrawLists.depth_tested,
+						OverlayDepthMode::DepthTested,
+						snapshot.views(),
+						impl_->overlay_renderer,
+						impl_->program_cache,
+						impl_->overlay_line_program,
+						impl_->overlay_edit_line_program,
+						kToneMappedFramebuffer,
+						kToneMappedColorFramebuffer,
+						kSceneDepthTexture,
+						kTargetExtent);
+				queue_stats.overlay_draw_count += submit_line_overlay_bucket(
+						kOverlayDrawLists.xray,
+						OverlayDepthMode::XRay,
+						snapshot.views(),
+						impl_->overlay_renderer,
+						impl_->program_cache,
+						impl_->overlay_line_program,
+						impl_->overlay_edit_line_program,
+						kToneMappedFramebuffer,
+						kToneMappedColorFramebuffer,
+						kSceneDepthTexture,
+						kTargetExtent);
+				queue_stats.overlay_draw_count += submit_line_overlay_bucket(
+						kOverlayDrawLists.always_on_top,
+						OverlayDepthMode::AlwaysOnTop,
+						snapshot.views(),
+						impl_->overlay_renderer,
+						impl_->program_cache,
+						impl_->overlay_line_program,
+						impl_->overlay_edit_line_program,
+						kToneMappedFramebuffer,
+						kToneMappedColorFramebuffer,
+						kSceneDepthTexture,
+						kTargetExtent);
+				queue_stats.overlay_draw_count += submit_point_overlay_bucket(
+						kOverlayDrawLists.depth_tested,
+						OverlayDepthMode::DepthTested,
+						snapshot.views(),
+						impl_->overlay_renderer,
+						impl_->program_cache,
+						impl_->overlay_device_solid_program,
+						kToneMappedFramebuffer);
+				queue_stats.overlay_draw_count += submit_point_overlay_bucket(
+						kOverlayDrawLists.xray,
+						OverlayDepthMode::XRay,
+						snapshot.views(),
+						impl_->overlay_renderer,
+						impl_->program_cache,
+						impl_->overlay_device_solid_program,
+						kToneMappedFramebuffer);
+				queue_stats.overlay_draw_count += submit_point_overlay_bucket(
+						kOverlayDrawLists.always_on_top,
+						OverlayDepthMode::AlwaysOnTop,
+						snapshot.views(),
+						impl_->overlay_renderer,
+						impl_->program_cache,
+						impl_->overlay_device_solid_program,
+						kToneMappedFramebuffer);
+			}
 		}
 
 		const bgfx::ProgramHandle kPresentProgram = impl_->program_cache.program(impl_->present_program);

@@ -124,7 +124,7 @@ struct SourceWireDepthStampMetadata {
 	std::uint32_t view_index = 0;
 	/// Source category that produced the stamp.
 	OverlaySourceKind source_kind = OverlaySourceKind::Unknown;
-	/// Triangle used by the source-wire visibility filter.
+	/// Triangle metadata retained for source-wire ownership/depth semantics.
 	TriangleOverlayPrimitive triangle;
 	/// First referenced triangle payload.
 	std::uint32_t payload_offset = 0;

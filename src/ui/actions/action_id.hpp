@@ -49,6 +49,9 @@ enum class ActionId : std::uint16_t {
 	ViewPerspective, ///< Switch the active view to perspective mode.
 	ViewShaded, ///< Switch the viewport to shaded mode.
 	ToggleQuadViewports, ///< Toggle single/quad viewport layout.
+	ShowGrid, ///< Show or hide the ground grid.
+	ShowOverlays, ///< Show or hide editor overlays.
+	ShowMeshGrid, ///< Show or hide material-space mesh surface grid.
 	FocusViewport, ///< Focus the viewport on the current selection.
 
 	ShowScenePanel, ///< Show or hide the scene panel.

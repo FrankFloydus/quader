@@ -58,6 +58,7 @@ struct FakeRenderHost final : quader::ui::IViewportRenderHost {
 	std::size_t last_camera_count = 0;
 	std::vector<quader::ui::ViewportCameraSnapshot> last_cameras;
 	bool last_animation_enabled = false;
+	quader::ui::ViewportDisplaySettings last_display_settings;
 	std::optional<quader::ui::ViewportFrameStats> stats;
 	std::optional<quader::ui::ViewportDiagnosticsSnapshot> diagnostics;
 
@@ -85,6 +86,7 @@ struct FakeRenderHost final : quader::ui::IViewportRenderHost {
 		last_camera_count = request.cameras.size();
 		last_cameras.assign(request.cameras.begin(), request.cameras.end());
 		last_animation_enabled = request.scene_animation_enabled;
+		last_display_settings = request.display_settings;
 		stats = quader::ui::ViewportFrameStats{
 			request.surface_size.width,
 			request.surface_size.height,
@@ -515,13 +517,13 @@ TEST(Viewport, CameraControllerUpdatesFromSyntheticInputWithoutQtEvents) {
 	const quader::ui::ViewportCameraSnapshot kAfter = cameras.camera_snapshots()[0];
 	EXPECT_TRUE(!quader::math::nearly_equal(kBefore.eye, kAfter.eye, 0.0001F));
 	EXPECT_EQ(cameras.navigation_mode(), quader::ui::NavigationMode::None);
-	EXPECT_FLOAT_EQ(kAfter.settings.clip.near_clip_m, 0.01F);
+	EXPECT_FLOAT_EQ(kAfter.settings.clip.near_clip_m, 0.05F);
 	EXPECT_FLOAT_EQ(kAfter.settings.clip.far_clip_m, 1000.0F);
 	EXPECT_FLOAT_EQ(kAfter.settings.fov_degrees, 60.0F);
 
 	const quader::ui::ViewportCameraSnapshot kTop = cameras.camera_snapshots()[1];
 	EXPECT_EQ(kTop.projection, quader::ui::CameraProjection::Orthographic);
-	EXPECT_FLOAT_EQ(kTop.settings.clip.near_clip_m, 0.01F);
+	EXPECT_FLOAT_EQ(kTop.settings.clip.near_clip_m, 0.05F);
 	EXPECT_FLOAT_EQ(kTop.settings.clip.far_clip_m, 1000.0F);
 	EXPECT_FLOAT_EQ(kTop.settings.orthographic_size, 24.0F);
 }
@@ -542,7 +544,7 @@ TEST(Viewport, CameraControllerOwnsPerCameraSettings) {
 	EXPECT_FLOAT_EQ(kSnapshots[0].settings.clip.far_clip_m, 500.0F);
 	EXPECT_FLOAT_EQ(kSnapshots[0].settings.fov_degrees, 45.0F);
 	EXPECT_FLOAT_EQ(kSnapshots[0].settings.orthographic_size, 12.0F);
-	EXPECT_FLOAT_EQ(kSnapshots[1].settings.clip.near_clip_m, 0.01F);
+	EXPECT_FLOAT_EQ(kSnapshots[1].settings.clip.near_clip_m, 0.05F);
 	EXPECT_FLOAT_EQ(kSnapshots[1].settings.clip.far_clip_m, 1000.0F);
 }
 
@@ -588,9 +590,22 @@ TEST(Viewport, ControllerForwardsSurfaceResizeAndQuadRenderRequests) {
 	EXPECT_EQ(host.last_pane_count, 4U);
 	EXPECT_EQ(host.last_camera_count, 4U);
 	ASSERT_EQ(host.last_cameras.size(), 4U);
-	EXPECT_FLOAT_EQ(host.last_cameras[0].settings.clip.near_clip_m, 0.01F);
+	EXPECT_FLOAT_EQ(host.last_cameras[0].settings.clip.near_clip_m, 0.05F);
 	EXPECT_FLOAT_EQ(host.last_cameras[0].settings.clip.far_clip_m, 1000.0F);
 	EXPECT_TRUE(host.last_animation_enabled);
+	EXPECT_TRUE(host.last_display_settings.show_grid);
+	EXPECT_TRUE(host.last_display_settings.show_overlays);
+	EXPECT_FALSE(host.last_display_settings.show_mesh_grid);
+
+	controller.set_display_settings(quader::ui::ViewportDisplaySettings{
+			.show_grid = false,
+			.show_overlays = false,
+			.show_mesh_grid = true,
+	});
+	controller.render_frame(1.5, 0.016F);
+	EXPECT_FALSE(host.last_display_settings.show_grid);
+	EXPECT_FALSE(host.last_display_settings.show_overlays);
+	EXPECT_TRUE(host.last_display_settings.show_mesh_grid);
 
 	controller.set_scene_animation_enabled(false);
 	controller.render_frame(2.0, 0.016F);
@@ -1080,7 +1095,7 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsComponentSourceWireAndSelecte
 	EXPECT_TRUE(point_payloads.empty());
 	EXPECT_TRUE(std::any_of(line_payloads.begin(), line_payloads.end(), [](const crimson::LineOverlaySegment &line) {
 		return line.semantic_role == crimson::OverlaySemanticRole::SourceWire &&
-				line.source_kind == crimson::OverlaySourceKind::SourceWire;
+				line.source_kind == crimson::OverlaySourceKind::ComponentSelection;
 	}));
 	EXPECT_TRUE(std::any_of(line_payloads.begin(), line_payloads.end(), [](const crimson::LineOverlaySegment &line) {
 		return line.semantic_role == crimson::OverlaySemanticRole::SelectedFaceEdge &&
@@ -1105,12 +1120,14 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsComponentSourceWireAndSelecte
 	EXPECT_FLOAT_EQ(kSelectedLineCommand->color_srgb.r, 1.0F);
 	EXPECT_FLOAT_EQ(kSelectedLineCommand->color_srgb.g, 211.0F / 255.0F);
 	EXPECT_FLOAT_EQ(kSelectedLineCommand->color_srgb.b, 31.0F / 255.0F);
+	EXPECT_EQ(kSelectedLineCommand->depth_mode, crimson::OverlayDepthMode::DepthTested);
 	const auto kSourceLineCommand = std::find_if(overlays.begin(), overlays.end(), [](const crimson::OverlayCommand &command) {
 		return command.primitive == crimson::OverlayPrimitive::LineList &&
 				command.semantic_role == crimson::OverlaySemanticRole::SourceWire &&
-				command.source_kind == crimson::OverlaySourceKind::SourceWire;
+				command.source_kind == crimson::OverlaySourceKind::ComponentSelection;
 	});
 	ASSERT_TRUE(kSourceLineCommand != overlays.end());
+	EXPECT_EQ(kSourceLineCommand->depth_mode, crimson::OverlayDepthMode::AlwaysOnTop);
 	EXPECT_LT(std::distance(overlays.begin(), kSourceLineCommand), std::distance(overlays.begin(), kSelectedLineCommand));
 	const auto kSelectedFillCommand = std::find_if(overlays.begin(), overlays.end(), [](const crimson::OverlayCommand &command) {
 		return command.primitive == crimson::OverlayPrimitive::SolidTriangles &&
@@ -1160,7 +1177,7 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsHoverComponentOverlays) {
 	EXPECT_TRUE(point_payloads.empty());
 	EXPECT_TRUE(std::any_of(line_payloads.begin(), line_payloads.end(), [](const crimson::LineOverlaySegment &line) {
 		return line.semantic_role == crimson::OverlaySemanticRole::SourceWire &&
-				line.source_kind == crimson::OverlaySourceKind::SourceWire;
+				line.source_kind == crimson::OverlaySourceKind::ComponentSelection;
 	}));
 	EXPECT_TRUE(std::any_of(line_payloads.begin(), line_payloads.end(), [](const crimson::LineOverlaySegment &line) {
 		return line.semantic_role == crimson::OverlaySemanticRole::HoverFaceEdge &&
@@ -1188,6 +1205,7 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsHoverComponentOverlays) {
 	EXPECT_FLOAT_EQ(kHoverLineCommand->color_srgb.r, 81.0F / 255.0F);
 	EXPECT_FLOAT_EQ(kHoverLineCommand->color_srgb.g, 1.0F);
 	EXPECT_FLOAT_EQ(kHoverLineCommand->color_srgb.b, 0.0F);
+	EXPECT_EQ(kHoverLineCommand->depth_mode, crimson::OverlayDepthMode::DepthTested);
 }
 
 TEST(Viewport, DocumentSelectionOverlayAdapterKeepsSelectedFaceUnderNormalHover) {
@@ -1333,7 +1351,7 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsEdgeAndVertexComponentHandles
 
 	EXPECT_EQ(std::count_if(point_payloads.begin(), point_payloads.end(), [](const crimson::PointOverlayPrimitive &point) {
 		return point.semantic_role == crimson::OverlaySemanticRole::SourceVertex &&
-				point.source_kind == crimson::OverlaySourceKind::SourceWire;
+				point.source_kind == crimson::OverlaySourceKind::ComponentSelection;
 	}), 2);
 	const auto kSelectedPointIt = std::find_if(point_payloads.begin(),
 			point_payloads.end(),
@@ -1346,7 +1364,7 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsEdgeAndVertexComponentHandles
 	EXPECT_FLOAT_EQ(kSelectedPointIt->size_px, 7.5F);
 	const auto kSourceCommandIt = std::find_if(overlays.begin(), overlays.end(), [](const crimson::OverlayCommand &command) {
 		return command.semantic_role == crimson::OverlaySemanticRole::SourceVertex &&
-				command.source_kind == crimson::OverlaySourceKind::SourceWire;
+				command.source_kind == crimson::OverlaySourceKind::ComponentSelection;
 	});
 	const auto kSelectedCommandIt = std::find_if(overlays.begin(), overlays.end(), [](const crimson::OverlayCommand &command) {
 		return command.semantic_role == crimson::OverlaySemanticRole::SelectedVertex &&
@@ -1355,6 +1373,8 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsEdgeAndVertexComponentHandles
 	ASSERT_TRUE(kSourceCommandIt != overlays.end());
 	ASSERT_TRUE(kSelectedCommandIt != overlays.end());
 	EXPECT_LT(std::distance(overlays.begin(), kSourceCommandIt), std::distance(overlays.begin(), kSelectedCommandIt));
+	EXPECT_EQ(kSourceCommandIt->depth_mode, crimson::OverlayDepthMode::DepthTested);
+	EXPECT_EQ(kSelectedCommandIt->depth_mode, crimson::OverlayDepthMode::DepthTested);
 }
 
 TEST(Viewport, DocumentSelectionOverlayAdapterKeepsSelectedSourceWireForDifferentHoverMesh) {
@@ -1393,12 +1413,12 @@ TEST(Viewport, DocumentSelectionOverlayAdapterKeepsSelectedSourceWireForDifferen
 
 	const auto kSelectedObjectWireCount = std::count_if(line_payloads.begin(), line_payloads.end(), [&fixture](const crimson::LineOverlaySegment &line) {
 		return line.semantic_role == crimson::OverlaySemanticRole::SourceWire &&
-				line.source_kind == crimson::OverlaySourceKind::SourceWire &&
+				line.source_kind == crimson::OverlaySourceKind::ComponentSelection &&
 				line.element.object_id == quader::ui::render_object_id_for_document_object(fixture.object);
 	});
 	const auto kHoverObjectWireCount = std::count_if(line_payloads.begin(), line_payloads.end(), [second_object](const crimson::LineOverlaySegment &line) {
 		return line.semantic_role == crimson::OverlaySemanticRole::SourceWire &&
-				line.source_kind == crimson::OverlaySourceKind::SourceWire &&
+				line.source_kind == crimson::OverlaySourceKind::ComponentSelection &&
 				line.element.object_id == quader::ui::render_object_id_for_document_object(second_object.value());
 	});
 	EXPECT_EQ(kSelectedObjectWireCount, 3);
@@ -1458,7 +1478,7 @@ TEST(Viewport, DocumentSelectionOverlayAdapterKeepsStickySourceWireForSameMeshHo
 
 	const auto kSourceWireCount = std::count_if(line_payloads.begin(), line_payloads.end(), [object_id](const crimson::LineOverlaySegment &line) {
 		return line.semantic_role == crimson::OverlaySemanticRole::SourceWire &&
-				line.source_kind == crimson::OverlaySourceKind::SourceWire &&
+				line.source_kind == crimson::OverlaySourceKind::ComponentSelection &&
 				line.element.object_id == quader::ui::render_object_id_for_document_object(object_id);
 	});
 	EXPECT_EQ(kSourceWireCount, static_cast<std::ptrdiff_t>(object->mesh.edge_count()));
@@ -1511,12 +1531,12 @@ TEST(Viewport, DocumentSelectionOverlayAdapterUsesHoverSourceWireWhenNoCurrentMo
 
 	const auto kFallbackObjectWireCount = std::count_if(line_payloads.begin(), line_payloads.end(), [&fixture](const crimson::LineOverlaySegment &line) {
 		return line.semantic_role == crimson::OverlaySemanticRole::SourceWire &&
-				line.source_kind == crimson::OverlaySourceKind::SourceWire &&
+				line.source_kind == crimson::OverlaySourceKind::ComponentSelection &&
 				line.element.object_id == quader::ui::render_object_id_for_document_object(fixture.object);
 	});
 	const auto kHoverObjectWireCount = std::count_if(line_payloads.begin(), line_payloads.end(), [second_object](const crimson::LineOverlaySegment &line) {
 		return line.semantic_role == crimson::OverlaySemanticRole::SourceWire &&
-				line.source_kind == crimson::OverlaySourceKind::SourceWire &&
+				line.source_kind == crimson::OverlaySourceKind::ComponentSelection &&
 				line.element.object_id == quader::ui::render_object_id_for_document_object(second_object.value());
 	});
 	EXPECT_EQ(kFallbackObjectWireCount, 0);

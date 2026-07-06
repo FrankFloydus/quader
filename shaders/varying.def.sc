@@ -5,3 +5,6 @@ vec3 v_normal : NORMAL;
 vec3 v_gridWorldPosition : TEXCOORD0;
 vec3 v_gridLocalPosition : TEXCOORD1;
 vec2 v_texcoord0 : TEXCOORD2;
+vec3 v_worldPosition : TEXCOORD3;
+float v_lineDistancePixels : TEXCOORD4;
+float v_lineOriginalDeviceZ : TEXCOORD5;

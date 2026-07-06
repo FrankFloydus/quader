@@ -1,0 +1,22 @@
+# Windows Overlay Parity Reference
+
+This file is the working parity reference for the Qt/Crimson overlay port. The source of truth is
+`C:\Users\Drako\Desktop\quader-windows\quader-app`.
+
+| Feature | Windows app | Qt app |
+|---|---|---|
+| Dedicated edit-wire path | Component `SourceWire`, `SelectedFaceEdge`, `SelectedEdge`, `HoverFaceEdge`, and `HoverEdge` lines route to a dedicated edit-wire batch. | Component `SourceWire`, `SelectedFaceEdge`, `SelectedEdge`, `HoverFaceEdge`, and `HoverEdge` lines route to `GpuOverlayRenderer::submit_edit_lines()`. |
+| Component source/edge wires | Depth-tested edit-wire overlays. No x-ray in component mode unless the explicit x-ray mode is used. | Component source/edge wires resolve to `OverlayDepthMode::DepthTested` and submit through the edit-wire renderer. |
+| Edit-wire geometry | CPU-clipped before expansion, expanded as device-space quads, submitted with renderable culling disabled, no depth writes. | CPU-clipped before expansion, expanded as device-space quads, no cull state, no depth writes. |
+| Edit-wire depth bias | Uses post-projection edit-wire depth bias: view-depth bias `0.04`, capped by max device offset `-0.0008` after adapting to the renderer depth convention. | Uses the same edit-wire bias constants and applies them only in `submit_edit_lines()`. |
+| Generic overlay lines | Device-space quads, distance-feathered fragment coverage, premultiplied overlay output. | `submit_lines()` uses device-space quads, distance-feathered fragment coverage, and premultiplied overlay output. |
+| Generic line depth bias | Depth-tested generic lines use the reference fixed device-depth bias scale: `depth_bias * near_plane * 0.0025`, adapted toward camera for normal bgfx depth. | Generic depth-tested lines use fixed device-depth bias; component edit wires do not inherit it. |
+| SourceWireDepthStamp | Metadata only. It remains in the overlay frame/signature but does not render and does not CPU-cull source-wire visibility. | Metadata only in `OverlayDrawLists::source_wire_depth_stamps`; it does not create render batches or CPU-cull source-wire visibility. |
+| Component vertices | Windows draws component vertex handles on top. | Qt intentionally depth-tests component `SourceVertex`, `SelectedVertex`, and `HoverVertex` because this is the established no-x-ray behavior for the Qt viewport bug state. |
+| Point bias | Draw-on-top component point handles receive no depth bias. | Qt component point handles use the depth-tested point path so occluded component vertices do not show through. |
+| Near clip default | Viewport/render camera default near clip is `0.05 m`; viewport sanitizer minimum is `0.001 m`; overlay projector may clamp internally to `0.0001 m`. | Viewport/render camera default near clip is `0.05 m`; viewport sanitizer minimum is `0.001 m`; overlay projector clamps internally to `0.0001 m`. |
+| Overlay blending | Overlay shaders output premultiplied color and blend over the tone-mapped target without writing depth, except depth-stamp passes. | Overlay line, edit-line, solid, and grid shaders output premultiplied color; overlay states use `ONE, INV_SRC_ALPHA` blending. |
+| Face fills | Selected/hover face fills are two-sided depth-stamped overlays with an equal-depth color pass. | Selected/hover face fills split into depth-stamp plus equal-depth color passes and are two-sided. |
+| Source-wire owner stickiness | Component source-wire ownership is mode-specific: vertices stick only in vertex mode, edges only in edge mode, faces only in face mode; hover replaces fallback when no current-mode component is selected. | Component source-wire ownership is mode-specific and hover replaces fallback when no current-mode component is selected. |
+| Source-wire picking occlusion | Selected source-wire handles are not rejected by same-mesh face hits; handles are not rejected by a nearer face that owns the same vertex/edge. | Component handle picking skips selected handles and skips same-mesh occlusion when the nearest face contains the picked vertex/edge. |
+| Component extraction metadata | Overlay primitives carry object/component refs used for picking, signatures, and renderer policy. Incident-face details are picking/visibility support, not a render-time CPU culling path. | Overlay primitives carry object/component refs plus incident-face metadata for support code; render submission does not CPU-filter by incident faces. |

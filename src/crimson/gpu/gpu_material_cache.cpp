@@ -451,6 +451,10 @@ struct GpuMaterialCache::Impl {
 	UniqueUniformHandle factors_uniform;
 	UniqueUniformHandle uv_transform_uniform;
 	UniqueUniformHandle flags_uniform;
+	UniqueUniformHandle surface_grid_minor_color_uniform;
+	UniqueUniformHandle surface_grid_major_color_uniform;
+	UniqueUniformHandle surface_grid_params_uniform;
+	UniqueUniformHandle surface_grid_flags_uniform;
 	UniqueUniformHandle base_color_texture_uniform;
 	std::array<DefaultTexture, kDefaultTextureCount> default_textures;
 	FrameUploadStats upload_stats;
@@ -466,9 +470,41 @@ struct GpuMaterialCache::Impl {
 			}
 		}
 
-		return default_textures[texture_index(fallback)].texture.get();
+		const DefaultTexture &fallback_texture = default_textures[texture_index(fallback)];
+		if (fallback_texture.texture.valid()) {
+			return fallback_texture.texture.get();
+		}
+		if (fallback != DefaultTextureIndex::BaseColorFallback) {
+			return default_textures[texture_index(DefaultTextureIndex::BaseColorFallback)].texture.get();
+		}
+		return fallback_texture.texture.get();
 	}
 };
+
+[[nodiscard]] std::array<float, 4> linear_color_array(ColorSrgb color) noexcept {
+	const ColorLinear kLinear = srgb_to_linear(color);
+	return { kLinear.r, kLinear.g, kLinear.b, kLinear.a };
+}
+
+void apply_surface_grid_settings(
+		GpuPbrMaterialBlock &block,
+		const ViewportSettings &settings) noexcept {
+	const float kBaseSpacing = std::max(0.0001F, settings.surface_grid_size_m);
+	block.surface_grid_minor_color_linear = linear_color_array(settings.surface_grid_minor_color);
+	block.surface_grid_major_color_linear = linear_color_array(settings.surface_grid_major_color);
+	block.surface_grid_params = {
+		kBaseSpacing,
+		std::max(kBaseSpacing, settings.surface_grid_major_size_m),
+		std::clamp(settings.surface_grid_minor_line_thickness, 0.05F, 8.0F),
+		std::clamp(settings.surface_grid_major_line_thickness, 0.05F, 8.0F),
+	};
+	block.surface_grid_flags = {
+		settings.draw_mesh_grid ? 1.0F : 0.0F,
+		0.0F,
+		0.0F,
+		0.0F,
+	};
+}
 
 GpuPbrMaterialBlock pack_pbr_material_block(
 		const MaterialInstance &material,
@@ -529,6 +565,10 @@ bool GpuMaterialCache::initialize(const RendererConfig &config, RendererStatus &
 	impl_->factors_uniform.reset(bgfx::createUniform("u_pbrFactors", bgfx::UniformType::Vec4));
 	impl_->uv_transform_uniform.reset(bgfx::createUniform("u_pbrUvTransform0", bgfx::UniformType::Vec4));
 	impl_->flags_uniform.reset(bgfx::createUniform("u_pbrFlags", bgfx::UniformType::Vec4));
+	impl_->surface_grid_minor_color_uniform.reset(bgfx::createUniform("u_surfaceGridMinorColor", bgfx::UniformType::Vec4));
+	impl_->surface_grid_major_color_uniform.reset(bgfx::createUniform("u_surfaceGridMajorColor", bgfx::UniformType::Vec4));
+	impl_->surface_grid_params_uniform.reset(bgfx::createUniform("u_surfaceGridParams", bgfx::UniformType::Vec4));
+	impl_->surface_grid_flags_uniform.reset(bgfx::createUniform("u_surfaceGridFlags", bgfx::UniformType::Vec4));
 	impl_->base_color_texture_uniform.reset(bgfx::createUniform("s_pbrBaseColorTexture", bgfx::UniformType::Sampler));
 	impl_->default_textures[texture_index(DefaultTextureIndex::BaseColorFallback)] = DefaultTexture{
 		create_default_texture(0xffffffffU, TextureColorSpace::Srgb),
@@ -555,7 +595,7 @@ bool GpuMaterialCache::initialize(const RendererConfig &config, RendererStatus &
 		TextureColorSpace::Srgb,
 	};
 
-	impl_->initialized = impl_->base_color_uniform.valid() && impl_->emissive_uniform.valid() && impl_->factors_uniform.valid() && impl_->uv_transform_uniform.valid() && impl_->flags_uniform.valid() && impl_->base_color_texture_uniform.valid();
+	impl_->initialized = impl_->base_color_uniform.valid() && impl_->emissive_uniform.valid() && impl_->factors_uniform.valid() && impl_->uv_transform_uniform.valid() && impl_->flags_uniform.valid() && impl_->surface_grid_minor_color_uniform.valid() && impl_->surface_grid_major_color_uniform.valid() && impl_->surface_grid_params_uniform.valid() && impl_->surface_grid_flags_uniform.valid() && impl_->base_color_texture_uniform.valid();
 	for (std::size_t index = 0; index < texture_index(DefaultTextureIndex::DefaultAlbedo); ++index) {
 		impl_->initialized = impl_->initialized && impl_->default_textures[index].texture.valid();
 	}
@@ -581,6 +621,10 @@ void GpuMaterialCache::shutdown() noexcept {
 	impl_->factors_uniform.reset();
 	impl_->uv_transform_uniform.reset();
 	impl_->flags_uniform.reset();
+	impl_->surface_grid_minor_color_uniform.reset();
+	impl_->surface_grid_major_color_uniform.reset();
+	impl_->surface_grid_params_uniform.reset();
+	impl_->surface_grid_flags_uniform.reset();
 	impl_->base_color_texture_uniform.reset();
 	impl_->upload_stats = {};
 	impl_->initialized = false;
@@ -589,11 +633,16 @@ void GpuMaterialCache::shutdown() noexcept {
 GpuPbrMaterialBlock GpuMaterialCache::material_block(
 		const MaterialSystem &materials,
 		RenderMaterialHandle material,
-		const BaseShaderDefinition &definition) const noexcept {
+		const BaseShaderDefinition &definition,
+		const ViewportSettings &viewport_settings) const noexcept {
+	GpuPbrMaterialBlock block;
 	if (const MaterialInstance *instance = materials.get(material)) {
-		return pack_pbr_material_block(*instance, definition);
+		block = pack_pbr_material_block(*instance, definition);
+	} else {
+		block = pack_pbr_material_block(make_default_material_instance(definition), definition);
 	}
-	return pack_pbr_material_block(make_default_material_instance(definition), definition);
+	apply_surface_grid_settings(block, viewport_settings);
+	return block;
 }
 
 void GpuMaterialCache::bind_pbr_material(const GpuPbrMaterialBlock &block) const noexcept {
@@ -606,6 +655,10 @@ void GpuMaterialCache::bind_pbr_material(const GpuPbrMaterialBlock &block) const
 	bgfx::setUniform(impl_->factors_uniform.get(), block.factors.data());
 	bgfx::setUniform(impl_->uv_transform_uniform.get(), block.uv_transform_0.data());
 	bgfx::setUniform(impl_->flags_uniform.get(), block.flags.data());
+	bgfx::setUniform(impl_->surface_grid_minor_color_uniform.get(), block.surface_grid_minor_color_linear.data());
+	bgfx::setUniform(impl_->surface_grid_major_color_uniform.get(), block.surface_grid_major_color_linear.data());
+	bgfx::setUniform(impl_->surface_grid_params_uniform.get(), block.surface_grid_params.data());
+	bgfx::setUniform(impl_->surface_grid_flags_uniform.get(), block.surface_grid_flags.data());
 }
 
 void GpuMaterialCache::bind_pbr_textures(
@@ -624,7 +677,7 @@ void GpuMaterialCache::bind_pbr_textures(
 	bgfx::setTexture(
 			kBaseColorTextureStage,
 			impl_->base_color_texture_uniform.get(),
-			impl_->texture_for(base_color_texture, DefaultTextureIndex::BaseColorFallback),
+			impl_->texture_for(base_color_texture, DefaultTextureIndex::DefaultAlbedo),
 			static_cast<std::uint32_t>(material_texture_sampler_flags()));
 }
 

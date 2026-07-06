@@ -136,6 +136,8 @@ TEST(Overlay, GridDepthModeFollowsProjectionAndUsesReferenceOffset) {
 	const crimson::GridOverlayCommand kPerspectiveGrid = crimson::make_grid_overlay_for_view(perspective_view);
 	const crimson::OverlayCommand kPerspectiveCommand = crimson::make_grid_overlay_command(kPerspectiveGrid, 0);
 	expect_true(near(kPerspectiveGrid.origin.y, -0.002F), "perspective grid keeps the reference app plane offset");
+	expect_true(near(kPerspectiveGrid.camera_far_plane_m, perspective_view.camera.far_plane_m), "perspective grid carries active camera far clip");
+	expect_true(near(kPerspectiveGrid.camera_far_fade, 1.0F), "perspective grid enables camera far fade");
 	expect_true(
 			kPerspectiveCommand.depth_mode == crimson::OverlayDepthMode::AlwaysOnTop,
 			"perspective grid disables scene-depth testing to avoid z-fighting");
@@ -148,6 +150,7 @@ TEST(Overlay, GridDepthModeFollowsProjectionAndUsesReferenceOffset) {
 	expect_true(
 			kOrthographicCommand.depth_mode == crimson::OverlayDepthMode::DepthTested,
 			"orthographic grid remains depth-tested");
+	expect_true(near(kOrthographicGrid.camera_far_fade, 0.0F), "orthographic grid disables camera far fade");
 }
 
 TEST(Overlay, GridDefaultsMatchReferenceViewportSettings) {
@@ -362,13 +365,47 @@ TEST(Overlay, SourceWireStaysAlwaysOnTopDespiteCommandDepth) {
 			"source wire disables depth testing");
 }
 
-TEST(Overlay, ComponentLineHandlesPreserveLayerOrderAndDepthState) {
+TEST(Overlay, NonComponentSourceVerticesStayAlwaysOnTop) {
+	std::array<crimson::PointOverlayPrimitive, 1> points = {
+		crimson::PointOverlayPrimitive{
+				.position = { 0.0F, 0.0F, 0.0F },
+				.size_px = 7.0F,
+				.semantic_role = crimson::OverlaySemanticRole::SourceVertex,
+				.source_kind = crimson::OverlaySourceKind::SourceWire,
+				.element = crimson::OverlayElementRef{ .object_id = 9, .vertex_index = 5 },
+		},
+	};
+	std::array<crimson::OverlayCommand, 1> commands = {
+		crimson::OverlayCommand{
+				.view_index = 0,
+				.primitive = crimson::OverlayPrimitive::PointList,
+				.depth_mode = crimson::OverlayDepthMode::DepthTested,
+				.payload_offset = 0,
+				.payload_count = 1,
+		},
+	};
+
+	const crimson::OverlayDrawLists kLists = crimson::OverlaySystem{}.prepare(
+			commands,
+			std::span<const crimson::GridOverlayCommand>{},
+			std::span<const crimson::LineOverlaySegment>{},
+			std::span<const crimson::TriangleOverlayPrimitive>{},
+			points);
+	expect_true(kLists.depth_tested.point_commands.empty(), "non-component source vertex leaves depth-tested buckets");
+	ASSERT_EQ(kLists.always_on_top.point_commands.size(), 1U);
+	expect_true(!kLists.always_on_top.point_commands[0].render_state.depth_test_enabled,
+			"non-component source vertex draws on top without depth testing");
+	expect_true(kLists.always_on_top.point_commands[0].points[0].element.vertex_index == 5,
+			"source vertex keeps semantic vertex reference");
+}
+
+TEST(Overlay, ComponentLineHandlesUseDepthTestedEditWireState) {
 	std::array<crimson::LineOverlaySegment, 2> lines = {
 		crimson::LineOverlaySegment{
 				.start = { 0.0F, 0.0F, 0.0F },
 				.end = { 1.0F, 0.0F, 0.0F },
 				.semantic_role = crimson::OverlaySemanticRole::SourceWire,
-				.source_kind = crimson::OverlaySourceKind::SourceWire,
+				.source_kind = crimson::OverlaySourceKind::ComponentSelection,
 		},
 		crimson::LineOverlaySegment{
 				.start = { 0.0F, 1.0F, 0.0F },
@@ -389,20 +426,25 @@ TEST(Overlay, ComponentLineHandlesPreserveLayerOrderAndDepthState) {
 	};
 
 	const crimson::OverlayDrawLists kLists = crimson::OverlaySystem{}.prepare(commands, {}, lines);
-	ASSERT_EQ(kLists.always_on_top.line_commands.size(), 2U);
-	expect_true(kLists.depth_tested.line_commands.empty(), "component selected edge stays in layer-order bucket");
+	EXPECT_TRUE(kLists.always_on_top.line_commands.empty());
+	ASSERT_EQ(kLists.depth_tested.line_commands.size(), 2U);
 	expect_true(
-			kLists.always_on_top.line_commands[0].semantic_role == crimson::OverlaySemanticRole::SourceWire &&
-					!kLists.always_on_top.line_commands[0].render_state.depth_test_enabled,
-			"source wire draws first without depth testing");
+			kLists.depth_tested.line_commands[0].semantic_role == crimson::OverlaySemanticRole::SourceWire &&
+					kLists.depth_tested.line_commands[0].source_kind == crimson::OverlaySourceKind::ComponentSelection,
+			"component source wire stays semantically sourced as component selection in the edit-wire bucket");
 	expect_true(
-			kLists.always_on_top.line_commands[1].source_kind == crimson::OverlaySourceKind::ComponentSelection,
+			kLists.depth_tested.line_commands[0].render_state.depth_mode == crimson::OverlayDepthMode::DepthTested &&
+					kLists.depth_tested.line_commands[0].render_state.depth_test_enabled,
+			"component source wire uses the depth-tested edit-wire state");
+	expect_true(
+			kLists.depth_tested.line_commands[1].source_kind == crimson::OverlaySourceKind::ComponentSelection,
 			"component edge batch keeps component selection source");
 	expect_true(
-			kLists.always_on_top.line_commands[1].render_state.depth_test_enabled,
-			"component edge keeps depth-tested render state");
+			kLists.depth_tested.line_commands[1].render_state.depth_mode == crimson::OverlayDepthMode::DepthTested &&
+					kLists.depth_tested.line_commands[1].render_state.depth_test_enabled,
+			"component edge bucket and render state are both depth-tested");
 	expect_true(
-			kLists.always_on_top.line_commands[1].segments[0].element.edge_index == 12,
+			kLists.depth_tested.line_commands[1].segments[0].element.edge_index == 12,
 			"component edge batch keeps semantic edge reference");
 }
 
@@ -451,14 +493,28 @@ TEST(Overlay, FaceFillCreatesTwoSidedDepthStampAndEqualDepthColorPasses) {
 	expect_true(kLists.source_wire_depth_stamp_count() == 0, "face fill depth stamp is render state, not source-wire metadata");
 }
 
-TEST(Overlay, VertexPointHandlesDepthTestWhenSourcedFromComponents) {
-	std::array<crimson::PointOverlayPrimitive, 1> points = {
+TEST(Overlay, ComponentVertexPointHandlesUseDepthTestedState) {
+	std::array<crimson::PointOverlayPrimitive, 3> points = {
 		crimson::PointOverlayPrimitive{
 				.position = { 0.0F, 0.0F, 0.0F },
 				.size_px = 7.0F,
+				.semantic_role = crimson::OverlaySemanticRole::SourceVertex,
+				.source_kind = crimson::OverlaySourceKind::ComponentSelection,
+				.element = crimson::OverlayElementRef{ .object_id = 9, .vertex_index = 3 },
+		},
+		crimson::PointOverlayPrimitive{
+				.position = { 1.0F, 0.0F, 0.0F },
+				.size_px = 7.5F,
 				.semantic_role = crimson::OverlaySemanticRole::SelectedVertex,
 				.source_kind = crimson::OverlaySourceKind::ComponentSelection,
 				.element = crimson::OverlayElementRef{ .object_id = 9, .vertex_index = 5 },
+		},
+		crimson::PointOverlayPrimitive{
+				.position = { 2.0F, 0.0F, 0.0F },
+				.size_px = 7.5F,
+				.semantic_role = crimson::OverlaySemanticRole::HoverVertex,
+				.source_kind = crimson::OverlaySourceKind::ComponentHover,
+				.element = crimson::OverlayElementRef{ .object_id = 9, .vertex_index = 8 },
 		},
 	};
 	std::array<crimson::OverlayCommand, 1> commands = {
@@ -467,7 +523,7 @@ TEST(Overlay, VertexPointHandlesDepthTestWhenSourcedFromComponents) {
 				.primitive = crimson::OverlayPrimitive::PointList,
 				.depth_mode = crimson::OverlayDepthMode::AlwaysOnTop,
 				.payload_offset = 0,
-				.payload_count = 1,
+				.payload_count = 3,
 		},
 	};
 
@@ -477,13 +533,20 @@ TEST(Overlay, VertexPointHandlesDepthTestWhenSourcedFromComponents) {
 			std::span<const crimson::LineOverlaySegment>{},
 			std::span<const crimson::TriangleOverlayPrimitive>{},
 			points);
-	expect_true(kLists.depth_tested.point_commands.empty(), "component vertex stays in layer-order point bucket");
-	ASSERT_EQ(kLists.always_on_top.point_commands.size(), 1U);
-	expect_true(kLists.always_on_top.point_commands[0].render_state.depth_test_enabled, "component vertex keeps depth-tested render state");
-	expect_true(kLists.always_on_top.point_commands[0].size_px == 7.0F, "point handle size is preserved");
-	expect_true(
-			kLists.always_on_top.point_commands[0].points[0].element.vertex_index == 5,
-			"point handle keeps semantic vertex reference");
+	EXPECT_TRUE(kLists.always_on_top.point_commands.empty());
+	ASSERT_EQ(kLists.depth_tested.point_commands.size(), 3U);
+	for (const crimson::PreparedPointOverlayCommand &command : kLists.depth_tested.point_commands) {
+		expect_true(command.render_state.depth_mode == crimson::OverlayDepthMode::DepthTested,
+				"component vertex bucket is depth-tested");
+		expect_true(command.render_state.depth_test_enabled,
+				"component vertex render state enables depth testing");
+	}
+	expect_true(kLists.depth_tested.point_commands[0].semantic_role == crimson::OverlaySemanticRole::SourceVertex,
+			"component source vertex keeps source-vertex role");
+	expect_true(kLists.depth_tested.point_commands[1].semantic_role == crimson::OverlaySemanticRole::SelectedVertex,
+			"component selected vertex keeps selected-vertex role");
+	expect_true(kLists.depth_tested.point_commands[2].semantic_role == crimson::OverlaySemanticRole::HoverVertex,
+			"component hover vertex keeps hover-vertex role");
 }
 
 TEST(Overlay, OverlayPassesStayAfterToneMapAndOutOfHdrSceneColor) {

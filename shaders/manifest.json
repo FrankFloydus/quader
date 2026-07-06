@@ -99,6 +99,45 @@
       }
     },
     {
+      "id": "OverlayEditLine",
+      "stages": {
+        "vertex": {
+          "source": "overlay_edit_line.vs.sc",
+          "output": "overlay_edit_line.vs.bin"
+        },
+        "fragment": {
+          "source": "overlay_edit_line.fs.sc",
+          "output": "overlay_edit_line.fs.bin"
+        }
+      }
+    },
+    {
+      "id": "OverlaySolid",
+      "stages": {
+        "vertex": {
+          "source": "overlay_solid.vs.sc",
+          "output": "overlay_solid.vs.bin"
+        },
+        "fragment": {
+          "source": "overlay_solid.fs.sc",
+          "output": "overlay_solid.fs.bin"
+        }
+      }
+    },
+    {
+      "id": "OverlayDeviceSolid",
+      "stages": {
+        "vertex": {
+          "source": "overlay_device_solid.vs.sc",
+          "output": "overlay_device_solid.vs.bin"
+        },
+        "fragment": {
+          "source": "overlay_solid.fs.sc",
+          "output": "overlay_device_solid.fs.bin"
+        }
+      }
+    },
+    {
       "id": "Picking",
       "stages": {
         "vertex": {

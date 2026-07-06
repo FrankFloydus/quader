@@ -11,6 +11,7 @@
 
 #include "crimson/color/color_space.hpp"
 #include "crimson/renderer_types.hpp"
+#include "crimson/scene/render_camera.hpp"
 #include "crimson/scene/render_object.hpp"
 #include "math/vec3.hpp"
 
@@ -152,6 +153,10 @@ struct GridOverlayCommand {
 	float viewport_height_px = 1.0F;
 	/// Edge fade softness in meters.
 	float edge_softness_m = 0.001F;
+	/// Active camera far clip used for perspective far fade.
+	float camera_far_plane_m = kDefaultCameraFarPlaneM;
+	/// Perspective far-fade enable amount; orthographic grids use zero.
+	float camera_far_fade = 0.0F;
 	/// Minor line color in sRGB UI space.
 	ColorSrgb minor_color{ 150.0F / 255.0F, 150.0F / 255.0F, 150.0F / 255.0F, 1.0F };
 	/// Major line color in sRGB UI space.
@@ -218,6 +223,12 @@ struct PointOverlayPrimitive {
 [[nodiscard]] bool overlay_role_is_source_wire(OverlaySemanticRole role) noexcept;
 /// Return true when a role represents selected or hovered component handles.
 [[nodiscard]] bool overlay_role_is_component_handle(OverlaySemanticRole role) noexcept;
+/// Return true when a role represents selected or hovered component edge handles.
+[[nodiscard]] bool overlay_role_is_component_edge(OverlaySemanticRole role) noexcept;
+/// Return true when a role uses the dedicated component edit-wire render path.
+[[nodiscard]] bool overlay_role_is_component_edit_wire(OverlaySemanticRole role) noexcept;
+/// Return true when a role represents a source, selected, or hovered vertex handle.
+[[nodiscard]] bool overlay_role_is_vertex_handle(OverlaySemanticRole role) noexcept;
 /// Return true when source category is component selected or hover data.
 [[nodiscard]] bool overlay_source_kind_is_component(OverlaySourceKind source_kind) noexcept;
 /// Resolve payload role inheritance from its owning command.
@@ -228,8 +239,9 @@ struct PointOverlayPrimitive {
 [[nodiscard]] OverlaySourceKind effective_overlay_source_kind(
 		const OverlayCommand &command,
 		OverlaySourceKind payload_source_kind) noexcept;
-/// Resolve semantic overlay draw bucket, keeping source wire and component
-/// handles in authored layer order while render state applies component depth.
+/// Resolve semantic overlay draw bucket. Component-sourced source-wire,
+/// component edge lines, and component vertex handles use depth-tested
+/// component overlay buckets.
 [[nodiscard]] OverlayDepthMode effective_overlay_depth_mode(
 		const OverlayCommand &command,
 		OverlaySemanticRole role,

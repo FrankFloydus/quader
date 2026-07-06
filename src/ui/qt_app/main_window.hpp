@@ -65,6 +65,7 @@ private:
 	QLabel *stats_label_ = nullptr;
 	QLabel *diagnostics_label_ = nullptr;
 	bool quad_viewports_enabled_ = false;
+	ViewportDisplaySettings viewport_display_settings_;
 };
 
 } // namespace quader::ui

@@ -1,7 +1,7 @@
 # Documentation Policy
 
 This policy is the source of truth for Quader C++ source documentation,
-copyright headers, and `$quader-workflow` documentation-maintenance mode.
+copyright headers, and the `quader-docs-mantainer` documentation-maintenance role.
 
 The Doxygen style rules are based on the LSST C++ API documentation guidance,
 adapted into Quader-owned policy. Useful reference sections:
@@ -17,13 +17,13 @@ adapted into Quader-owned policy. Useful reference sections:
 Project-owned C++ files must have the Quader copyright block at the top.
 Project-owned public/protected C++ APIs should be documented where they are
 first declared using Javadoc-style Doxygen comments. Full documentation coverage
-is maintained by `$quader-workflow` documentation-maintenance mode and
+is maintained by `quader-docs-mantainer` documentation maintenance and
 documentation-specific tasks; it is
 not an automatic implementation-review blocker for newly added code.
 
 Documentation maintenance is allowed to change comments and copyright headers.
-It must not change behavior, public API shape, build semantics, tests, paused
-board files/state, versions, or public release notes.
+It must not change behavior, public API shape, build semantics, tests,
+board/database state, versions, or public release notes.
 
 ## Documentation Sync Rule
 
@@ -69,9 +69,9 @@ documented code. Report that as:
 Docs maintainer follow-up:
 ```
 
-Root may route that follow-up to `$quader-workflow` after the fix or feature is
-accepted. Critical fixes must not be held back only for missing documentation on
-new, previously undocumented code.
+Root may route that follow-up to `quader-docs-mantainer` after the fix or
+feature is accepted. Critical fixes must not be held back only for missing
+documentation on new, previously undocumented code.
 
 ## File Scope
 
@@ -674,9 +674,9 @@ ambiguous, report it instead of guessing.
 
 ## Documentation Maintenance Mode
 
-`$quader-workflow` handles documentation-only maintenance directly in the same
-thread. It does not create or require board tasks while the board pause is
-active.
+`quader-docs-mantainer` handles documentation-only maintenance. Board-backed
+documentation tasks use the active database board workflow in
+`agents/workflow.md`.
 
 Allowed direct work:
 

@@ -22,7 +22,7 @@ using quader::math::normalized;
 using quader::math::Vec3;
 
 constexpr float kHalfPi = 1.57079632679F;
-constexpr float kMinimumNearClipM = 0.0001F;
+constexpr float kMinimumNearClipM = 0.001F;
 constexpr float kMinimumClipRangeM = 0.001F;
 constexpr float kMinimumFovDegrees = 1.0F;
 constexpr float kMaximumFovDegrees = 179.0F;

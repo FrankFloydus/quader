@@ -97,12 +97,14 @@ quader::foundation::Result<FrameSnapshot, RendererDiagnostic> FrameBuilder::buil
 	overlays.reserve(views.size() + frame.overlays.size());
 	std::vector<GridOverlayCommand> grid_overlay_payloads;
 	grid_overlay_payloads.reserve(views.size());
-	for (const RenderView &view : views) {
-		GridOverlayCommand grid = make_grid_overlay_for_view(view);
-		overlays.push_back(make_grid_overlay_command(
-				grid,
-				static_cast<std::uint32_t>(grid_overlay_payloads.size())));
-		grid_overlay_payloads.push_back(grid);
+	if (frame.viewport_settings.draw_grid_overlay) {
+		for (const RenderView &view : views) {
+			GridOverlayCommand grid = make_grid_overlay_for_view(view);
+			overlays.push_back(make_grid_overlay_command(
+					grid,
+					static_cast<std::uint32_t>(grid_overlay_payloads.size())));
+			grid_overlay_payloads.push_back(grid);
+		}
 	}
 	overlays.insert(overlays.end(), frame.overlays.begin(), frame.overlays.end());
 
@@ -123,9 +125,6 @@ quader::foundation::Result<FrameSnapshot, RendererDiagnostic> FrameBuilder::buil
 
 	std::vector<PickingRequest> picking_requests(frame.picking_requests.begin(), frame.picking_requests.end());
 
-	ViewportSettings viewport_settings;
-	viewport_settings.exposure_ev100 = 0.0F;
-
 	return quader::foundation::Result<FrameSnapshot, RendererDiagnostic>::success(FrameSnapshot{
 			0,
 			frame.elapsed_seconds,
@@ -141,7 +140,7 @@ quader::foundation::Result<FrameSnapshot, RendererDiagnostic> FrameBuilder::buil
 			std::move(triangle_overlay_payloads),
 			std::move(point_overlay_payloads),
 			std::move(picking_requests),
-			viewport_settings,
+			frame.viewport_settings,
 			DebugViewMode::FinalColor,
 	});
 }
