@@ -174,9 +174,34 @@ def latest_archive() -> dict[str, Any] | None:
     return archives[0] if archives else None
 
 
+def archive_counter_for_public_version(archive: dict[str, Any], public_version: str) -> int | None:
+    dev_version = str(archive.get("devVersion") or "")
+    if not dev_version.startswith(f"{public_version}-dev."):
+        return None
+
+    return parse_dev_counter_from_version(dev_version)
+
+
+def latest_archived_counter(public_version: str) -> int:
+    counters = [
+        counter
+        for archive in list_archives()
+        if (counter := archive_counter_for_public_version(archive, public_version)) is not None
+    ]
+    return max(counters, default=0)
+
+
+def next_archive_counter(public_version: str, current_counter: int) -> int:
+    counter = max(current_counter, latest_archived_counter(public_version)) + 1
+    while (ARCHIVE_ROOT / make_dev_version(public_version, counter)).exists():
+        counter += 1
+    return counter
+
+
 def current_state() -> dict[str, Any]:
     public_version = read_public_version()
     dev_counter = read_dev_counter()
+    latest_counter = latest_archived_counter(public_version)
     latest = latest_archive()
     build_dir = build_dir_for_preset(DEFAULT_PRESET)
     current_exe = find_app_exe(build_dir)
@@ -184,6 +209,8 @@ def current_state() -> dict[str, Any]:
         "publicVersion": public_version,
         "devCounter": dev_counter,
         "currentDevVersion": make_dev_version(public_version, dev_counter),
+        "latestArchiveCounter": latest_counter,
+        "nextArchiveDevVersion": make_dev_version(public_version, next_archive_counter(public_version, dev_counter)),
         "currentBuild": {
             "preset": DEFAULT_PRESET,
             "buildDir": str(build_dir),
@@ -255,7 +282,7 @@ def write_notes(target_dir: Path, dev_version: str, copied_files: list[str]) -> 
 def archive_build(preset: str) -> dict[str, Any]:
     public_version = read_public_version()
     old_counter = read_dev_counter()
-    next_counter = old_counter + 1
+    next_counter = next_archive_counter(public_version, old_counter)
     dev_version = make_dev_version(public_version, next_counter)
     source_build_dir = build_dir_for_preset(preset)
     source_exe = require_app_exe(source_build_dir)
