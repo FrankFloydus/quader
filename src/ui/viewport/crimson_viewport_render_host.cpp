@@ -576,6 +576,138 @@ std::size_t ViewportDocumentRenderCache::cached_mesh_count() const noexcept {
 	return entries_.size();
 }
 
+void append_crimson_document_render_data(
+		const quader::document::Document &document,
+		ViewportDocumentRenderCache &document_render_cache,
+		std::vector<crimson::RenderMeshUpload> &mesh_uploads,
+		std::vector<crimson::RenderObject> &objects,
+		ViewportShadingMode shading_mode) {
+	const std::vector<quader::document::ObjectId> kObjectIds = document.object_ids();
+	if (shading_mode == ViewportShadingMode::Wireframe) {
+		document_render_cache.prune(kObjectIds);
+		return;
+	}
+
+	const crimson::BaseShaderId kBaseShader = viewport_base_shader_for_shading_mode(shading_mode);
+	mesh_uploads.reserve(mesh_uploads.size() + kObjectIds.size());
+	objects.reserve(objects.size() + kObjectIds.size());
+	for (const quader::document::ObjectId kObjectId : kObjectIds) {
+		const quader::document::MeshObject *object = document.find_mesh_object(kObjectId);
+		if (object == nullptr) {
+			continue;
+		}
+
+		std::optional<ViewportDocumentRenderMesh> render_mesh =
+				document_render_cache.mesh_for(*object);
+		if (!render_mesh) {
+			continue;
+		}
+
+		const quader::math::Aabb kWorldBounds =
+				transform_bounds(render_mesh->local_bounds, object->transform);
+		if (quader::math::empty(kWorldBounds)) {
+			continue;
+		}
+
+		if (render_mesh->upload) {
+			mesh_uploads.push_back(std::move(*render_mesh->upload));
+		}
+		objects.push_back(crimson::RenderObject{
+				.object_id = render_object_id_for_document_object(kObjectId),
+				.mesh = render_mesh->handle,
+				.material = {},
+				.base_shader = kBaseShader,
+				.world_from_object = render_transform_from(object->transform),
+				.world_bounds = kWorldBounds,
+				.queue = crimson::RenderQueue::Opaque,
+				.submesh_index = 0,
+				.visible = true,
+				.pickable = true,
+		});
+	}
+	document_render_cache.prune(kObjectIds);
+}
+
+void append_crimson_scene_wireframe_overlays(
+		const quader::document::Document &document,
+		std::size_t view_count,
+		std::vector<crimson::OverlayCommand> &overlays,
+		std::vector<crimson::LineOverlaySegment> &line_payloads) {
+	if (view_count == 0U) {
+		return;
+	}
+
+	const std::uint32_t kUnselectedOffset = static_cast<std::uint32_t>(line_payloads.size());
+	std::uint32_t unselected_count = 0;
+	std::vector<crimson::LineOverlaySegment> selected_segments;
+	for (const quader::document::ObjectId kObjectId : document.object_ids()) {
+		const quader::document::MeshObject *object = document.find_mesh_object(kObjectId);
+		if (object == nullptr) {
+			continue;
+		}
+
+		const bool kSelected = object_is_selected(document, kObjectId);
+		for (const quader::mesh::EdgeId kEdge : object->mesh.edge_ids()) {
+			std::optional<crimson::LineOverlaySegment> segment =
+					scene_wire_segment_for_edge(*object, kEdge, kSelected);
+			if (!segment) {
+				continue;
+			}
+			if (kSelected) {
+				selected_segments.push_back(*segment);
+			} else {
+				line_payloads.push_back(*segment);
+				++unselected_count;
+			}
+		}
+	}
+
+	const std::uint32_t kSelectedPayloadOffset = static_cast<std::uint32_t>(line_payloads.size());
+	line_payloads.insert(line_payloads.end(), selected_segments.begin(), selected_segments.end());
+	const std::uint32_t kSelectedCount = static_cast<std::uint32_t>(selected_segments.size());
+
+	const auto append_commands = [&](std::uint32_t payload_offset,
+									 std::uint32_t payload_count,
+									 crimson::OverlaySemanticRole role,
+									 crimson::OverlaySourceKind source_kind,
+									 crimson::ColorSrgb color,
+									 float thickness_px) {
+		if (payload_count == 0U) {
+			return;
+		}
+		for (std::size_t view_index = 0; view_index < view_count; ++view_index) {
+			overlays.push_back(crimson::OverlayCommand{
+					.view_index = static_cast<std::uint32_t>(view_index),
+					.primitive = crimson::OverlayPrimitive::LineList,
+					.depth_mode = crimson::OverlayDepthMode::AlwaysOnTop,
+					.semantic_role = role,
+					.source_kind = source_kind,
+					.base_shader = crimson::BaseShaderId::OverlayUnlit,
+					.color_srgb = color,
+					.opacity = 1.0F,
+					.thickness_px = thickness_px,
+					.payload_offset = payload_offset,
+					.payload_count = payload_count,
+			});
+		}
+	};
+
+	append_commands(
+			kUnselectedOffset,
+			unselected_count,
+			crimson::OverlaySemanticRole::Generic,
+			crimson::OverlaySourceKind::Unknown,
+			crimson::ColorSrgb{ 0.02F, 0.02F, 0.02F, 0.62F },
+			1.0F);
+	append_commands(
+			kSelectedPayloadOffset,
+			kSelectedCount,
+			crimson::OverlaySemanticRole::SelectedObjectTopology,
+			crimson::OverlaySourceKind::ObjectSelection,
+			crimson::ColorSrgb{ 1.0F, 0.84F, 0.22F, 1.0F },
+			1.5F);
+}
+
 ViewportDiagnosticsSnapshot viewport_diagnostics_from_crimson(
 		const crimson::RendererDiagnosticsSnapshot &snapshot,
 		QString renderer_name) {
@@ -930,45 +1062,7 @@ void CrimsonViewportRenderHost::append_document_render_data(
 		return;
 	}
 
-	const std::vector<quader::document::ObjectId> kObjectIds = document_->object_ids();
-	const crimson::BaseShaderId kBaseShader = viewport_base_shader_for_shading_mode(shading_mode);
-	mesh_uploads.reserve(mesh_uploads.size() + kObjectIds.size());
-	objects.reserve(objects.size() + kObjectIds.size());
-	for (const quader::document::ObjectId kObjectId : kObjectIds) {
-		const quader::document::MeshObject *object = document_->find_mesh_object(kObjectId);
-		if (object == nullptr) {
-			continue;
-		}
-
-		std::optional<ViewportDocumentRenderMesh> render_mesh =
-				document_render_cache_.mesh_for(*object);
-		if (!render_mesh) {
-			continue;
-		}
-
-		const quader::math::Aabb kWorldBounds =
-				transform_bounds(render_mesh->local_bounds, object->transform);
-		if (quader::math::empty(kWorldBounds)) {
-			continue;
-		}
-
-		if (render_mesh->upload) {
-			mesh_uploads.push_back(std::move(*render_mesh->upload));
-		}
-		objects.push_back(crimson::RenderObject{
-				.object_id = render_object_id_for_document_object(kObjectId),
-				.mesh = render_mesh->handle,
-				.material = {},
-				.base_shader = kBaseShader,
-				.world_from_object = render_transform_from(object->transform),
-				.world_bounds = kWorldBounds,
-				.queue = crimson::RenderQueue::Opaque,
-				.submesh_index = 0,
-				.visible = true,
-				.pickable = true,
-		});
-	}
-	document_render_cache_.prune(kObjectIds);
+	append_crimson_document_render_data(*document_, document_render_cache_, mesh_uploads, objects, shading_mode);
 }
 
 void CrimsonViewportRenderHost::append_tool_preview_overlays(
@@ -988,79 +1082,11 @@ void CrimsonViewportRenderHost::append_scene_wireframe_overlays(
 		std::size_t view_count,
 		std::vector<crimson::OverlayCommand> &overlays,
 		std::vector<crimson::LineOverlaySegment> &line_payloads) const {
-	if (document_ == nullptr || view_count == 0U) {
+	if (document_ == nullptr) {
 		return;
 	}
 
-	const std::uint32_t kUnselectedOffset = static_cast<std::uint32_t>(line_payloads.size());
-	std::uint32_t unselected_count = 0;
-	std::vector<crimson::LineOverlaySegment> selected_segments;
-	for (const quader::document::ObjectId kObjectId : document_->object_ids()) {
-		const quader::document::MeshObject *object = document_->find_mesh_object(kObjectId);
-		if (object == nullptr) {
-			continue;
-		}
-
-		const bool kSelected = object_is_selected(*document_, kObjectId);
-		for (const quader::mesh::EdgeId kEdge : object->mesh.edge_ids()) {
-			std::optional<crimson::LineOverlaySegment> segment =
-					scene_wire_segment_for_edge(*object, kEdge, kSelected);
-			if (!segment) {
-				continue;
-			}
-			if (kSelected) {
-				selected_segments.push_back(*segment);
-			} else {
-				line_payloads.push_back(*segment);
-				++unselected_count;
-			}
-		}
-	}
-
-	const std::uint32_t kSelectedPayloadOffset = static_cast<std::uint32_t>(line_payloads.size());
-	line_payloads.insert(line_payloads.end(), selected_segments.begin(), selected_segments.end());
-	const std::uint32_t kSelectedCount = static_cast<std::uint32_t>(selected_segments.size());
-
-	const auto append_commands = [&](std::uint32_t payload_offset,
-									 std::uint32_t payload_count,
-									 crimson::OverlaySemanticRole role,
-									 crimson::OverlaySourceKind source_kind,
-									 crimson::ColorSrgb color,
-									 float thickness_px) {
-		if (payload_count == 0U) {
-			return;
-		}
-		for (std::size_t view_index = 0; view_index < view_count; ++view_index) {
-			overlays.push_back(crimson::OverlayCommand{
-					.view_index = static_cast<std::uint32_t>(view_index),
-					.primitive = crimson::OverlayPrimitive::LineList,
-					.depth_mode = crimson::OverlayDepthMode::DepthTested,
-					.semantic_role = role,
-					.source_kind = source_kind,
-					.base_shader = crimson::BaseShaderId::OverlayUnlit,
-					.color_srgb = color,
-					.opacity = 1.0F,
-					.thickness_px = thickness_px,
-					.payload_offset = payload_offset,
-					.payload_count = payload_count,
-			});
-		}
-	};
-
-	append_commands(
-			kUnselectedOffset,
-			unselected_count,
-			crimson::OverlaySemanticRole::Generic,
-			crimson::OverlaySourceKind::Unknown,
-			crimson::ColorSrgb{ 0.02F, 0.02F, 0.02F, 0.62F },
-			1.0F);
-	append_commands(
-			kSelectedPayloadOffset,
-			kSelectedCount,
-			crimson::OverlaySemanticRole::SelectedObjectTopology,
-			crimson::OverlaySourceKind::ObjectSelection,
-			crimson::ColorSrgb{ 1.0F, 0.84F, 0.22F, 1.0F },
-			1.5F);
+	append_crimson_scene_wireframe_overlays(*document_, view_count, overlays, line_payloads);
 }
 
 void CrimsonViewportRenderHost::append_document_selection_overlays(

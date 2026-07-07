@@ -12,6 +12,7 @@
 #include "crimson/graph/render_graph.hpp"
 #include "crimson/overlays/grid_overlay.hpp"
 #include "crimson/overlays/overlay_system.hpp"
+#include "crimson/overlays/source_wire_visibility.hpp"
 
 #include <gtest/gtest.h>
 
@@ -22,6 +23,7 @@
 #include <span>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -58,6 +60,69 @@ void expect_color_near(const crimson::ColorSrgb &actual, const crimson::ColorSrg
 		}
 	}
 	return false;
+}
+
+void append_box_stamp_triangle(
+		std::vector<crimson::SourceWireDepthStampMetadata> &stamps,
+		crimson::RenderObjectId object_id,
+		quader::math::Vec3 a,
+		quader::math::Vec3 b,
+		quader::math::Vec3 c,
+		bool inside_out) {
+	crimson::TriangleOverlayPrimitive triangle{
+		.a = a,
+		.b = inside_out ? c : b,
+		.c = inside_out ? b : c,
+		.semantic_role = crimson::OverlaySemanticRole::SourceWireDepthStamp,
+		.source_kind = crimson::OverlaySourceKind::SourceWire,
+		.element = crimson::OverlayElementRef{ .object_id = object_id },
+	};
+	stamps.push_back(crimson::SourceWireDepthStampMetadata{
+			.view_index = 0,
+			.source_kind = crimson::OverlaySourceKind::SourceWire,
+			.triangle = triangle,
+			.payload_offset = 0,
+			.payload_count = 1,
+			.element = triangle.element,
+	});
+}
+
+void append_box_stamp_quad(
+		std::vector<crimson::SourceWireDepthStampMetadata> &stamps,
+		crimson::RenderObjectId object_id,
+		quader::math::Vec3 a,
+		quader::math::Vec3 b,
+		quader::math::Vec3 c,
+		quader::math::Vec3 d,
+		bool inside_out) {
+	append_box_stamp_triangle(stamps, object_id, a, b, c, inside_out);
+	append_box_stamp_triangle(stamps, object_id, a, c, d, inside_out);
+}
+
+[[nodiscard]] std::vector<crimson::SourceWireDepthStampMetadata> make_box_stamps(
+		crimson::RenderObjectId object_id,
+		bool inside_out) {
+	std::vector<crimson::SourceWireDepthStampMetadata> stamps;
+	stamps.reserve(12U);
+	append_box_stamp_quad(stamps, object_id, { -1.0F, -1.0F, 1.0F }, { 1.0F, -1.0F, 1.0F }, { 1.0F, 1.0F, 1.0F }, { -1.0F, 1.0F, 1.0F }, inside_out);
+	append_box_stamp_quad(stamps, object_id, { -1.0F, -1.0F, -1.0F }, { -1.0F, 1.0F, -1.0F }, { 1.0F, 1.0F, -1.0F }, { 1.0F, -1.0F, -1.0F }, inside_out);
+	append_box_stamp_quad(stamps, object_id, { 1.0F, -1.0F, -1.0F }, { 1.0F, 1.0F, -1.0F }, { 1.0F, 1.0F, 1.0F }, { 1.0F, -1.0F, 1.0F }, inside_out);
+	append_box_stamp_quad(stamps, object_id, { -1.0F, -1.0F, -1.0F }, { -1.0F, -1.0F, 1.0F }, { -1.0F, 1.0F, 1.0F }, { -1.0F, 1.0F, -1.0F }, inside_out);
+	append_box_stamp_quad(stamps, object_id, { -1.0F, 1.0F, -1.0F }, { -1.0F, 1.0F, 1.0F }, { 1.0F, 1.0F, 1.0F }, { 1.0F, 1.0F, -1.0F }, inside_out);
+	append_box_stamp_quad(stamps, object_id, { -1.0F, -1.0F, -1.0F }, { 1.0F, -1.0F, -1.0F }, { 1.0F, -1.0F, 1.0F }, { -1.0F, -1.0F, 1.0F }, inside_out);
+	return stamps;
+}
+
+[[nodiscard]] crimson::RenderCamera make_render_camera(
+		quader::math::Vec3 eye,
+		quader::math::Vec3 target = { 0.0F, 0.0F, 0.0F }) {
+	return crimson::RenderCamera{
+		.eye = eye,
+		.target = target,
+		.up = { 0.0F, 1.0F, 0.0F },
+		.forward = quader::math::normalized(target - eye),
+		.projection = crimson::CameraProjection::Perspective,
+	};
 }
 
 [[nodiscard]] crimson::ViewportCamera make_camera() {
@@ -335,6 +400,67 @@ TEST(Overlay, SourceWireDepthStampIsMetadataOnly) {
 	expect_true(kLists.source_wire_depth_stamps[0].triangle.b.x == 1.0F, "depth-stamp metadata keeps triangle geometry");
 }
 
+TEST(Overlay, OutwardSourceWireDepthStampsCullOccludedEditableVertexPoints) {
+	constexpr crimson::RenderObjectId kObjectId = 42;
+	const std::vector<crimson::SourceWireDepthStampMetadata> kStamps = make_box_stamps(kObjectId, false);
+	const crimson::SourceWireDepthStampVisibilityFilter kFilter{ kStamps };
+	const crimson::OverlayElementRef kSameObjectPoint{ .object_id = kObjectId, .vertex_index = 5 };
+	const crimson::OverlayElementRef kOtherObjectPoint{ .object_id = 77, .vertex_index = 2 };
+	const crimson::RenderCamera kCamera = make_render_camera({ 0.0F, 0.0F, 3.0F });
+
+	expect_true(
+			!kFilter.point_visible(0, kSameObjectPoint, { 0.0F, 0.0F, 0.0F }, kCamera),
+			"outward source-wire stamps cull same-object editable points hidden behind a stamped face");
+	expect_true(
+			kFilter.point_visible(0, kOtherObjectPoint, { 0.0F, 0.0F, 0.0F }, kCamera),
+			"points without matching object stamps remain visible");
+	expect_true(
+			kFilter.point_depth_mode(
+					0,
+					kSameObjectPoint,
+					{ 0.0F, 0.0F, 0.0F },
+					kCamera,
+					crimson::OverlayDepthMode::DepthTested) == crimson::OverlayDepthMode::DepthTested,
+			"outward stamps keep component vertex points depth-tested");
+}
+
+TEST(Overlay, InsideOutSourceWireDepthStampsDoNotCpuCullInternalEditableVertexPoints) {
+	constexpr crimson::RenderObjectId kObjectId = 42;
+	const std::vector<crimson::SourceWireDepthStampMetadata> kStamps = make_box_stamps(kObjectId, true);
+	const crimson::SourceWireDepthStampVisibilityFilter kFilter{ kStamps };
+	const crimson::OverlayElementRef kSameObjectPoint{ .object_id = kObjectId, .vertex_index = 5 };
+	const crimson::RenderCamera kCamera = make_render_camera({ 0.0F, 0.0F, 3.0F });
+
+	expect_true(
+			kFilter.point_visible(0, kSameObjectPoint, { 0.0F, 0.0F, 0.0F }, kCamera),
+			"inside-out stamps keep internal editable vertex points visible to CPU filtering");
+	expect_true(
+			kFilter.point_depth_mode(
+					0,
+					kSameObjectPoint,
+					{ 0.0F, 0.0F, 0.0F },
+					kCamera,
+					crimson::OverlayDepthMode::DepthTested) == crimson::OverlayDepthMode::DepthTested,
+			"inside-out stamps do not promote points when the camera is outside the volume");
+}
+
+TEST(Overlay, InsideOutEditableVertexPointsSwitchToDrawOnTopWhenCameraIsInside) {
+	constexpr crimson::RenderObjectId kObjectId = 42;
+	const std::vector<crimson::SourceWireDepthStampMetadata> kStamps = make_box_stamps(kObjectId, true);
+	const crimson::SourceWireDepthStampVisibilityFilter kFilter{ kStamps };
+	const crimson::OverlayElementRef kSameObjectPoint{ .object_id = kObjectId, .vertex_index = 5 };
+	const crimson::RenderCamera kCamera = make_render_camera({ 0.0F, 0.0F, 0.0F }, { 0.0F, 0.0F, -1.0F });
+
+	expect_true(
+			kFilter.point_depth_mode(
+					0,
+					kSameObjectPoint,
+					{ 0.5F, 0.0F, 0.0F },
+					kCamera,
+					crimson::OverlayDepthMode::DepthTested) == crimson::OverlayDepthMode::AlwaysOnTop,
+			"inside-out source-wire stamps promote editable vertex points to draw-on-top when the camera is inside");
+}
+
 TEST(Overlay, SourceWireStaysAlwaysOnTopDespiteCommandDepth) {
 	std::array<crimson::LineOverlaySegment, 1> lines = {
 		crimson::LineOverlaySegment{
@@ -400,7 +526,7 @@ TEST(Overlay, NonComponentSourceVerticesStayAlwaysOnTop) {
 }
 
 TEST(Overlay, ComponentLineHandlesUseDepthTestedEditWireState) {
-	std::array<crimson::LineOverlaySegment, 2> lines = {
+	std::array<crimson::LineOverlaySegment, 3> lines = {
 		crimson::LineOverlaySegment{
 				.start = { 0.0F, 0.0F, 0.0F },
 				.end = { 1.0F, 0.0F, 0.0F },
@@ -414,6 +540,13 @@ TEST(Overlay, ComponentLineHandlesUseDepthTestedEditWireState) {
 				.source_kind = crimson::OverlaySourceKind::ComponentSelection,
 				.element = crimson::OverlayElementRef{ .object_id = 7, .edge_index = 12 },
 		},
+		crimson::LineOverlaySegment{
+				.start = { 0.0F, 2.0F, 0.0F },
+				.end = { 1.0F, 2.0F, 0.0F },
+				.semantic_role = crimson::OverlaySemanticRole::HoverFaceEdge,
+				.source_kind = crimson::OverlaySourceKind::ComponentHover,
+				.element = crimson::OverlayElementRef{ .object_id = 7, .edge_index = 14 },
+		},
 	};
 	std::array<crimson::OverlayCommand, 1> commands = {
 		crimson::OverlayCommand{
@@ -421,31 +554,36 @@ TEST(Overlay, ComponentLineHandlesUseDepthTestedEditWireState) {
 				.primitive = crimson::OverlayPrimitive::LineList,
 				.depth_mode = crimson::OverlayDepthMode::AlwaysOnTop,
 				.payload_offset = 0,
-				.payload_count = 2,
+				.payload_count = 3,
 		},
 	};
 
 	const crimson::OverlayDrawLists kLists = crimson::OverlaySystem{}.prepare(commands, {}, lines);
-	EXPECT_TRUE(kLists.always_on_top.line_commands.empty());
+	ASSERT_EQ(kLists.always_on_top.line_commands.size(), 1U);
+	expect_true(
+			kLists.always_on_top.line_commands[0].semantic_role == crimson::OverlaySemanticRole::SourceWire &&
+					kLists.always_on_top.line_commands[0].source_kind == crimson::OverlaySourceKind::ComponentSelection,
+			"component source wire keeps source semantics outside the edit-wire bucket");
+	expect_true(
+			kLists.always_on_top.line_commands[0].render_state.depth_mode == crimson::OverlayDepthMode::AlwaysOnTop &&
+					!kLists.always_on_top.line_commands[0].render_state.depth_test_enabled,
+			"component source wire draws on top instead of using sampled scene-depth edit-wire");
 	ASSERT_EQ(kLists.depth_tested.line_commands.size(), 2U);
 	expect_true(
-			kLists.depth_tested.line_commands[0].semantic_role == crimson::OverlaySemanticRole::SourceWire &&
-					kLists.depth_tested.line_commands[0].source_kind == crimson::OverlaySourceKind::ComponentSelection,
-			"component source wire stays semantically sourced as component selection in the edit-wire bucket");
+			kLists.depth_tested.line_commands[0].source_kind == crimson::OverlaySourceKind::ComponentSelection,
+			"component edge batch keeps component selection source");
 	expect_true(
 			kLists.depth_tested.line_commands[0].render_state.depth_mode == crimson::OverlayDepthMode::DepthTested &&
 					kLists.depth_tested.line_commands[0].render_state.depth_test_enabled,
-			"component source wire uses the depth-tested edit-wire state");
+			"selected component edge bucket and render state are depth-tested");
 	expect_true(
-			kLists.depth_tested.line_commands[1].source_kind == crimson::OverlaySourceKind::ComponentSelection,
-			"component edge batch keeps component selection source");
-	expect_true(
-			kLists.depth_tested.line_commands[1].render_state.depth_mode == crimson::OverlayDepthMode::DepthTested &&
-					kLists.depth_tested.line_commands[1].render_state.depth_test_enabled,
-			"component edge bucket and render state are both depth-tested");
-	expect_true(
-			kLists.depth_tested.line_commands[1].segments[0].element.edge_index == 12,
+			kLists.depth_tested.line_commands[0].segments[0].element.edge_index == 12,
 			"component edge batch keeps semantic edge reference");
+	expect_true(
+			kLists.depth_tested.line_commands[1].semantic_role == crimson::OverlaySemanticRole::HoverFaceEdge &&
+					kLists.depth_tested.line_commands[1].source_kind == crimson::OverlaySourceKind::ComponentHover &&
+					kLists.depth_tested.line_commands[1].render_state.depth_test_enabled,
+			"hover face-edge handles remain in the depth-tested edit-wire state");
 }
 
 TEST(Overlay, FaceFillCreatesTwoSidedDepthStampAndEqualDepthColorPasses) {

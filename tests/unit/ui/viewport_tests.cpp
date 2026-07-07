@@ -10,6 +10,7 @@
 #include "../document/document_test_helpers.hpp"
 
 #include "ui/viewport/crimson_viewport_render_host.hpp"
+#include "crimson/overlays/overlay_system.hpp"
 #include "ui/viewport/viewport_camera_controller.hpp"
 #include "ui/viewport/tool_preview_overlay_adapter.hpp"
 #include "ui/viewport/viewport_controller.hpp"
@@ -377,6 +378,59 @@ quader::ui::ViewportPoint pane_center(const quader::ui::ViewportPane &pane) {
 	};
 }
 
+[[nodiscard]] quader::math::Vec3 normalized_or(
+		quader::math::Vec3 value,
+		quader::math::Vec3 fallback) noexcept {
+	const quader::math::Vec3 normalized = quader::math::normalized(value, 0.000001F);
+	return quader::math::length_squared(normalized) <= 0.000000000001F ? fallback : normalized;
+}
+
+struct InsideOutPickingFixture {
+	quader::document::Document document;
+	quader::document::ObjectId object;
+	quader::mesh::VertexId target_vertex;
+};
+
+InsideOutPickingFixture make_inside_out_picking_fixture() {
+	quader::ui::ViewportCameraController cameras;
+	const quader::ui::ViewportCameraSnapshot camera = cameras.camera_snapshots()[0];
+	const quader::math::Vec3 forward = normalized_or(camera.target - camera.eye, camera.forward);
+	const quader::math::Vec3 right = normalized_or(quader::math::cross(forward, camera.up), { 1.0F, 0.0F, 0.0F });
+	const quader::math::Vec3 up = normalized_or(quader::math::cross(right, forward), camera.up);
+
+	auto room = quader::mesh::ops::make_box_from_bounds(quader::mesh::ops::BoxDimensions{
+			.min = { -40.0F, -40.0F, -40.0F },
+			.max = { 40.0F, 40.0F, 40.0F },
+	});
+	EXPECT_TRUE(room);
+	quader::mesh::Polyhedron mesh = room ? std::move(room).value() : quader::mesh::Polyhedron{};
+	const std::vector<quader::mesh::FaceId> room_faces = mesh.face_ids();
+	auto reversed = mesh.reverse_face_windings(room_faces);
+	EXPECT_TRUE(reversed);
+
+	const quader::math::Vec3 occluder_center = camera.eye + (camera.target - camera.eye) * 0.45F;
+	const quader::mesh::VertexId occluder_a = mesh.create_vertex(occluder_center + right * -4.0F + up * -4.0F);
+	const quader::mesh::VertexId occluder_b = mesh.create_vertex(occluder_center + right * 4.0F + up * -4.0F);
+	const quader::mesh::VertexId occluder_c = mesh.create_vertex(occluder_center + up * 5.0F);
+	auto occluder_face = mesh.create_face(std::array<quader::mesh::VertexId, 3>{ occluder_a, occluder_b, occluder_c });
+	EXPECT_TRUE(occluder_face);
+
+	const quader::mesh::VertexId target = mesh.create_vertex(camera.target);
+	const quader::mesh::VertexId target_b = mesh.create_vertex(camera.target + right * 2.0F + up * 2.0F);
+	const quader::mesh::VertexId target_c = mesh.create_vertex(camera.target - right * 2.0F + up * 2.0F);
+	auto target_face = mesh.create_face(std::array<quader::mesh::VertexId, 3>{ target, target_b, target_c });
+	EXPECT_TRUE(target_face);
+
+	quader::document::Document document;
+	auto object = document.create_mesh_object("Inside Out Picking Room", std::move(mesh));
+	EXPECT_TRUE(object);
+	return InsideOutPickingFixture{
+		std::move(document),
+		object ? object.value() : quader::document::ObjectId::invalid(),
+		target,
+	};
+}
+
 TEST(Viewport, CrimsonMeshUploadUsesReferenceUvScaleAndFrontFacingTriangles) {
 	quader::document::Document document;
 	const quader::document::ObjectId object_id = add_box_object(
@@ -481,6 +535,48 @@ TEST(Viewport, DocumentRenderCacheSubmitsUploadsOnlyWhenMeshRevisionChanges) {
 
 	cache.prune(std::span<const quader::document::ObjectId>{});
 	EXPECT_EQ(cache.cached_mesh_count(), 0U);
+}
+
+TEST(Viewport, WireframeFrameAssemblySkipsFilledObjectsAndUsesAlwaysOnTopTopology) {
+	quader::document::Document document;
+	const quader::document::ObjectId object_id = add_box_object(
+			document,
+			"Wireframe Box",
+			{ -1.0F, -1.0F, -1.0F },
+			{ 1.0F, 1.0F, 1.0F });
+	const auto *object = document.find_mesh_object(object_id);
+	ASSERT_TRUE(object != nullptr);
+
+	quader::ui::ViewportDocumentRenderCache cache;
+	std::vector<crimson::RenderMeshUpload> mesh_uploads;
+	std::vector<crimson::RenderObject> objects;
+	quader::ui::append_crimson_document_render_data(
+			document,
+			cache,
+			mesh_uploads,
+			objects,
+			quader::ui::ViewportShadingMode::Wireframe);
+	EXPECT_TRUE(mesh_uploads.empty());
+	EXPECT_TRUE(objects.empty());
+
+	std::vector<crimson::OverlayCommand> overlays;
+	std::vector<crimson::LineOverlaySegment> line_payloads;
+	quader::ui::append_crimson_scene_wireframe_overlays(document, 1U, overlays, line_payloads);
+	ASSERT_EQ(overlays.size(), 1U);
+	EXPECT_EQ(overlays.front().depth_mode, crimson::OverlayDepthMode::AlwaysOnTop);
+	EXPECT_EQ(overlays.front().payload_count, object->mesh.edge_count());
+	EXPECT_EQ(line_payloads.size(), object->mesh.edge_count());
+
+	quader::document::Selection selection;
+	ASSERT_TRUE(selection.set_objects({ object_id }));
+	ASSERT_TRUE(document.set_selection(std::move(selection)));
+	overlays.clear();
+	line_payloads.clear();
+	quader::ui::append_crimson_scene_wireframe_overlays(document, 1U, overlays, line_payloads);
+	ASSERT_EQ(overlays.size(), 1U);
+	EXPECT_EQ(overlays.front().depth_mode, crimson::OverlayDepthMode::AlwaysOnTop);
+	EXPECT_EQ(overlays.front().semantic_role, crimson::OverlaySemanticRole::SelectedObjectTopology);
+	EXPECT_EQ(overlays.front().source_kind, crimson::OverlaySourceKind::ObjectSelection);
 }
 
 TEST(Viewport, LayoutStateClampsQuadPanesAndHitTests) {
@@ -1373,8 +1469,28 @@ TEST(Viewport, DocumentSelectionOverlayAdapterEmitsEdgeAndVertexComponentHandles
 	ASSERT_TRUE(kSourceCommandIt != overlays.end());
 	ASSERT_TRUE(kSelectedCommandIt != overlays.end());
 	EXPECT_LT(std::distance(overlays.begin(), kSourceCommandIt), std::distance(overlays.begin(), kSelectedCommandIt));
-	EXPECT_EQ(kSourceCommandIt->depth_mode, crimson::OverlayDepthMode::DepthTested);
-	EXPECT_EQ(kSelectedCommandIt->depth_mode, crimson::OverlayDepthMode::DepthTested);
+	const crimson::OverlayDrawLists kPrepared = crimson::OverlaySystem{}.prepare(
+			overlays,
+			std::span<const crimson::GridOverlayCommand>{},
+			line_payloads,
+			triangle_payloads,
+			point_payloads);
+	EXPECT_TRUE(std::any_of(kPrepared.depth_tested.point_commands.begin(),
+			kPrepared.depth_tested.point_commands.end(),
+			[](const crimson::PreparedPointOverlayCommand &command) {
+				return command.semantic_role == crimson::OverlaySemanticRole::SourceVertex &&
+						command.source_kind == crimson::OverlaySourceKind::ComponentSelection &&
+						command.render_state.depth_mode == crimson::OverlayDepthMode::DepthTested &&
+						command.render_state.depth_test_enabled;
+			}));
+	EXPECT_TRUE(std::any_of(kPrepared.depth_tested.point_commands.begin(),
+			kPrepared.depth_tested.point_commands.end(),
+			[](const crimson::PreparedPointOverlayCommand &command) {
+				return command.semantic_role == crimson::OverlaySemanticRole::SelectedVertex &&
+						command.source_kind == crimson::OverlaySourceKind::ComponentSelection &&
+						command.render_state.depth_mode == crimson::OverlayDepthMode::DepthTested &&
+						command.render_state.depth_test_enabled;
+			}));
 }
 
 TEST(Viewport, DocumentSelectionOverlayAdapterKeepsSelectedSourceWireForDifferentHoverMesh) {
@@ -1605,6 +1721,23 @@ TEST(Viewport, ControllerRoutesCenterRayToEdgeAndVertexSelectionModes) {
 		ASSERT_TRUE(std::holds_alternative<quader::mesh::VertexId>(kComponents.front().component));
 		EXPECT_EQ(std::get<quader::mesh::VertexId>(kComponents.front().component), fixture.near_vertex);
 	}
+}
+
+TEST(Viewport, ControllerPicksInsideOutRoomVertexBehindSameMeshSurface) {
+	auto fixture = make_inside_out_picking_fixture();
+	quader::commands::CommandHistory history;
+	quader::tools::ToolManager tools{ quader::tools::ToolContext{ fixture.document, history } };
+	ASSERT_TRUE(tools.register_tool(std::make_unique<ViewportPassiveSelectTool>()));
+	ASSERT_TRUE(tools.set_active_tool(quader::tools::ToolId::Select));
+	ASSERT_TRUE(tools.set_selection_mode(quader::tools::SelectionMode::Vertex));
+
+	FakeRenderHost host;
+	quader::ui::ViewportController controller(host, tools);
+	EXPECT_TRUE(controller.handle_mouse_move({ 320.0, 240.0 }, { 640, 480 }));
+	ASSERT_TRUE(tools.selection_hover().has_value());
+	EXPECT_EQ(tools.selection_hover()->kind, quader::tools::SurfaceHitKind::Vertex);
+	ASSERT_TRUE(std::holds_alternative<quader::mesh::VertexId>(tools.selection_hover()->component));
+	EXPECT_EQ(std::get<quader::mesh::VertexId>(tools.selection_hover()->component), fixture.target_vertex);
 }
 
 TEST(Viewport, ControllerPicksParallelEdgeNearMidpointInTopPane) {

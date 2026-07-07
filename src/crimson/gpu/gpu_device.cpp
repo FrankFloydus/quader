@@ -23,6 +23,7 @@
 #include "crimson/material/default_material.hpp"
 #include "crimson/material/material_system.hpp"
 #include "crimson/overlays/overlay_system.hpp"
+#include "crimson/overlays/source_wire_visibility.hpp"
 #include "crimson/pipeline/instancing_batcher.hpp"
 #include "crimson/post/exposure.hpp"
 #include "crimson/post/tone_mapping.hpp"
@@ -696,29 +697,136 @@ std::uint32_t submit_triangle_overlay_bucket(
 	return draw_calls;
 }
 
-std::uint32_t submit_point_overlay_bucket(
-		const OverlayDrawBucket &bucket,
+[[nodiscard]] PreparedOverlayRenderState point_render_state_for_depth_mode(
+		PreparedOverlayRenderState state,
+		OverlayDepthMode depth_mode) noexcept {
+	state.depth_mode = depth_mode;
+	state.pass_kind = PreparedOverlayPassKind::Color;
+	state.color_write_enabled = true;
+	state.depth_write_enabled = false;
+	state.depth_test_enabled = depth_mode == OverlayDepthMode::DepthTested;
+	state.equal_depth_test_enabled = false;
+	state.two_sided = false;
+	return state;
+}
+
+[[nodiscard]] PreparedPointOverlayCommand empty_point_command_for_depth_mode(
+		const PreparedPointOverlayCommand &source,
+		OverlayDepthMode depth_mode) {
+	PreparedPointOverlayCommand command = source;
+	command.command.depth_mode = depth_mode;
+	command.command.payload_offset = 0;
+	command.command.payload_count = 0;
+	command.render_state = point_render_state_for_depth_mode(source.render_state, depth_mode);
+	command.points.clear();
+	return command;
+}
+
+void append_routed_point(
+		const PreparedPointOverlayCommand &source,
+		const PointOverlayPrimitive &point,
 		OverlayDepthMode depth_mode,
+		std::optional<PreparedPointOverlayCommand> &depth_tested,
+		std::optional<PreparedPointOverlayCommand> &xray,
+		std::optional<PreparedPointOverlayCommand> &always_on_top) {
+	std::optional<PreparedPointOverlayCommand> *destination = &depth_tested;
+	if (depth_mode == OverlayDepthMode::XRay) {
+		destination = &xray;
+	} else if (depth_mode == OverlayDepthMode::AlwaysOnTop) {
+		destination = &always_on_top;
+	}
+
+	if (!destination->has_value()) {
+		*destination = empty_point_command_for_depth_mode(source, depth_mode);
+	}
+	(*destination)->points.push_back(point);
+	(*destination)->command.payload_count = static_cast<std::uint32_t>((*destination)->points.size());
+}
+
+void route_point_overlay_command(
+		const PreparedPointOverlayCommand &source,
+		const RenderView &view,
+		const SourceWireDepthStampVisibilityFilter *filter,
+		std::optional<PreparedPointOverlayCommand> &depth_tested,
+		std::optional<PreparedPointOverlayCommand> &xray,
+		std::optional<PreparedPointOverlayCommand> &always_on_top) {
+	if (source.command.view_index != view.view_index) {
+		return;
+	}
+
+	const bool kCanFilterEditableVertex =
+			filter != nullptr &&
+			overlay_role_is_vertex_handle(source.semantic_role);
+	for (const PointOverlayPrimitive &point : source.points) {
+		OverlayDepthMode depth_mode = source.render_state.depth_mode;
+		if (kCanFilterEditableVertex) {
+			if (!filter->point_visible(view.view_index, point.element, point.position, view.camera)) {
+				continue;
+			}
+			depth_mode = filter->point_depth_mode(
+					view.view_index,
+					point.element,
+					point.position,
+					view.camera,
+					depth_mode);
+		}
+
+		append_routed_point(source, point, depth_mode, depth_tested, xray, always_on_top);
+	}
+}
+
+std::uint32_t submit_point_overlay_lists(
+		const OverlayDrawLists &lists,
 		std::span<const RenderView> views,
 		const GpuOverlayRenderer &overlay_renderer,
 		const GpuProgramCache &program_cache,
 		RenderProgramHandle line_program,
-		bgfx::FrameBufferHandle framebuffer) {
+		bgfx::FrameBufferHandle framebuffer,
+		const SourceWireDepthStampVisibilityFilter *filter) {
 	std::uint32_t draw_calls = 0;
 	const bgfx::ProgramHandle kProgram = program_cache.program(line_program);
-	const std::uint32_t kQueueOffset = overlay_queue_offset(depth_mode);
 	for (std::size_t view_index = 0; view_index < views.size(); ++view_index) {
 		const RenderView &view = views[view_index];
-		const bgfx::ViewId kViewId = overlay_view_id(view_index, kQueueOffset);
-		const std::string kViewName = std::string(render_queue_name(render_queue_for_overlay_depth_mode(depth_mode))) + ":" + view.debug_name;
-		configure_scene_view(kViewId, view, kViewName, ViewClearMode::None, framebuffer);
+		const bgfx::ViewId kDepthViewId = overlay_view_id(view_index, overlay_queue_offset(OverlayDepthMode::DepthTested));
+		const bgfx::ViewId kXrayViewId = overlay_view_id(view_index, overlay_queue_offset(OverlayDepthMode::XRay));
+		const bgfx::ViewId kTopViewId = overlay_view_id(view_index, overlay_queue_offset(OverlayDepthMode::AlwaysOnTop));
+		configure_scene_view(kDepthViewId,
+				view,
+				std::string(render_queue_name(RenderQueue::OverlayDepthTested)) + ":" + view.debug_name,
+				ViewClearMode::None,
+				framebuffer);
+		configure_scene_view(kXrayViewId,
+				view,
+				std::string(render_queue_name(RenderQueue::OverlayXRay)) + ":" + view.debug_name,
+				ViewClearMode::None,
+				framebuffer);
+		configure_scene_view(kTopViewId,
+				view,
+				std::string(render_queue_name(RenderQueue::OverlayAlwaysOnTop)) + ":" + view.debug_name,
+				ViewClearMode::None,
+				framebuffer);
 
-		for (const PreparedPointOverlayCommand &points : bucket.point_commands) {
-			if (points.command.view_index != view.view_index) {
-				continue;
+		const auto submit_source_bucket = [&](const OverlayDrawBucket &bucket) {
+			for (const PreparedPointOverlayCommand &points : bucket.point_commands) {
+				std::optional<PreparedPointOverlayCommand> depth_tested;
+				std::optional<PreparedPointOverlayCommand> xray;
+				std::optional<PreparedPointOverlayCommand> always_on_top;
+				route_point_overlay_command(points, view, filter, depth_tested, xray, always_on_top);
+				if (depth_tested.has_value()) {
+					draw_calls += overlay_renderer.submit_points(kDepthViewId, view, *depth_tested, kProgram);
+				}
+				if (xray.has_value()) {
+					draw_calls += overlay_renderer.submit_points(kXrayViewId, view, *xray, kProgram);
+				}
+				if (always_on_top.has_value()) {
+					draw_calls += overlay_renderer.submit_points(kTopViewId, view, *always_on_top, kProgram);
+				}
 			}
-			draw_calls += overlay_renderer.submit_points(kViewId, view, points, kProgram);
-		}
+		};
+
+		submit_source_bucket(lists.depth_tested);
+		submit_source_bucket(lists.xray);
+		submit_source_bucket(lists.always_on_top);
 	}
 	return draw_calls;
 }
@@ -1430,6 +1538,11 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 
 		if (overlay_draw_lists.has_value()) {
 			const OverlayDrawLists &kOverlayDrawLists = *overlay_draw_lists;
+			const SourceWireDepthStampVisibilityFilter kSourceWireVisibilityFilter{
+				kOverlayDrawLists.source_wire_depth_stamps,
+			};
+			const SourceWireDepthStampVisibilityFilter *kPointVisibilityFilter =
+					kSourceWireVisibilityFilter.empty() ? nullptr : &kSourceWireVisibilityFilter;
 			if (kDrawGridCommands) {
 				queue_stats.overlay_draw_count += submit_grid_overlay_bucket(
 						kOverlayDrawLists.depth_tested,
@@ -1517,30 +1630,14 @@ quader::foundation::Result<FrameRenderResult, RendererDiagnostic> GpuDevice::ren
 						kToneMappedColorFramebuffer,
 						kSceneDepthTexture,
 						kTargetExtent);
-				queue_stats.overlay_draw_count += submit_point_overlay_bucket(
-						kOverlayDrawLists.depth_tested,
-						OverlayDepthMode::DepthTested,
+				queue_stats.overlay_draw_count += submit_point_overlay_lists(
+						kOverlayDrawLists,
 						snapshot.views(),
 						impl_->overlay_renderer,
 						impl_->program_cache,
 						impl_->overlay_device_solid_program,
-						kToneMappedFramebuffer);
-				queue_stats.overlay_draw_count += submit_point_overlay_bucket(
-						kOverlayDrawLists.xray,
-						OverlayDepthMode::XRay,
-						snapshot.views(),
-						impl_->overlay_renderer,
-						impl_->program_cache,
-						impl_->overlay_device_solid_program,
-						kToneMappedFramebuffer);
-				queue_stats.overlay_draw_count += submit_point_overlay_bucket(
-						kOverlayDrawLists.always_on_top,
-						OverlayDepthMode::AlwaysOnTop,
-						snapshot.views(),
-						impl_->overlay_renderer,
-						impl_->program_cache,
-						impl_->overlay_device_solid_program,
-						kToneMappedFramebuffer);
+						kToneMappedFramebuffer,
+						kPointVisibilityFilter);
 			}
 		}
 

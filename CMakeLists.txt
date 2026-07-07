@@ -438,6 +438,8 @@ add_library(crimson STATIC
     src/crimson/overlays/overlay_command.hpp
     src/crimson/overlays/overlay_system.cpp
     src/crimson/overlays/overlay_system.hpp
+    src/crimson/overlays/source_wire_visibility.cpp
+    src/crimson/overlays/source_wire_visibility.hpp
     src/crimson/picking/picking.cpp
     src/crimson/picking/picking.hpp
     src/crimson/pipeline/draw_packet.cpp

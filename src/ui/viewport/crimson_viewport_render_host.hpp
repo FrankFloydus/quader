@@ -12,6 +12,8 @@
 #include "crimson/diagnostics/renderer_diagnostics_snapshot.hpp"
 #include "crimson/material/base_shader.hpp"
 #include "crimson/mesh/render_mesh.hpp"
+#include "crimson/overlays/overlay_command.hpp"
+#include "crimson/scene/render_object.hpp"
 #include "document/object_id.hpp"
 #include "math/aabb.hpp"
 #include "ui/viewport/viewport_render_host.hpp"
@@ -100,6 +102,26 @@ private:
 
 	std::vector<Entry> entries_;
 };
+
+/**
+ * Append document mesh uploads and render objects for a viewport frame.
+ *
+ * Wireframe viewport mode intentionally emits no filled scene render objects;
+ * scene topology is supplied by `append_crimson_scene_wireframe_overlays`.
+ */
+void append_crimson_document_render_data(
+		const quader::document::Document &document,
+		ViewportDocumentRenderCache &document_render_cache,
+		std::vector<crimson::RenderMeshUpload> &mesh_uploads,
+		std::vector<crimson::RenderObject> &objects,
+		ViewportShadingMode shading_mode);
+
+/// Append x-ray/draw-on-top scene topology overlays for wireframe viewport mode.
+void append_crimson_scene_wireframe_overlays(
+		const quader::document::Document &document,
+		std::size_t view_count,
+		std::vector<crimson::OverlayCommand> &overlays,
+		std::vector<crimson::LineOverlaySegment> &line_payloads);
 
 /// Create a standalone Crimson viewport render host with viewport content.
 std::unique_ptr<IViewportRenderHost> create_crimson_viewport_render_host();

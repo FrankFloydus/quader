@@ -359,7 +359,7 @@ bool overlay_role_is_component_edge(OverlaySemanticRole role) noexcept {
 }
 
 bool overlay_role_is_component_edit_wire(OverlaySemanticRole role) noexcept {
-	return overlay_role_is_source_wire(role) || overlay_role_is_component_edge(role);
+	return overlay_role_is_component_edge(role);
 }
 
 bool overlay_role_is_vertex_handle(OverlaySemanticRole role) noexcept {
@@ -386,12 +386,12 @@ OverlayDepthMode effective_overlay_depth_mode(
 		const OverlayCommand &command,
 		OverlaySemanticRole role,
 		OverlaySourceKind source_kind) noexcept {
+	if (overlay_role_is_source_wire(role)) {
+		return OverlayDepthMode::AlwaysOnTop;
+	}
 	if (overlay_source_kind_is_component(source_kind) &&
 			(overlay_role_is_component_edit_wire(role) || overlay_role_is_vertex_handle(role))) {
 		return OverlayDepthMode::DepthTested;
-	}
-	if (overlay_role_is_source_wire(role)) {
-		return OverlayDepthMode::AlwaysOnTop;
 	}
 	if (overlay_role_is_vertex_handle(role)) {
 		return OverlayDepthMode::AlwaysOnTop;

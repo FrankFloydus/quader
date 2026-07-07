@@ -9,6 +9,7 @@
  */
 #include "ui/viewport/viewport_controller.hpp"
 
+#include "crimson/overlays/source_wire_visibility.hpp"
 #include "crimson/scene/render_camera_projection.hpp"
 #include "geometry/normals.hpp"
 #include "mesh/core/mesh_traversal.hpp"
@@ -79,6 +80,23 @@ constexpr float kHandleOcclusionBiasWorld = 0.02F;
 		point.z * transform.scale.z,
 	};
 	return rotate_euler(point, transform.rotation_euler) + transform.translation;
+}
+
+[[nodiscard]] crimson::RenderCamera render_camera_from_viewport_snapshot(
+		const ViewportCameraSnapshot &camera) noexcept {
+	return crimson::RenderCamera{
+		.eye = camera.eye,
+		.target = camera.target,
+		.up = camera.up,
+		.forward = camera.forward,
+		.projection = camera.projection == CameraProjection::Orthographic
+				? crimson::CameraProjection::Orthographic
+				: crimson::CameraProjection::Perspective,
+		.near_plane_m = camera.settings.clip.near_clip_m,
+		.far_plane_m = camera.settings.clip.far_clip_m,
+		.vertical_fov_degrees = camera.settings.fov_degrees,
+		.orthographic_height_m = camera.settings.orthographic_size,
+	};
 }
 
 struct RayTriangleHit {
@@ -407,6 +425,54 @@ struct EdgeWorldPoints {
 	return EdgeWorldPoints{ *start, *end };
 }
 
+void append_source_wire_depth_stamps_for_object(
+		const quader::document::MeshObject &object,
+		std::vector<crimson::SourceWireDepthStampMetadata> &stamps) {
+	const crimson::RenderObjectId kObjectId = encoded_object_id(object.id);
+	for (const quader::mesh::FaceId kFaceId : object.mesh.face_ids()) {
+		auto face_vertices = quader::mesh::face_vertices(object.mesh, kFaceId);
+		if (!face_vertices || face_vertices.value().size() < 3U) {
+			continue;
+		}
+
+		std::vector<quader::math::Vec3> points;
+		points.reserve(face_vertices.value().size());
+		for (const quader::mesh::VertexId kVertexId : face_vertices.value()) {
+			auto position = vertex_world_position(object, kVertexId);
+			if (!position) {
+				points.clear();
+				break;
+			}
+			points.push_back(*position);
+		}
+		if (points.size() < 3U) {
+			continue;
+		}
+
+		for (std::size_t index = 1U; index + 1U < points.size(); ++index) {
+			crimson::TriangleOverlayPrimitive triangle{
+				.a = points[0],
+				.b = points[index],
+				.c = points[index + 1U],
+				.semantic_role = crimson::OverlaySemanticRole::SourceWireDepthStamp,
+				.source_kind = crimson::OverlaySourceKind::SourceWire,
+				.element = crimson::OverlayElementRef{
+						.object_id = kObjectId,
+						.face_index = kFaceId.index(),
+				},
+			};
+			stamps.push_back(crimson::SourceWireDepthStampMetadata{
+					.view_index = 0,
+					.source_kind = crimson::OverlaySourceKind::SourceWire,
+					.triangle = triangle,
+					.payload_offset = 0,
+					.payload_count = 1,
+					.element = triangle.element,
+			});
+		}
+	}
+}
+
 struct FaceHitCandidate {
 	quader::document::ObjectId object_id = quader::document::ObjectId::invalid();
 	quader::mesh::FaceId face_id = quader::mesh::FaceId::invalid();
@@ -478,12 +544,37 @@ struct FaceHitCandidate {
 	return false;
 }
 
+[[nodiscard]] bool source_wire_visibility_allows_handle_through_inside_out_volume(
+		const crimson::SourceWireDepthStampVisibilityFilter *filter,
+		const quader::document::MeshObject &object,
+		quader::math::Vec3 handle_position,
+		const crimson::RenderCamera &camera) noexcept {
+	if (filter == nullptr) {
+		return false;
+	}
+	const crimson::OverlayElementRef kElement{
+		.object_id = encoded_object_id(object.id),
+	};
+	return filter->point_depth_mode(
+				   0,
+				   kElement,
+				   handle_position,
+				   camera,
+				   crimson::OverlayDepthMode::DepthTested) == crimson::OverlayDepthMode::AlwaysOnTop;
+}
+
 [[nodiscard]] bool handle_occluded_by_same_mesh(
 		const std::vector<FaceHitCandidate> &faces,
 		const quader::document::MeshObject &object,
 		float handle_ray_distance,
 		float handle_radius_world,
-		quader::mesh::VertexId vertex) {
+		quader::mesh::VertexId vertex,
+		quader::math::Vec3 handle_position,
+		const crimson::SourceWireDepthStampVisibilityFilter *filter,
+		const crimson::RenderCamera &camera) {
+	if (source_wire_visibility_allows_handle_through_inside_out_volume(filter, object, handle_position, camera)) {
+		return false;
+	}
 	const FaceHitCandidate *nearest_face = nearest_face_for_object(faces, object.id);
 	if (nearest_face == nullptr ||
 			handle_ray_distance <= nearest_face->distance + kHandleOcclusionBiasWorld + handle_radius_world) {
@@ -497,7 +588,13 @@ struct FaceHitCandidate {
 		const quader::document::MeshObject &object,
 		float handle_ray_distance,
 		float handle_radius_world,
-		quader::mesh::EdgeId edge) {
+		quader::mesh::EdgeId edge,
+		quader::math::Vec3 handle_position,
+		const crimson::SourceWireDepthStampVisibilityFilter *filter,
+		const crimson::RenderCamera &camera) {
+	if (source_wire_visibility_allows_handle_through_inside_out_volume(filter, object, handle_position, camera)) {
+		return false;
+	}
 	const FaceHitCandidate *nearest_face = nearest_face_for_object(faces, object.id);
 	if (nearest_face == nullptr ||
 			handle_ray_distance <= nearest_face->distance + kHandleOcclusionBiasWorld + handle_radius_world) {
@@ -1099,6 +1196,17 @@ std::optional<quader::tools::SurfaceHit> ViewportController::surface_hit_for_ray
 
 	const std::vector<quader::document::ObjectId> kComponentPickObjects =
 			component_pick_object_order(document, best_face, tool_manager_->selection_hover());
+	std::vector<crimson::SourceWireDepthStampMetadata> source_wire_depth_stamps;
+	for (const quader::document::ObjectId kObjectId : kComponentPickObjects) {
+		const auto *object = document.find_mesh_object(kObjectId);
+		if (object != nullptr) {
+			append_source_wire_depth_stamps_for_object(*object, source_wire_depth_stamps);
+		}
+	}
+	const crimson::SourceWireDepthStampVisibilityFilter kSourceWireVisibilityFilter{ source_wire_depth_stamps };
+	const crimson::SourceWireDepthStampVisibilityFilter *kHandleVisibilityFilter =
+			kSourceWireVisibilityFilter.empty() ? nullptr : &kSourceWireVisibilityFilter;
+	const crimson::RenderCamera kRenderCamera = render_camera_from_viewport_snapshot(camera);
 	if (kSelectionToolActive && tool_manager_->selection_mode() == quader::tools::SelectionMode::Vertex) {
 		ScreenHandleHit best_handle;
 		std::optional<quader::tools::SurfaceHit> best_hit;
@@ -1131,7 +1239,15 @@ std::optional<quader::tools::SurfaceHit> ViewportController::surface_hit_for_ray
 				if (kScreenDistanceSquared > kVertexPickRadiusPx * kVertexPickRadiusPx ||
 						!kRayHandle.hit ||
 						(!selection_contains_vertex(document.selection(), kObjectId, kVertex) &&
-								handle_occluded_by_same_mesh(face_hits, *object, kRayHandle.ray_distance, kVertexPickRadiusWorld, kVertex)) ||
+								handle_occluded_by_same_mesh(
+										face_hits,
+										*object,
+										kRayHandle.ray_distance,
+										kVertexPickRadiusWorld,
+										kVertex,
+										*position,
+										kHandleVisibilityFilter,
+										kRenderCamera)) ||
 						!better_screen_handle_hit(kScreenHandle, best_handle)) {
 					continue;
 				}
@@ -1196,7 +1312,15 @@ std::optional<quader::tools::SurfaceHit> ViewportController::surface_hit_for_ray
 				if (kScreenDistanceSquared > kEdgePickRadiusPx * kEdgePickRadiusPx ||
 						!kRayHandle.hit ||
 						(!selection_contains_edge(document.selection(), kObjectId, kEdge) &&
-								handle_occluded_by_same_mesh(face_hits, *object, kRayHandle.ray_distance, kEdgePickRadiusWorld, kEdge)) ||
+								handle_occluded_by_same_mesh(
+										face_hits,
+										*object,
+										kRayHandle.ray_distance,
+										kEdgePickRadiusWorld,
+										kEdge,
+										kWorldPosition,
+										kHandleVisibilityFilter,
+										kRenderCamera)) ||
 						!better_screen_handle_hit(kScreenHandle, best_handle)) {
 					continue;
 				}
